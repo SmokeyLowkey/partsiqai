@@ -1,0 +1,1539 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id                     String                  @id @default(cuid())
+  name                   String
+  slug                   String                  @unique
+  domain                 String?                 @unique
+  subscriptionTier       SubscriptionTier        @default(BASIC)
+  subscriptionStatus     SubscriptionStatus      @default(ACTIVE)
+  billingEmail           String?
+  maxUsers               Int                     @default(10)
+  maxVehicles            Int                     @default(50)
+  settings               Json?
+  logo                   String?
+  primaryColor           String?                 @default("#2563eb")
+  passwordPolicy         Json?
+  sessionTimeoutMinutes  Int                     @default(60)
+  requireTwoFactor       Boolean                 @default(false)
+  allowedEmailDomains    String[]                @default([])
+
+  // Stripe Integration Fields
+  stripeCustomerId       String?                 @unique
+  stripeSubscriptionId   String?                 @unique
+  stripePriceId          String?
+  subscriptionStartDate  DateTime?
+  subscriptionEndDate    DateTime?
+  trialEndsAt            DateTime?
+  cancelAtPeriodEnd      Boolean                 @default(false)
+
+  // Onboarding tracking
+  onboardingCompletedAt  DateTime?
+
+  // Contact info for follow-up (from signup)
+  primaryContactPhone    String?
+  companySize            String?
+  primaryUseCase         String?
+
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  activityLogs           ActivityLog[]
+  apiKeys                ApiKey[]
+  chatConversations      ChatConversation[]
+  costSavingsRecords     CostSavingsRecord[]
+  emailThreads           EmailThread[]
+  orders                 Order[]
+  parts                  Part[]
+  quoteRequests          QuoteRequest[]
+  securityAuditLogs      SecurityAuditLog[]
+  suppliers              Supplier[]
+  users                  User[]
+  vehicles               Vehicle[]
+  vehicleSearchMappings  VehicleSearchMapping[]
+  maintenanceSchedules   MaintenanceSchedule[]
+  jobQueues              JobQueue[]
+  emailSyncState         EmailSyncState?
+  integrationCredentials IntegrationCredential[]
+  invoices               Invoice[]
+  paymentMethods         PaymentMethod[]
+  invitations            Invitation[]
+
+  @@index([slug])
+  @@index([stripeCustomerId])
+  @@map("organizations")
+}
+
+model User {
+  id                            String                  @id @default(cuid())
+  email                         String                  @unique
+  name                          String?
+  role                          UserRole                @default(USER)
+  phone                         String?
+  avatar                        String?
+  bio                           String?
+  isActive                      Boolean                 @default(true)
+  password                      String?
+  mustChangePassword            Boolean                 @default(false)
+  emailVerified                 DateTime?
+  isEmailVerified               Boolean                 @default(false)
+  twoFactorEnabled              Boolean                 @default(false)
+  twoFactorSecret               String?
+  organizationId                String
+
+  // Email verification
+  emailVerificationToken        String?                 @unique
+  emailVerificationExpiry       DateTime?
+
+  // Onboarding tracking
+  onboardingStatus              OnboardingStatus        @default(NOT_STARTED)
+  onboardingStep                Int                     @default(0)
+  onboardingCompletedAt         DateTime?
+  onboardingSkippedAt           DateTime?
+  notifications                 Json?
+  theme                         String                  @default("light")
+  timezone                      String                  @default("UTC")
+  language                      String                  @default("en")
+  emailNotifications            Boolean                 @default(true)
+  pushNotifications             Boolean                 @default(true)
+  maintenanceAlerts             Boolean                 @default(true)
+  costAlerts                    Boolean                 @default(true)
+  weeklyReports                 Boolean                 @default(true)
+  createdAt                     DateTime                @default(now())
+  updatedAt                     DateTime                @updatedAt
+  lastLoginAt                   DateTime?
+  accounts                      Account[]
+  chatConversations             ChatConversation[]
+  emailThreadsCreated           EmailThread[]
+  orders                        Order[]
+  resetToken                    PasswordReset?
+  quoteRequestsCreated          QuoteRequest[]            @relation("QuoteRequestCreatedBy")
+  quoteRequestsApproved         QuoteRequest[]            @relation("QuoteRequestApprovedBy")
+  sessions                      Session[]
+  organization                  Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  vehicles                       Vehicle[]
+  jobQueues                      JobQueue[]
+  integrationCredentialsCreated  IntegrationCredential[]  @relation("IntegrationCredentialCreator")
+  verifiedVehicleMappings        VehicleSearchMapping[]   @relation("VehicleSearchMappingVerifier")
+  reviewedMaintenanceSchedules   MaintenanceSchedule[]    @relation("MaintenanceScheduleReviewer")
+  emailIntegration               UserEmailIntegration?
+  configuredEmailIntegrations    UserEmailIntegration[]   @relation("EmailIntegrationConfiguredBy")
+  invitationsSent                Invitation[]             @relation("InvitationCreatedBy")
+  invitationReceived             Invitation?              @relation("InvitationRecipient")
+
+  @@index([email])
+  @@index([organizationId, email])
+  @@index([organizationId, role])
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  userAgent    String?
+  ipAddress    String?
+  lastActive   DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([sessionToken])
+  @@index([userId])
+  @@index([expires])
+  @@map("sessions")
+}
+
+model PasswordReset {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  expires   DateTime
+  userId    String   @unique
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_resets")
+}
+
+model Invitation {
+  id                String           @id @default(cuid())
+  email             String
+  role              UserRole
+  organizationId    String
+  token             String           @unique
+  invitedBy         String
+  message           String?
+  temporaryPassword String?          // Hashed temporary password
+  status            InvitationStatus @default(PENDING)
+  expiresAt         DateTime
+  acceptedAt        DateTime?
+  createdAt         DateTime         @default(now())
+
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inviter        User             @relation("InvitationCreatedBy", fields: [invitedBy], references: [id])
+  recipient      User?            @relation("InvitationRecipient", fields: [recipientId], references: [id])
+  recipientId    String?          @unique
+
+  @@unique([organizationId, email])
+  @@index([token])
+  @@index([organizationId, status])
+  @@map("invitations")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model Vehicle {
+  id                       String           @id @default(cuid())
+  vehicleId                String
+  serialNumber             String
+  make                     String
+  model                    String
+  year                     Int
+  type                     VehicleType
+  industryCategory         IndustryCategory @default(CONSTRUCTION)
+  status                   VehicleStatus    @default(ACTIVE)
+  organizationId           String
+  currentLocation          String?
+  operatingHours           Int              @default(0)
+  healthScore              Int              @default(100)
+  lastServiceDate          DateTime?
+  nextServiceDate          DateTime?
+  serviceInterval          Int?
+  engineModel              String?
+  specifications           Json?
+  maintenancePdfUrl        String?
+  maintenancePdfFileName   String?
+  maintenancePdfUploadedAt DateTime?
+
+  // Search configuration status
+  searchConfigStatus VehicleSearchConfigStatus @default(PENDING_ADMIN_REVIEW)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ownerId   String
+
+  // Relations
+  pickLists           ChatPickList[]
+  orders              Order[]
+  quoteRequests       QuoteRequest[]
+  alerts              VehicleAlert[]
+  chatConversations   ChatConversation[]
+  searchMapping       VehicleSearchMapping?
+  maintenanceSchedule MaintenanceSchedule?
+  organization        Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner               User                  @relation(fields: [ownerId], references: [id])
+
+  @@unique([organizationId, vehicleId])
+  @@unique([organizationId, serialNumber])
+  @@index([organizationId])
+  @@index([organizationId, vehicleId])
+  @@index([organizationId, searchConfigStatus])
+  @@map("vehicles")
+}
+
+model VehicleAlert {
+  id          String        @id @default(cuid())
+  vehicleId   String
+  type        AlertType
+  severity    AlertSeverity
+  title       String
+  description String?
+  isResolved  Boolean       @default(false)
+  resolvedAt  DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  vehicle     Vehicle       @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@map("vehicle_alerts")
+}
+
+// Admin-managed search mappings for accurate nomenclature across data sources
+model VehicleSearchMapping {
+  id             String @id @default(cuid())
+  vehicleId      String @unique
+  organizationId String
+
+  // ========================================
+  // PINECONE NOMENCLATURE
+  // ========================================
+  pineconeNamespace    String? // e.g., "john-deere-excavator"
+  pineconeMachineModel String? // e.g., "160GLC Excavator"
+  pineconeManufacturer String? // e.g., "John Deere"
+  pineconeYear         Int? // Exact year or null for all years
+
+  // ========================================
+  // NEO4J NOMENCLATURE
+  // ========================================
+  // Node: Model
+  neo4jModelName String? // e.g., "160GLC Excavator"
+
+  // Node: Manufacturer
+  neo4jManufacturer String? // e.g., "John Deere"
+
+  // Node: SerialNumberRange (optional - for precise matching)
+  neo4jSerialRange String? // e.g., "1FF160GXCMG000001-1FF160GXCMG999999"
+
+  // Node: TechnicalDomain (optional - for domain-specific searches)
+  neo4jTechnicalDomains String[] // e.g., ["Hydraulics", "Engine"]
+
+  // Node: Category (optional - for filtering by category)
+  neo4jCategories String[] // e.g., ["Filters", "Belts"]
+
+  // Relationship constraints
+  neo4jNamespace String? // If Neo4j uses namespace property
+
+  // ========================================
+  // POSTGRESQL NOMENCLATURE
+  // ========================================
+  postgresCategory    String? // e.g., "Heavy Equipment Parts"
+  postgresSubcategory String? // e.g., "Excavator Components"
+  postgresMake        String? // Standardized make name
+  postgresModel       String? // Standardized model name
+
+  // ========================================
+  // VERIFICATION METADATA
+  // ========================================
+  verifiedAt DateTime?
+  verifiedBy String? // User ID of admin who verified
+
+  // Test query results (optional - for validation)
+  lastTestQuery   String? // e.g., "oil filter"
+  lastTestResults Json? // Sample results to verify mappings work
+
+  // Audit trail
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  vehicle      Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id])
+  verifier     User?        @relation("VehicleSearchMappingVerifier", fields: [verifiedBy], references: [id])
+
+  @@index([organizationId])
+  @@index([verifiedBy])
+  @@map("vehicle_search_mappings")
+}
+
+// Parsed maintenance schedule from OEM PDF
+model MaintenanceSchedule {
+  id             String @id @default(cuid())
+  vehicleId      String @unique
+  organizationId String
+
+  // PDF source
+  pdfS3Key    String
+  pdfFileName String
+
+  // Parsing status (automatic)
+  parsingStatus        MaintenanceParsingStatus @default(PENDING)
+  parsedAt             DateTime?
+  parsingError         String?
+  oem                  String? // Detected: "John Deere", "CAT", etc.
+  extractionConfidence Int? // 0-100 confidence score
+
+  // Admin review status (manual)
+  approvalStatus ScheduleApprovalStatus @default(PENDING_REVIEW)
+  reviewedBy     String? // Admin user ID
+  reviewedAt     DateTime?
+  reviewNotes    String? // Admin can add notes/corrections
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  vehicle      Vehicle               @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reviewer     User?                 @relation("MaintenanceScheduleReviewer", fields: [reviewedBy], references: [id])
+  intervals    MaintenanceInterval[]
+
+  @@index([organizationId])
+  @@index([approvalStatus])
+  @@index([organizationId, approvalStatus])
+  @@map("maintenance_schedules")
+}
+
+// Individual maintenance interval from parsed PDF
+model MaintenanceInterval {
+  id                    String @id @default(cuid())
+  maintenanceScheduleId String
+
+  intervalHours      Int // 250, 500, 1000, etc.
+  intervalType       IntervalType @default(HOURS)
+  serviceName        String // "Engine Oil & Filter Change"
+  serviceDescription String?
+  category           String? // "Lubrication", "Filters", "Hydraulics"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  maintenanceSchedule MaintenanceSchedule       @relation(fields: [maintenanceScheduleId], references: [id], onDelete: Cascade)
+  requiredParts       MaintenanceIntervalPart[]
+
+  @@index([maintenanceScheduleId])
+  @@index([intervalHours])
+  @@map("maintenance_intervals")
+}
+
+// Parts required for a maintenance interval
+model MaintenanceIntervalPart {
+  id                    String @id @default(cuid())
+  maintenanceIntervalId String
+
+  partNumber      String // OEM part number from PDF
+  partDescription String?
+  quantity        Int     @default(1)
+  matchedPartId   String? // Link to Parts table if matched
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  maintenanceInterval MaintenanceInterval @relation(fields: [maintenanceIntervalId], references: [id], onDelete: Cascade)
+  matchedPart         Part?               @relation(fields: [matchedPartId], references: [id])
+
+  @@index([maintenanceIntervalId])
+  @@index([partNumber])
+  @@map("maintenance_interval_parts")
+}
+
+model Part {
+  id                 String             @id @default(cuid())
+  partNumber         String
+  description        String
+  category           String?
+  subcategory        String?
+  organizationId     String
+  price              Decimal            @db.Decimal(10, 2)
+  cost               Decimal?           @db.Decimal(10, 2)
+  stockQuantity      Int                @default(0)
+  minStockLevel      Int                @default(0)
+  maxStockLevel      Int?
+  weight             Decimal?           @db.Decimal(8, 2)
+  dimensions         Json?
+  location           String?
+  compatibility      Json?
+  specifications     Json?
+  isActive           Boolean            @default(true)
+  isObsolete         Boolean            @default(false)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  supersededBy       String?
+  supersedes         String?
+  supersessionDate   DateTime?
+  supersessionNotes  String?
+  supplierPartNumber String?
+  orderItems               OrderItem[]
+  suppliers                PartSupplier[]
+  organization             Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quoteItems               QuoteRequestItem[]
+  maintenanceIntervalParts MaintenanceIntervalPart[]
+
+  @@unique([organizationId, partNumber])
+  @@index([organizationId])
+  @@index([organizationId, partNumber])
+  @@map("parts")
+}
+
+model PartSupplier {
+  id                 String   @id @default(cuid())
+  partId             String
+  supplierId         String
+  supplierPartNumber String?
+  price              Decimal  @db.Decimal(10, 2)
+  leadTime           Int?
+  minOrderQuantity   Int      @default(1)
+  isPreferred        Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  part               Part     @relation(fields: [partId], references: [id], onDelete: Cascade)
+  supplier           Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@unique([partId, supplierId])
+  @@map("part_suppliers")
+}
+
+model Supplier {
+  id                       String                    @id @default(cuid())
+  supplierId               String
+  name                     String
+  type                     SupplierType
+  status                   SupplierStatus            @default(ACTIVE)
+  organizationId           String
+  contactPerson            String?
+  email                    String?
+  phone                    String?
+  website                  String?
+  address                  String?
+  city                     String?
+  state                    String?
+  zipCode                  String?
+  country                  String?                   @default("USA")
+  rating                   Decimal?                  @db.Decimal(3, 2)
+  deliveryRating           Decimal?                  @db.Decimal(3, 2)
+  qualityRating            Decimal?                  @db.Decimal(3, 2)
+  avgDeliveryTime          Int?
+  paymentTerms             String?
+  taxId                    String?
+  certifications           Json?
+  specialties              Json?
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  auxiliaryEmails          AuxiliaryEmail[]
+  editedEmails             EditedEmail[]
+  emailThreads             EmailThread[]
+  orders                   Order[]
+  parts                    PartSupplier[]
+  quoteRequestEmailThreads QuoteRequestEmailThread[]
+  quoteRequestItems        QuoteRequestItem[]
+  supplierQuoteItems       SupplierQuoteItem[]
+  selectedQuoteRequests    QuoteRequest[]            @relation("SelectedQuoteSupplier")
+  quoteRequests            QuoteRequest[]            @relation("PrimaryQuoteSupplier")
+  organization             Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, supplierId])
+  @@index([organizationId])
+  @@map("suppliers")
+}
+
+model Order {
+  id                 String            @id @default(cuid())
+  orderNumber        String
+  organizationId     String
+  status             OrderStatus       @default(PENDING)
+  priority           Priority          @default(MEDIUM)
+  orderDate          DateTime          @default(now())
+  expectedDelivery   DateTime?
+  actualDelivery     DateTime?
+  subtotal           Decimal           @db.Decimal(10, 2)
+  tax                Decimal?          @db.Decimal(10, 2)
+  shipping           Decimal?          @db.Decimal(10, 2)
+  total              Decimal           @db.Decimal(10, 2)
+  trackingNumber     String?
+  shippingMethod     String?
+  shippingAddress    Json?
+  notes              String?
+  internalNotes      String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  supplierId         String
+  vehicleId          String?
+  createdById        String
+  emailThreadId      String?           @unique
+  quoteReference     String?
+  fulfillmentMethod  FulfillmentMethod @default(DELIVERY)
+  partialFulfillment Boolean           @default(false)
+  pickupLocation     String?
+  pickupDate         DateTime?
+  shippingCarrier    String?
+  orderItems         OrderItem[]
+  createdBy          User              @relation(fields: [createdById], references: [id])
+  emailThread        EmailThread?      @relation(fields: [emailThreadId], references: [id])
+  organization       Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier           Supplier          @relation(fields: [supplierId], references: [id])
+  vehicle            Vehicle?          @relation(fields: [vehicleId], references: [id])
+
+  @@unique([organizationId, orderNumber])
+  @@index([organizationId])
+  @@index([organizationId, orderNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, status, createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id                 String             @id @default(cuid())
+  orderId            String
+  partId             String?
+  partNumber         String
+  supplierPartNumber String?
+  isAlternative      Boolean            @default(false)
+  alternativeReason  String?
+  originalPartNumber String?
+  quantity           Int
+  unitPrice          Decimal            @db.Decimal(10, 2)
+  totalPrice         Decimal            @db.Decimal(10, 2)
+  quantityReceived   Int                @default(0)
+  isReceived         Boolean            @default(false)
+  receivedDate       DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  availability       ItemAvailability   @default(UNKNOWN)
+  fulfillmentMethod  FulfillmentMethod?
+  trackingNumber     String?
+  expectedDelivery   DateTime?
+  actualDelivery     DateTime?
+  supplierNotes      String?
+  order              Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  part               Part?              @relation(fields: [partId], references: [id])
+
+  @@map("order_items")
+}
+
+model CostSavingsRecord {
+  id              String       @id @default(cuid())
+  month           Int
+  year            Int
+  organizationId  String
+  totalSavings    Decimal      @db.Decimal(10, 2)
+  manualCost      Decimal      @db.Decimal(10, 2)
+  platformCost    Decimal      @db.Decimal(10, 2)
+  savingsPercent  Decimal      @db.Decimal(5, 2)
+  ordersProcessed Int          @default(0)
+  avgOrderValue   Decimal?     @db.Decimal(10, 2)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, month, year])
+  @@index([organizationId])
+  @@map("cost_savings_records")
+}
+
+model ActivityLog {
+  id             String       @id @default(cuid())
+  type           ActivityType
+  title          String
+  description    String?
+  entityType     String?
+  entityId       String?
+  userId         String?
+  organizationId String
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, type, createdAt])
+  @@map("activity_logs")
+}
+
+model ChatConversation {
+  id             String              @id @default(cuid())
+  title          String?
+  organizationId String
+  userId         String
+  vehicleId      String?
+  context        ConversationContext @default(PARTS_SEARCH)
+  isActive       Boolean             @default(true)
+  lastMessageAt  DateTime            @default(now())
+  messageCount   Int                 @default(0)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User                @relation(fields: [userId], references: [id])
+  vehicle        Vehicle?            @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  messages       ChatMessage[]
+  pickLists      ChatPickList[]
+
+  @@index([organizationId])
+  @@index([organizationId, userId, isActive])
+  @@index([vehicleId])
+  @@map("chat_conversations")
+}
+
+model ChatMessage {
+  id             String             @id @default(cuid())
+  conversationId String
+  role           MessageRole
+  content        String
+  messageType    MessageType        @default(TEXT)
+  model          String?
+  tokens         Int?
+  processingTime Int?
+  context        Json?
+  actions        Json?
+  metadata       Json?
+  isEdited       Boolean            @default(false)
+  isDeleted      Boolean            @default(false)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  conversation   ChatConversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  pickListItems  ChatPickListItem[]
+
+  @@index([conversationId, createdAt])
+  @@index([conversationId, role])
+  @@map("chat_messages")
+}
+
+model ChatPickList {
+  id             String             @id @default(cuid())
+  conversationId String
+  name           String             @default("My Pick List")
+  status         PickListStatus     @default(ACTIVE)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  vehicleId      String?
+  items          ChatPickListItem[]
+  conversation   ChatConversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  vehicle        Vehicle?           @relation(fields: [vehicleId], references: [id])
+  quoteRequests  QuoteRequest[]
+
+  @@map("chat_pick_lists")
+}
+
+model ChatPickListItem {
+  id             String       @id @default(cuid())
+  pickListId     String
+  partNumber     String
+  description    String
+  quantity       Int          @default(1)
+  estimatedPrice Decimal?     @db.Decimal(10, 2)
+  messageId      String?
+  notes          String?
+  addedFromChat  Boolean      @default(true)
+  isOrdered      Boolean      @default(false)
+  orderId        String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  pickList       ChatPickList @relation(fields: [pickListId], references: [id], onDelete: Cascade)
+  message        ChatMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([pickListId, isOrdered])
+  @@map("chat_pick_list_items")
+}
+
+model ApiKey {
+  id             String       @id @default(cuid())
+  name           String       @unique
+  key            String       @unique
+  organizationId String
+  scopes         String[]
+  lastUsed       DateTime?
+  usageCount     Int          @default(0)
+  isActive       Boolean      @default(true)
+  expiresAt      DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  apiRequests    ApiRequest[]
+
+  @@index([organizationId])
+  @@map("api_keys")
+}
+
+model ApiRequest {
+  id         String   @id @default(cuid())
+  apiKeyId   String
+  method     String
+  path       String
+  statusCode Int
+  ipAddress  String?
+  userAgent  String?
+  duration   Int
+  timestamp  DateTime @default(now())
+  apiKey     ApiKey   @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+
+  @@index([apiKeyId])
+  @@map("api_requests")
+}
+
+model SecurityAuditLog {
+  id             String            @id @default(cuid())
+  organizationId String
+  eventType      SecurityEventType
+  userId         String?
+  ipAddress      String?
+  userAgent      String?
+  description    String
+  metadata       Json?
+  timestamp      DateTime          @default(now())
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, eventType])
+  @@map("security_audit_logs")
+}
+
+model SystemSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  category    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+model EmailThread {
+  id                       String                   @id @default(cuid())
+  subject                  String
+  externalThreadId         String?
+  status                   EmailThreadStatus
+  organizationId           String
+  supplierId               String?
+  quoteRequestId           String?
+  createdById              String
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
+  messages                 EmailMessage[]
+  createdBy                User                     @relation(fields: [createdById], references: [id])
+  organization             Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quoteRequest             QuoteRequest?            @relation(fields: [quoteRequestId], references: [id])
+  supplier                 Supplier?                @relation(fields: [supplierId], references: [id])
+  order                    Order?
+  quoteRequestEmailThreads QuoteRequestEmailThread?
+
+  @@index([organizationId])
+  @@index([supplierId])
+  @@index([quoteRequestId])
+  @@index([status])
+  @@map("email_threads")
+}
+
+model EmailMessage {
+  id                 String            @id @default(cuid())
+  threadId           String
+  direction          EmailDirection
+  from               String
+  to                 String
+  cc                 String[]          @default([])
+  bcc                String[]          @default([])
+  subject            String
+  body               String
+  bodyHtml           String?
+  externalMessageId  String?
+  sentAt             DateTime?
+  receivedAt         DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  expectedResponseBy DateTime?
+  followUpSentAt     DateTime?
+  inReplyTo          String?
+  followUpReason     String?
+  metadata           Json?
+  attachments        EmailAttachment[]
+  thread             EmailThread       @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  extractedQuoteItems SupplierQuoteItem[]
+
+  @@index([threadId])
+  @@index([threadId, createdAt])
+  @@index([inReplyTo])
+  @@map("email_messages")
+}
+
+model EmailAttachment {
+  id            String       @id @default(cuid())
+  messageId     String
+  filename      String
+  contentType   String
+  size          Int
+  path          String
+  createdAt     DateTime     @default(now())
+  extractedText String?
+  message       EmailMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@map("email_attachments")
+}
+
+model QuoteRequest {
+  id                         String                    @id @default(cuid())
+  quoteNumber                String
+  title                      String
+  status                     QuoteStatus               @default(DRAFT)
+  organizationId             String
+  supplierId                 String?
+  description                String?
+  notes                      String?
+  requestDate                DateTime                  @default(now())
+  expiryDate                 DateTime?
+  responseDate               DateTime?
+  totalAmount                Decimal?                  @db.Decimal(10, 2)
+  createdById                String
+  // Approval fields
+  requiresApproval           Boolean                   @default(false)
+  approvedById               String?
+  approvedAt                 DateTime?
+  approvalNotes              String?
+  createdAt                  DateTime                  @default(now())
+  updatedAt                  DateTime                  @updatedAt
+  vehicleId                  String?
+  suggestedFulfillmentMethod String?
+  pickListId                 String?
+  additionalSupplierIds      String?
+  selectedSupplierId         String?
+  editedEmails               EditedEmail[]
+  emailThread                EmailThread[]
+  emailThreads               QuoteRequestEmailThread[]
+  items                      QuoteRequestItem[]
+  createdBy                  User                      @relation("QuoteRequestCreatedBy", fields: [createdById], references: [id])
+  approvedBy                 User?                     @relation("QuoteRequestApprovedBy", fields: [approvedById], references: [id])
+  organization               Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  pickList                   ChatPickList?             @relation(fields: [pickListId], references: [id])
+  selectedSupplier           Supplier?                 @relation("SelectedQuoteSupplier", fields: [selectedSupplierId], references: [id])
+  supplier                   Supplier?                 @relation("PrimaryQuoteSupplier", fields: [supplierId], references: [id])
+  vehicle                    Vehicle?                  @relation(fields: [vehicleId], references: [id])
+
+  @@unique([organizationId, quoteNumber])
+  @@index([organizationId])
+  @@index([supplierId])
+  @@index([status])
+  @@map("quote_requests")
+}
+
+model QuoteRequestItem {
+  id                         String           @id @default(cuid())
+  quoteRequestId             String
+  partId                     String?
+  partNumber                 String
+  description                String
+  quantity                   Int
+  unitPrice                  Decimal?         @db.Decimal(10, 2)
+  totalPrice                 Decimal?         @db.Decimal(10, 2)
+  supplierPartNumber         String?
+  leadTime                   Int?
+  isAlternative              Boolean          @default(false)
+  notes                      String?
+  createdAt                  DateTime         @default(now())
+  updatedAt                  DateTime         @updatedAt
+  availability               ItemAvailability @default(UNKNOWN)
+  estimatedDeliveryDays      Int?
+  suggestedFulfillmentMethod String?
+  alternativeReason          String?
+  isSuperseded               Boolean          @default(false)
+  originalPartNumber         String?
+  supersessionNotes          String?
+  supplierNotes              String?
+  supplierId                 String?
+  part                       Part?            @relation(fields: [partId], references: [id])
+  quoteRequest               QuoteRequest     @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
+  supplier                   Supplier?        @relation(fields: [supplierId], references: [id])
+  supplierQuotes             SupplierQuoteItem[]
+
+  @@index([quoteRequestId])
+  @@index([supplierId])
+  @@index([quoteRequestId, supplierId])
+  @@map("quote_request_items")
+}
+
+// Stores per-supplier pricing for each quote request item
+// Enables multi-supplier price comparison at the item level
+model SupplierQuoteItem {
+  id                    String           @id @default(cuid())
+  quoteRequestItemId    String
+  supplierId            String
+  unitPrice             Decimal          @db.Decimal(10, 2)
+  totalPrice            Decimal          @db.Decimal(10, 2)
+  currency              String           @default("USD")
+  availability          ItemAvailability @default(UNKNOWN)
+  leadTimeDays          Int?
+  supplierPartNumber    String?
+  notes                 String?
+  validUntil            DateTime?
+  isSelected            Boolean          @default(false)
+  extractedFromEmailId  String?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  quoteRequestItem      QuoteRequestItem @relation(fields: [quoteRequestItemId], references: [id], onDelete: Cascade)
+  supplier              Supplier         @relation(fields: [supplierId], references: [id])
+  extractedFromEmail    EmailMessage?    @relation(fields: [extractedFromEmailId], references: [id])
+
+  @@unique([quoteRequestItemId, supplierId])
+  @@index([quoteRequestItemId])
+  @@index([supplierId])
+  @@map("supplier_quote_items")
+}
+
+model QuoteRequestEmailThread {
+  id             String            @id @default(cuid())
+  quoteRequestId String
+  emailThreadId  String            @unique
+  supplierId     String
+  isPrimary      Boolean           @default(false)
+  status         QuoteThreadStatus @default(SENT)
+  responseDate   DateTime?
+  quotedAmount   Decimal?          @db.Decimal(10, 2)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  emailThread    EmailThread       @relation(fields: [emailThreadId], references: [id])
+  quoteRequest   QuoteRequest      @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
+  supplier       Supplier          @relation(fields: [supplierId], references: [id])
+
+  @@unique([quoteRequestId, supplierId])
+  @@index([quoteRequestId])
+  @@index([supplierId])
+  @@map("quote_request_email_threads")
+}
+
+model EditedEmail {
+  id             String       @id @default(cuid())
+  quoteRequestId String
+  emailType      String
+  subject        String
+  body           String
+  bodyHtml       String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  supplierId     String?
+  quoteRequest   QuoteRequest @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
+  supplier       Supplier?    @relation(fields: [supplierId], references: [id])
+
+  @@index([quoteRequestId])
+  @@index([supplierId])
+  @@index([quoteRequestId, supplierId, emailType])
+  @@map("edited_emails")
+}
+
+model AuxiliaryEmail {
+  id         String   @id @default(cuid())
+  email      String
+  name       String?
+  phone      String?
+  supplierId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@unique([supplierId, email])
+  @@index([supplierId])
+  @@map("auxiliary_emails")
+}
+
+enum SubscriptionTier {
+  BASIC
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+  TRIAL
+}
+
+enum UserRole {
+  MASTER_ADMIN
+  ADMIN
+  MANAGER
+  TECHNICIAN
+  USER
+}
+
+enum VehicleType {
+  EXCAVATOR
+  DOZER
+  DUMP_TRUCK
+  LOADER
+  CRANE
+  GRADER
+  COMPACTOR
+  OTHER
+}
+
+enum VehicleStatus {
+  ACTIVE
+  MAINTENANCE
+  INACTIVE
+  RETIRED
+}
+
+enum VehicleSearchConfigStatus {
+  PENDING_ADMIN_REVIEW // User created vehicle, waiting for admin
+  SEARCH_READY // Admin verified, vehicle can be used for search
+  NEEDS_UPDATE // Data sources changed, needs re-verification
+  INACTIVE // Disabled by admin
+}
+
+enum IndustryCategory {
+  CONSTRUCTION
+  AGRICULTURE
+  FORESTRY
+}
+
+enum AlertType {
+  MAINTENANCE_DUE
+  LOW_FUEL
+  ENGINE_WARNING
+  HYDRAULIC_ISSUE
+  OVERHEATING
+  LOCATION_ALERT
+  OTHER
+}
+
+enum AlertSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum SupplierType {
+  OEM_DIRECT
+  DISTRIBUTOR
+  AFTERMARKET
+  LOCAL_DEALER
+  ONLINE_RETAILER
+}
+
+enum SupplierStatus {
+  ACTIVE
+  INACTIVE
+  PENDING_APPROVAL
+  SUSPENDED
+}
+
+enum OrderStatus {
+  PENDING
+  PENDING_QUOTE
+  PROCESSING
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+  RETURNED
+}
+
+enum Priority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum MaintenanceType {
+  PREVENTIVE
+  REPAIR
+  INSPECTION
+  EMERGENCY
+  UPGRADE
+  RECALL
+}
+
+enum MaintenanceStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  OVERDUE
+  ON_HOLD
+}
+
+enum ActivityType {
+  VEHICLE_ADDED
+  VEHICLE_UPDATED
+  ORDER_CREATED
+  ORDER_DELIVERED
+  MAINTENANCE_SCHEDULED
+  MAINTENANCE_COMPLETED
+  PART_LOW_STOCK
+  SUPPLIER_ADDED
+  ALERT_CREATED
+  ALERT_RESOLVED
+  USER_LOGIN
+  USER_LOGOUT
+  USER_REGISTERED
+  USER_VERIFIED
+  USER_PASSWORD_CHANGED
+  USER_PROFILE_UPDATED
+  USER_ROLE_CHANGED
+  USER_DEACTIVATED
+  USER_REACTIVATED
+  SYSTEM_UPDATE
+  ORGANIZATION_CREATED
+  SUBSCRIPTION_UPDATED
+  QUOTE_REQUESTED
+  QUOTE_RECEIVED
+  QUOTE_APPROVED
+  QUOTE_REJECTED
+  // Billing events
+  SUBSCRIPTION_CREATED
+  SUBSCRIPTION_CANCELLED
+  PAYMENT_SUCCEEDED
+  PAYMENT_FAILED
+  INVOICE_CREATED
+  INVOICE_PAID
+}
+
+enum ConversationContext {
+  PARTS_SEARCH
+  MAINTENANCE_HELP
+  VEHICLE_DIAGNOSTICS
+  SUPPLIER_INQUIRY
+  GENERAL_SUPPORT
+  CUSTOMER_SUPPORT
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum MessageType {
+  TEXT
+  PART_RECOMMENDATION
+  MAINTENANCE_SCHEDULE
+  ORDER_SUMMARY
+  ERROR_MESSAGE
+  SYSTEM_NOTIFICATION
+}
+
+enum PickListStatus {
+  ACTIVE
+  CONVERTED_TO_ORDER
+  ARCHIVED
+}
+
+enum SecurityEventType {
+  LOGIN_SUCCESS
+  LOGIN_FAILURE
+  LOGOUT
+  PASSWORD_CHANGE
+  PASSWORD_RESET_REQUEST
+  PASSWORD_RESET_COMPLETE
+  EMAIL_CHANGE
+  ACCOUNT_LOCKED
+  ACCOUNT_UNLOCKED
+  TWO_FACTOR_ENABLED
+  TWO_FACTOR_DISABLED
+  API_KEY_CREATED
+  API_KEY_DELETED
+  ROLE_CHANGED
+  SUSPICIOUS_ACTIVITY
+}
+
+enum FulfillmentMethod {
+  PICKUP
+  DELIVERY
+  SPLIT
+}
+
+enum ItemAvailability {
+  IN_STOCK
+  BACKORDERED
+  SPECIAL_ORDER
+  UNKNOWN
+}
+
+enum EmailThreadStatus {
+  DRAFT
+  SENT
+  WAITING_RESPONSE
+  RESPONSE_RECEIVED
+  FOLLOW_UP_NEEDED
+  COMPLETED
+  CONVERTED_TO_ORDER
+  CANCELLED
+}
+
+enum EmailDirection {
+  OUTBOUND
+  INBOUND
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  RECEIVED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  EXPIRED
+  CONVERTED_TO_ORDER
+}
+
+enum QuoteThreadStatus {
+  SENT
+  RESPONDED
+  ACCEPTED
+  REJECTED
+  NO_RESPONSE
+  NOT_SELECTED
+}
+
+enum IntervalType {
+  HOURS
+  DAYS
+  MONTHS
+  MILES
+}
+
+// Maintenance PDF parsing status (automatic)
+enum MaintenanceParsingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// Admin approval status for maintenance schedules (manual)
+enum ScheduleApprovalStatus {
+  PENDING_REVIEW // Parsed, awaiting admin review
+  APPROVED // Admin approved, recommendations active
+  REJECTED // Admin rejected, needs re-upload
+  NEEDS_CORRECTION // Admin flagged issues, editable
+}
+
+enum ImportJobStatus {
+  PARSING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum NotificationType {
+  MAINTENANCE_DUE
+  MAINTENANCE_OVERDUE
+  MAINTENANCE_COMPLETED
+  MAINTENANCE_PDF_PARSED
+  LOW_STOCK_ALERT
+  QUOTE_RECEIVED
+  ORDER_DELIVERED
+}
+
+// Job Queue tracking
+model JobQueue {
+  id             String    @id @default(cuid())
+  jobId          String    @unique
+  queueName      String
+  jobType        String
+  status         JobStatus @default(PENDING)
+  organizationId String
+  userId         String?
+  data           Json?
+  result         Json?
+  error          String?
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(3)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  startedAt      DateTime?
+  completedAt    DateTime?
+  failedAt       DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id])
+
+  @@index([organizationId, status])
+  @@index([queueName, status])
+  @@map("job_queue")
+}
+
+// Email sync state per organization
+model EmailSyncState {
+  id             String     @id @default(cuid())
+  organizationId String     @unique
+  lastSyncAt     DateTime
+  lastEmailId    String?
+  syncStatus     SyncStatus @default(ACTIVE)
+  errorCount     Int        @default(0)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("email_sync_state")
+}
+
+// SaaS Multi-tenant Integration Credentials
+model IntegrationCredential {
+  id              String          @id @default(cuid())
+  organizationId  String
+  integrationType IntegrationType
+  name            String // User-friendly name
+  isActive        Boolean         @default(true)
+
+  // Encrypted credentials (JSON for flexibility)
+  credentials String @db.Text // Encrypted JSON
+
+  // Configuration
+  config Json? // Extra config per integration type
+
+  // Metadata
+  lastUsedAt   DateTime?
+  lastTestedAt DateTime?
+  testStatus   TestStatus?
+  errorMessage String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  creator      User         @relation("IntegrationCredentialCreator", fields: [createdBy], references: [id])
+
+  @@unique([organizationId, integrationType])
+  @@index([organizationId, isActive])
+  @@map("integration_credentials")
+}
+
+// Integration types enum
+enum IntegrationType {
+  OPENROUTER // LLM provider
+  GMAIL // Email via Gmail API
+  PINECONE // Vector search
+  NEO4J // Graph database
+  REDIS // Optional: per-org Redis instance
+  SMTP // Alternative email provider
+}
+
+enum TestStatus {
+  SUCCESS
+  FAILED
+  PENDING
+}
+
+// User-level email provider types
+enum EmailProviderType {
+  GMAIL_OAUTH     // Gmail via OAuth
+  MICROSOFT_OAUTH // Microsoft 365/Outlook via OAuth
+  SMTP            // Custom SMTP server
+}
+
+// Per-user email integration for sending/receiving supplier communications
+model UserEmailIntegration {
+  id              String            @id @default(cuid())
+  userId          String            @unique
+  providerType    EmailProviderType
+  isActive        Boolean           @default(true)
+
+  // Email address used for sending (can be different from login email)
+  emailAddress    String
+
+  // Encrypted credentials (JSON for flexibility)
+  // For OAuth: { accessToken, refreshToken, expiresAt }
+  // For SMTP: { host, port, username, password, encryption }
+  credentials     String            @db.Text
+
+  // OAuth specific fields
+  accessToken     String?           @db.Text
+  refreshToken    String?           @db.Text
+  tokenExpiresAt  DateTime?
+
+  // SMTP specific fields stored in credentials JSON
+  // smtpHost, smtpPort, smtpUsername, smtpPassword, smtpEncryption
+
+  // Metadata
+  lastUsedAt      DateTime?
+  lastTestedAt    DateTime?
+  testStatus      TestStatus?
+  errorMessage    String?
+
+  // Audit
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  configuredBy    String            // Admin who set this up
+
+  // Relations
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  configuredByUser User             @relation("EmailIntegrationConfiguredBy", fields: [configuredBy], references: [id])
+
+  @@index([userId])
+  @@map("user_email_integrations")
+}
+
+enum JobStatus {
+  PENDING
+  ACTIVE
+  COMPLETED
+  FAILED
+  DELAYED
+  PAUSED
+}
+
+enum SyncStatus {
+  ACTIVE
+  PAUSED
+  ERROR
+}
+
+enum OnboardingStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+// Stripe Invoice tracking
+model Invoice {
+  id               String        @id @default(cuid())
+  organizationId   String
+  stripeInvoiceId  String        @unique
+  number           String?
+  status           InvoiceStatus @default(DRAFT)
+  amountDue        Decimal       @db.Decimal(10, 2)
+  amountPaid       Decimal       @db.Decimal(10, 2)
+  currency         String        @default("usd")
+  periodStart      DateTime
+  periodEnd        DateTime
+  dueDate          DateTime?
+  paidAt           DateTime?
+  hostedInvoiceUrl String?
+  invoicePdfUrl    String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([stripeInvoiceId])
+  @@map("invoices")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+  UNCOLLECTIBLE
+}
+
+// Stripe PaymentMethod tracking
+model PaymentMethod {
+  id                    String       @id @default(cuid())
+  organizationId        String
+  stripePaymentMethodId String       @unique
+  type                  String
+  isDefault             Boolean      @default(false)
+  cardBrand             String?
+  cardLast4             String?
+  cardExpMonth          Int?
+  cardExpYear           Int?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("payment_methods")
+}
