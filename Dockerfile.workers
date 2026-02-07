@@ -1,19 +1,19 @@
 # ============================================
 # PartsIQ Workers - Dockerfile
-# Runs 5 BullMQ workers as a background service
+# Runs 6 BullMQ workers as a background service
 # Deploy to Render.com as a Background Worker
+# Uses node:20-slim (Debian) for OpenSSL compatibility with Prisma
 # ============================================
 
 # Stage 1: Install dependencies
-FROM node:20-alpine AS deps
-RUN apk add --no-cache libc6-compat
+FROM node:20-slim AS deps
 RUN corepack enable pnpm
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # Stage 2: Generate Prisma client
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 RUN corepack enable pnpm
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
@@ -22,23 +22,23 @@ COPY package.json ./
 RUN pnpm prisma generate
 
 # Stage 3: Production runtime
-FROM node:20-alpine AS runner
+FROM node:20-slim AS runner
 RUN corepack enable pnpm
 WORKDIR /app
 ENV NODE_ENV=production
 
-RUN addgroup --system --gid 1001 workers
-RUN adduser --system --uid 1001 worker
+RUN groupadd --system --gid 1001 workers && \
+    useradd --system --uid 1001 worker
 
 # Copy node_modules with generated Prisma client
 COPY --from=builder /app/node_modules ./node_modules
 
 # Copy only what the workers need:
-# - workers/     → worker entry point + 5 worker files
-# - lib/         → shared services (queue, prisma, logger, email, llm, storage, search, document)
-# - prisma/      → schema for Prisma client
-# - tsconfig.json → needed by tsx for path alias resolution (@/*)
-# - package.json  → needed by pnpm/tsx to run scripts
+# - workers/     -> worker entry point + 6 worker files
+# - lib/         -> shared services (queue, prisma, logger, email, llm, storage, search, document)
+# - prisma/      -> schema for Prisma client
+# - tsconfig.json -> needed by tsx for path alias resolution (@/*)
+# - package.json  -> needed by pnpm/tsx to run scripts
 COPY workers ./workers
 COPY lib ./lib
 COPY prisma ./prisma
