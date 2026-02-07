@@ -64,6 +64,7 @@ model Organization {
   invoices               Invoice[]
   paymentMethods         PaymentMethod[]
   invitations            Invitation[]
+  ingestionJobs          IngestionJob[]
 
   @@index([slug])
   @@index([stripeCustomerId])
@@ -126,6 +127,7 @@ model User {
   configuredEmailIntegrations    UserEmailIntegration[]   @relation("EmailIntegrationConfiguredBy")
   invitationsSent                Invitation[]             @relation("InvitationCreatedBy")
   invitationReceived             Invitation?              @relation("InvitationRecipient")
+  ingestionJobs                  IngestionJob[]
 
   @@index([email])
   @@index([organizationId, email])
@@ -1536,4 +1538,68 @@ model PaymentMethod {
 
   @@index([organizationId])
   @@map("payment_methods")
+}
+
+// Parts Data Ingestion Pipeline
+model IngestionJob {
+  id               String               @id @default(cuid())
+  organizationId   String
+  userId           String
+
+  // File info
+  s3Key            String
+  fileName         String
+  fileType         String               // "csv" or "json"
+  fileSize         Int                  // bytes
+
+  // Processing status
+  status           IngestionJobStatus   @default(PENDING)
+  startedAt        DateTime?
+  completedAt      DateTime?
+
+  // Progress tracking
+  totalRecords     Int                  @default(0)
+  processedRecords Int                  @default(0)
+  successRecords   Int                  @default(0)
+  failedRecords    Int                  @default(0)
+
+  // Phase progress
+  postgresStatus   IngestionPhaseStatus @default(PENDING)
+  pineconeStatus   IngestionPhaseStatus @default(PENDING)
+  neo4jStatus      IngestionPhaseStatus @default(PENDING)
+
+  // Results
+  errors           Json?                // Array of { row, field, message }
+  warnings         Json?                // Array of { row, field, message }
+  summary          Json?                // Final summary stats
+
+  // Options used for this job
+  options          Json?
+
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  organization     Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user             User                 @relation(fields: [userId], references: [id])
+
+  @@index([organizationId, status])
+  @@index([status, createdAt])
+  @@map("ingestion_jobs")
+}
+
+enum IngestionJobStatus {
+  PENDING
+  VALIDATING
+  PROCESSING
+  COMPLETED
+  COMPLETED_WITH_ERRORS
+  FAILED
+}
+
+enum IngestionPhaseStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  SKIPPED
 }

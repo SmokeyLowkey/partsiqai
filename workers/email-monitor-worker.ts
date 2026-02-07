@@ -168,7 +168,7 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
               receivedAt: new Date(parseInt(email.date)),
               inReplyTo: parsedEmail.inReplyTo,
               attachments: {
-                create: email.attachments.map((att) => ({
+                create: email.attachments.map((att: any) => ({
                   filename: att.filename,
                   contentType: att.mimeType,
                   size: att.size,
@@ -204,7 +204,7 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
                 from: parsedEmail.from,
                 date: email.date,
               },
-              attachments: email.attachments.map((att) => ({
+              attachments: email.attachments.map((att: any) => ({
                 id: `${email.id}-${att.attachmentId}`,
                 filename: att.filename,
                 contentType: att.mimeType,
@@ -259,7 +259,7 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
                   from: parsedEmail.from,
                   date: email.date,
                 },
-                attachments: email.attachments.map((att) => ({
+                attachments: email.attachments.map((att: any) => ({
                   id: `${email.id}-${att.attachmentId}`,
                   filename: att.filename,
                   contentType: att.mimeType,

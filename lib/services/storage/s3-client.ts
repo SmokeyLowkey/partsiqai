@@ -251,6 +251,38 @@ export async function downloadFromS3(key: string): Promise<Buffer> {
 }
 
 /**
+ * Upload an ingestion file (CSV/JSON) to S3
+ * Files are stored at: {orgId}/ingestion/{timestamp}/{filename}
+ */
+export async function uploadIngestionFile(
+  file: Buffer,
+  fileName: string,
+  contentType: string,
+  organizationId: string
+): Promise<{ key: string }> {
+  const timestamp = Date.now();
+  const sanitizedFileName = fileName
+    .replace(/[^a-zA-Z0-9.-]/g, '_')
+    .replace(/_{2,}/g, '_')
+    .toLowerCase();
+  const key = `${organizationId}/ingestion/${timestamp}/${sanitizedFileName}`;
+
+  const command = new PutObjectCommand({
+    Bucket: BUCKET_NAME,
+    Key: key,
+    Body: file,
+    ContentType: contentType,
+    Metadata: {
+      organizationId,
+      uploadedAt: new Date().toISOString(),
+    },
+  });
+
+  await s3Client.send(command);
+  return { key };
+}
+
+/**
  * Check if a file is a supported attachment type
  */
 export function isSupportedAttachment(contentType: string): boolean {

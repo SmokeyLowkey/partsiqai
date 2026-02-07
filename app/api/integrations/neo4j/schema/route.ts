@@ -12,8 +12,9 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const discover = searchParams.get('discover'); // 'all' | 'manufacturers' | 'models' | 'namespaces' | 'domains' | 'categories' | 'labels'
-    const manufacturer = searchParams.get('manufacturer'); // For filtering models by manufacturer
+    const discover = searchParams.get('discover'); // 'all' | 'manufacturers' | 'models' | 'model-details' | 'namespaces' | 'domains' | 'categories' | 'labels'
+    const manufacturer = searchParams.get('manufacturer'); // For filtering models by manufacturer or model-details
+    const model = searchParams.get('model'); // For model-details
 
     const discovery = await Neo4jSchemaDiscovery.fromOrganization(session.user.organizationId);
 
@@ -34,6 +35,16 @@ export async function GET(req: NextRequest) {
 
         case 'manufacturers':
           data.manufacturers = await discovery.getManufacturers();
+          break;
+
+        case 'model-details':
+          if (!manufacturer || !model) {
+            return NextResponse.json(
+              { error: 'manufacturer and model query params are required for model-details' },
+              { status: 400 }
+            );
+          }
+          data = await discovery.getModelDetails(manufacturer, model);
           break;
 
         case 'models':

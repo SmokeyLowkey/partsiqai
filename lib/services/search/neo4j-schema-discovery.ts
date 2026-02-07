@@ -150,6 +150,59 @@ export class Neo4jSchemaDiscovery {
     }
   }
 
+  async getModelDetails(manufacturer: string, model: string): Promise<{
+    namespaces: string[];
+    technicalDomains: string[];
+    categories: string[];
+    serialRanges: string[];
+  }> {
+    const driver = await this.getDriver();
+    const session = driver.session({ database: this.database });
+    try {
+      const [nsResult, domainResult, catResult, srResult] = await Promise.all([
+        session.run(
+          `MATCH (mfg:Manufacturer {name: $manufacturer})-[:MANUFACTURES]->(m:Model {name: $model})
+           MATCH (d:TechnicalDomain)-[:HAS_DOMAIN]->(m)
+           MATCH (p:Part)-[:CONTAINS_PART]-(d)
+           WHERE p.namespace IS NOT NULL
+           RETURN DISTINCT p.namespace AS namespace ORDER BY namespace`,
+          { manufacturer, model }
+        ),
+        session.run(
+          `MATCH (m:Model {name: $model})
+           MATCH (d:TechnicalDomain)-[:HAS_DOMAIN]->(m)
+           RETURN DISTINCT d.name AS name ORDER BY d.name`,
+          { model }
+        ),
+        session.run(
+          `MATCH (mfg:Manufacturer {name: $manufacturer})-[:MANUFACTURES]->(m:Model {name: $model})
+           MATCH (d:TechnicalDomain)-[:HAS_DOMAIN]->(m)
+           MATCH (p:Part)-[:CONTAINS_PART]-(d)
+           MATCH (p)-[:BELONGS_TO_CATEGORY]->(c:Category)
+           RETURN DISTINCT c.name AS name ORDER BY c.name`,
+          { manufacturer, model }
+        ),
+        session.run(
+          `MATCH (mfg:Manufacturer {name: $manufacturer})-[:MANUFACTURES]->(m:Model {name: $model})
+           MATCH (d:TechnicalDomain)-[:HAS_DOMAIN]->(m)
+           MATCH (p:Part)-[:CONTAINS_PART]-(d)
+           MATCH (p)-[:VALID_FOR_RANGE]->(s:SerialNumberRange)
+           RETURN DISTINCT s.range AS range ORDER BY s.range`,
+          { manufacturer, model }
+        ),
+      ]);
+
+      return {
+        namespaces: nsResult.records.map(r => r.get('namespace')).filter(Boolean),
+        technicalDomains: domainResult.records.map(r => r.get('name')).filter(Boolean),
+        categories: catResult.records.map(r => r.get('name')).filter(Boolean),
+        serialRanges: srResult.records.map(r => r.get('range')).filter(Boolean),
+      };
+    } finally {
+      await session.close();
+    }
+  }
+
   async getNodeLabels(): Promise<string[]> {
     const driver = await this.getDriver();
     const session = driver.session({ database: this.database });

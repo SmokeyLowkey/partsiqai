@@ -99,3 +99,26 @@ export const MaintenancePdfJobSchema = z.object({
 });
 
 export type MaintenancePdfJobData = z.infer<typeof MaintenancePdfJobSchema>;
+
+// Parts Ingestion Job
+export const PartsIngestionJobSchema = z.object({
+  organizationId: z.string(),
+  ingestionJobId: z.string(),
+  s3Key: z.string(),
+  fileType: z.enum(['csv', 'json']),
+  userId: z.string(),
+  options: z.object({
+    dryRun: z.boolean().default(false),
+    skipPinecone: z.boolean().default(false),
+    skipNeo4j: z.boolean().default(false),
+    skipPostgres: z.boolean().default(false),
+    batchSize: z.number().default(100),
+    defaultNamespace: z.string().optional(),
+    defaultManufacturer: z.string().optional(),
+    defaultMachineModel: z.string().optional(),
+    defaultTechnicalDomain: z.string().optional(),
+    defaultSerialNumberRange: z.string().optional(),
+  }).default({}),
+});
+
+export type PartsIngestionJobData = z.infer<typeof PartsIngestionJobSchema>;

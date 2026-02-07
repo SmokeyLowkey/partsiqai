@@ -10,6 +10,7 @@ declare module "next-auth" {
       subscriptionStatus: SubscriptionStatus
       isEmailVerified: boolean
       onboardingStatus: OnboardingStatus
+      mustChangePassword: boolean
     } & DefaultSession["user"]
   }
 
@@ -20,6 +21,7 @@ declare module "next-auth" {
     subscriptionStatus: SubscriptionStatus
     isEmailVerified: boolean
     onboardingStatus: OnboardingStatus
+    mustChangePassword: boolean
   }
 }
 
@@ -31,5 +33,6 @@ declare module "next-auth/jwt" {
     subscriptionStatus: SubscriptionStatus
     isEmailVerified: boolean
     onboardingStatus: OnboardingStatus
+    mustChangePassword: boolean
   }
 }

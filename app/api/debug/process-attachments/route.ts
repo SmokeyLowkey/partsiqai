@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
             from: message.from,
             date: gmailMessage.date,
           },
-          attachments: gmailMessage.attachments.map((att) => ({
+          attachments: gmailMessage.attachments.map((att: any) => ({
             id: `${gmailMessage.id}-${att.attachmentId}`,
             filename: att.filename,
             contentType: att.mimeType,
@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
           subject: message.subject,
           action: 'queued_for_extraction',
           attachmentCount: gmailMessage.attachments.length,
-          attachments: gmailMessage.attachments.map(a => ({
+          attachments: gmailMessage.attachments.map((a: any) => ({
             filename: a.filename,
             mimeType: a.mimeType,
             size: a.size,

@@ -316,7 +316,7 @@ export async function POST(req: NextRequest) {
                 from: fromEmail,
                 date: email.date,
               },
-              attachments: email.attachments.map((att) => ({
+              attachments: email.attachments.map((att: any) => ({
                 id: `${email.id}-${att.attachmentId}`,
                 filename: att.filename,
                 contentType: att.mimeType,
@@ -375,7 +375,7 @@ export async function POST(req: NextRequest) {
               from: fromEmail,
               date: email.date,
             },
-            attachments: email.attachments.map((att) => ({
+            attachments: email.attachments.map((att: any) => ({
               id: `${email.id}-${att.attachmentId}`,
               filename: att.filename,
               contentType: att.mimeType,

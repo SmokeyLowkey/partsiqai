@@ -9,6 +9,7 @@ import type {
   FollowUpJobData,
   PostOrderJobData,
   MaintenancePdfJobData,
+  PartsIngestionJobData,
 } from './types';
 
 export const QUEUE_NAMES = {
@@ -20,6 +21,7 @@ export const QUEUE_NAMES = {
   POST_ORDER: 'post-order',
   QUOTE_EXTRACTION: 'quote-extraction',
   MAINTENANCE_PDF: 'maintenance-pdf',
+  PARTS_INGESTION: 'parts-ingestion',
 } as const;
 
 const defaultJobOptions = {
@@ -105,6 +107,19 @@ export const maintenancePdfQueue = new Queue<MaintenancePdfJobData, any, string>
     defaultJobOptions: {
       ...defaultJobOptions,
     } as any,
+  }
+);
+
+// Parts Ingestion Queue
+export const partsIngestionQueue = new Queue<PartsIngestionJobData, any, string>(
+  QUEUE_NAMES.PARTS_INGESTION,
+  {
+    connection: redisConnection,
+    defaultJobOptions: {
+      attempts: 1, // No auto-retry for ingestion - manual re-run preferred
+      removeOnComplete: { age: 86400, count: 10 },
+      removeOnFail: { age: 604800, count: 50 },
+    },
   }
 );
 

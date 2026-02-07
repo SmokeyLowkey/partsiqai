@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -28,7 +28,10 @@ import {
   XCircle,
   RefreshCw,
   Wrench,
+  Upload,
+  AlertTriangle,
 } from 'lucide-react';
+import Link from 'next/link';
 import { MaintenanceScheduleReview } from '@/components/admin/MaintenanceScheduleReview';
 
 interface Vehicle {
@@ -144,6 +147,13 @@ export default function VehicleManagementPage() {
     }
   }, [sessionStatus, statusFilter, searchQuery]);
 
+  // Auto-load Neo4j schema on mount
+  useEffect(() => {
+    if (sessionStatus === 'authenticated') {
+      fetchNeo4jSchema();
+    }
+  }, [sessionStatus]);
+
   const loadVehicles = async () => {
     try {
       setLoading(true);
@@ -195,6 +205,43 @@ export default function VehicleManagementPage() {
       }
     } catch (error) {
       console.error('Failed to fetch models:', error);
+    }
+  };
+
+  const fetchModelDetailsAndAutoPopulate = async (manufacturer: string, model: string) => {
+    try {
+      const res = await fetch(
+        `/api/integrations/neo4j/schema?discover=model-details&manufacturer=${encodeURIComponent(manufacturer)}&model=${encodeURIComponent(model)}`
+      );
+      if (!res.ok) return;
+      const details = await res.json();
+
+      const firstNamespace = details.namespaces?.[0] || '';
+      const serialRanges = details.serialRanges || [];
+
+      setMapping(prev => ({
+        ...prev,
+        // Pinecone tab
+        pineconeManufacturer: manufacturer,
+        pineconeMachineModel: model,
+        pineconeNamespace: firstNamespace,
+        // Neo4j tab
+        neo4jManufacturer: manufacturer,
+        neo4jModelName: model,
+        neo4jNamespace: firstNamespace,
+        neo4jTechnicalDomains: details.technicalDomains || [],
+        neo4jCategories: details.categories || [],
+        neo4jSerialRange: serialRanges.join(', '),
+        // PostgreSQL tab
+        postgresMake: manufacturer,
+        postgresModel: model,
+        postgresCategory: details.technicalDomains?.[0] || prev.postgresCategory,
+      }));
+
+      setSuccess('Fields auto-populated from ingested data');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (error) {
+      console.error('Failed to fetch model details:', error);
     }
   };
 
@@ -563,6 +610,25 @@ export default function VehicleManagementPage() {
                   </Select>
                 </div>
 
+                {/* Empty state: no ingested data */}
+                {neo4jSchema && neo4jSchema.manufacturers?.length === 0 && !loadingSchema && (
+                  <div className="flex items-start gap-3 p-4 border border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20 rounded-lg">
+                    <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">No parts data found</p>
+                      <p className="text-xs text-muted-foreground">
+                        Upload parts catalog data for this vehicle&apos;s manufacturer and model before configuring search mappings.
+                      </p>
+                      <Link href="/admin/data-ingestion">
+                        <Button variant="outline" size="sm" className="mt-2">
+                          <Upload className="h-4 w-4 mr-2" />
+                          Go to Data Ingestion
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                )}
+
                 <Tabs defaultValue="pinecone" className="w-full">
                   <TabsList className="grid w-full grid-cols-4">
                     <TabsTrigger value="pinecone">Pinecone</TabsTrigger>
@@ -622,14 +688,19 @@ export default function VehicleManagementPage() {
                     {/* Load Schema Button */}
                     <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
                       <div className="text-sm">
-                        {neo4jSchema ? (
+                        {loadingSchema ? (
+                          <span className="text-muted-foreground">
+                            <Loader2 className="h-4 w-4 inline mr-1 animate-spin" />
+                            Loading schema from Neo4j...
+                          </span>
+                        ) : neo4jSchema ? (
                           <span className="text-green-600 dark:text-green-400">
                             <CheckCircle className="h-4 w-4 inline mr-1" />
                             Schema loaded ({neo4jSchema.manufacturers?.length || 0} manufacturers)
                           </span>
                         ) : (
                           <span className="text-muted-foreground">
-                            Load schema to see available values from Neo4j
+                            Neo4j not configured — schema unavailable
                           </span>
                         )}
                       </div>
@@ -647,7 +718,7 @@ export default function VehicleManagementPage() {
                         ) : (
                           <>
                             <RefreshCw className="h-4 w-4 mr-2" />
-                            {neo4jSchema ? 'Refresh Schema' : 'Load Schema'}
+                            Refresh Schema
                           </>
                         )}
                       </Button>
@@ -690,7 +761,12 @@ export default function VehicleManagementPage() {
                         {neo4jSchema && neo4jSchema.models?.length > 0 ? (
                           <Select
                             value={mapping.neo4jModelName || ''}
-                            onValueChange={(value) => setMapping({ ...mapping, neo4jModelName: value })}
+                            onValueChange={(value) => {
+                              setMapping({ ...mapping, neo4jModelName: value });
+                              if (mapping.neo4jManufacturer) {
+                                fetchModelDetailsAndAutoPopulate(mapping.neo4jManufacturer, value);
+                              }
+                            }}
                           >
                             <SelectTrigger>
                               <SelectValue placeholder="Select model" />

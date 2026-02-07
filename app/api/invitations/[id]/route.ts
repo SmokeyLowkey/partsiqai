@@ -5,9 +5,10 @@ import { prisma } from "@/lib/prisma";
 // DELETE /api/invitations/[id] - Revoke invitation
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: invitationId } = await params;
     const session = await getServerSession();
 
     if (!session?.user) {
@@ -21,8 +22,6 @@ export async function DELETE(
         { status: 403 }
       );
     }
-
-    const invitationId = params.id;
 
     // Find invitation
     const invitation = await prisma.invitation.findUnique({

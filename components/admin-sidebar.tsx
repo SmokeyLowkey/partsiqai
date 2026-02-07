@@ -30,6 +30,7 @@ import {
   User,
   CreditCard,
   PiggyBank,
+  Upload,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -87,6 +88,11 @@ const managementItems: MenuItem[] = [
     title: "Orders",
     url: "/admin/orders",
     icon: ShoppingCart,
+  },
+  {
+    title: "Data Ingestion",
+    url: "/admin/data-ingestion",
+    icon: Upload,
   },
 ]
 
