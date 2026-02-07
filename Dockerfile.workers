@@ -23,7 +23,6 @@ RUN pnpm prisma generate
 
 # Stage 3: Production runtime
 FROM node:20-slim AS runner
-RUN corepack enable pnpm
 WORKDIR /app
 ENV NODE_ENV=production
 
@@ -51,5 +50,5 @@ USER worker
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
   CMD pgrep -f "workers/index" > /dev/null || exit 1
 
-# Start workers via tsx (TypeScript executor)
-CMD ["pnpm", "workers:start"]
+# Start workers via tsx (TypeScript executor) — called directly to avoid corepack at runtime
+CMD ["node_modules/.bin/tsx", "workers/index.ts"]
