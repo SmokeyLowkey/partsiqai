@@ -23,6 +23,7 @@ RUN pnpm prisma generate
 
 # Stage 3: Production runtime
 FROM node:20-alpine AS runner
+RUN corepack enable pnpm
 WORKDIR /app
 ENV NODE_ENV=production
 
