@@ -9,6 +9,10 @@ import {
   Factory,
   Wrench,
   Shield,
+  Package,
+  Truck,
+  CheckCircle2,
+  FileText,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -94,7 +98,7 @@ export default function HomePage() {
               </p>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-8">
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
               <div className="relative">
                 <div className="flex items-start gap-4">
                   <div className="flex-shrink-0 w-12 h-12 bg-slate-950 text-white rounded-lg flex items-center justify-center font-bold text-lg">
@@ -132,6 +136,20 @@ export default function HomePage() {
                     <h3 className="text-xl font-bold text-slate-950 mb-3">Track Equipment</h3>
                     <p className="text-slate-600 leading-relaxed">
                       Monitor vehicle health, maintenance schedules, and operating hours. Get proactive service reminders based on equipment usage.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="relative">
+                <div className="flex items-start gap-4">
+                  <div className="flex-shrink-0 w-12 h-12 bg-slate-950 text-white rounded-lg flex items-center justify-center font-bold text-lg">
+                    4
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-950 mb-3">Track Orders</h3>
+                    <p className="text-slate-600 leading-relaxed">
+                      Convert approved quotes into orders with one click. Track order status, delivery timelines, and receive confirmation notifications automatically.
                     </p>
                   </div>
                 </div>
@@ -474,6 +492,169 @@ export default function HomePage() {
                       <div className="font-medium text-slate-950">Communication history</div>
                       <div className="text-slate-600">Full thread visibility with timestamps and follow-up reminders</div>
                     </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Order Tracking Section */}
+      <section className="py-24 bg-white border-t border-slate-200">
+        <div className="container mx-auto px-6">
+          <div className="max-w-6xl mx-auto">
+            <div className="grid lg:grid-cols-2 gap-16 items-center">
+              <div>
+                <h2 className="text-4xl md:text-5xl font-bold mb-6 text-slate-950 tracking-tight">
+                  Order management & delivery tracking
+                </h2>
+                <p className="text-xl text-slate-600 mb-8 leading-relaxed">
+                  Convert approved quotes into orders with one click. Track every order from placement through delivery with full visibility into status, shipping, and item receipt.
+                </p>
+                <div className="space-y-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 w-6 h-6 bg-slate-950 text-white rounded flex items-center justify-center text-xs font-bold">
+                      ✓
+                    </div>
+                    <div>
+                      <div className="font-medium text-slate-950">One-click quote to order conversion</div>
+                      <div className="text-slate-600">Approve a quote and convert it into a tracked order instantly</div>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 w-6 h-6 bg-slate-950 text-white rounded flex items-center justify-center text-xs font-bold">
+                      ✓
+                    </div>
+                    <div>
+                      <div className="font-medium text-slate-950">Real-time status tracking</div>
+                      <div className="text-slate-600">Monitor orders through every stage — pending, processing, in transit, delivered</div>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 w-6 h-6 bg-slate-950 text-white rounded flex items-center justify-center text-xs font-bold">
+                      ✓
+                    </div>
+                    <div>
+                      <div className="font-medium text-slate-950">Delivery confirmation & item receipt</div>
+                      <div className="text-slate-600">Track shipping carriers, confirm individual item receipt, and maintain full audit trails</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+                {/* Order Header */}
+                <div className="bg-slate-50 border-b border-slate-200 p-5">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <div className="text-xs text-slate-500 mb-1">Order #ORD-02-2026-0042</div>
+                      <h3 className="text-lg font-bold text-slate-950">Excavator Parts Order</h3>
+                      <p className="text-sm text-slate-600 mt-0.5">Acme Parts Supply</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-100 border border-indigo-300 rounded-full">
+                      <Truck className="h-3 w-3 text-indigo-700" />
+                      <span className="text-xs font-medium text-indigo-700">In Transit</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-slate-600">
+                    <span>Ordered: Feb 4, 2026</span>
+                    <span>•</span>
+                    <span>Expected: Feb 8, 2026</span>
+                  </div>
+                </div>
+
+                {/* Order Info Cards */}
+                <div className="grid grid-cols-3 gap-3 p-5 border-b border-slate-200">
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-1">
+                      <Building2 className="h-3 w-3" />
+                      Supplier
+                    </div>
+                    <div className="text-sm font-medium text-slate-950">Acme Parts Supply</div>
+                    <div className="text-xs text-slate-500">contact@acmepartsupply.com</div>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-1">
+                      <Truck className="h-3 w-3" />
+                      Shipping
+                    </div>
+                    <div className="text-sm font-medium text-slate-950">FedEx Ground</div>
+                    <div className="text-xs text-slate-500">7489 2841 0037</div>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-1">
+                      <FileText className="h-3 w-3" />
+                      Quote Ref
+                    </div>
+                    <div className="text-sm font-medium text-slate-950">QR-02-2026-0001</div>
+                    <div className="text-xs text-blue-600">View Quote →</div>
+                  </div>
+                </div>
+
+                {/* Order Items */}
+                <div className="p-5 space-y-2.5">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-sm font-semibold text-slate-950">Order Items</div>
+                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-medium rounded">1 / 3 Received</span>
+                  </div>
+
+                  <div className="border border-slate-200 rounded-lg p-3 bg-white">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                        <span className="text-sm font-semibold text-slate-950">9323701G</span>
+                      </div>
+                      <span className="text-sm font-medium text-slate-950">$2,450.00</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-500 ml-6">Right Boom Hydraulic Cylinder</span>
+                      <span className="text-xs text-emerald-600">Received</span>
+                    </div>
+                  </div>
+
+                  <div className="border border-slate-200 rounded-lg p-3 bg-white">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <Package className="h-4 w-4 text-indigo-500" />
+                        <span className="text-sm font-semibold text-slate-950">AT435757</span>
+                      </div>
+                      <span className="text-sm font-medium text-slate-950">$189.00</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-500 ml-6">Hydraulic Filter Element</span>
+                      <span className="text-xs text-indigo-600">In Transit</span>
+                    </div>
+                  </div>
+
+                  <div className="border border-slate-200 rounded-lg p-3 bg-white">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-amber-500" />
+                        <span className="text-sm font-semibold text-slate-950">RE532552</span>
+                      </div>
+                      <span className="text-sm font-medium text-slate-950">$67.50</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-500 ml-6">Engine Oil Filter</span>
+                      <span className="text-xs text-amber-600">Processing</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Order Total */}
+                <div className="border-t border-slate-200 p-4 bg-slate-50">
+                  <div className="flex items-center justify-between text-sm mb-1">
+                    <span className="text-slate-600">Subtotal</span>
+                    <span className="text-slate-950">$2,706.50</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm mb-2">
+                    <span className="text-slate-600">Shipping</span>
+                    <span className="text-slate-950">$45.00</span>
+                  </div>
+                  <div className="flex items-center justify-between text-base font-bold border-t border-slate-200 pt-2">
+                    <span className="text-slate-950">Total</span>
+                    <span className="text-slate-950">$2,751.50</span>
                   </div>
                 </div>
               </div>

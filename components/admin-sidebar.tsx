@@ -35,6 +35,7 @@ import {
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 type MenuItem = {
   title: string
@@ -233,6 +234,9 @@ export function AdminSidebar() {
           </SidebarMenu>
         )}
         <SidebarMenu>
+          <SidebarMenuItem>
+            <ThemeToggle />
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton onClick={() => signOut({ callbackUrl: "/" })}>
               <LogOut />

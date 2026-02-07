@@ -21,6 +21,7 @@ import { LayoutDashboard, Bot, ShoppingCart, MessageSquare, Package, LogOut, Spa
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { LucideIcon } from "lucide-react"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 interface MenuItem {
   title: string
@@ -209,6 +210,9 @@ export function CustomerSidebar() {
               </div>
             </SidebarMenuItem>
           )}
+          <SidebarMenuItem>
+            <ThemeToggle />
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton onClick={() => signOut({ callbackUrl: "/" })}>
               <LogOut />

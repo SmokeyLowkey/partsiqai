@@ -30,6 +30,8 @@ export async function middleware(request: NextRequest) {
     "/signup/verify-email",
     "/verify-email",
     "/invite/accept",
+    "/forgot-password",
+    "/reset-password",
   ]
 
   if (
