@@ -3,6 +3,11 @@ import { Resend } from "resend";
 // Initialize Resend client
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+// Resolve the application base URL from available env vars
+export function getBaseUrl(): string {
+  return process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000';
+}
+
 // Email sending utility
 export async function sendEmail({
   to,
@@ -334,7 +339,7 @@ export function getWelcomeEmailHtml(name: string, companyName: string): string {
       <p>To unlock the full power of PartsIQ's AI-driven parts search and maintenance management, you'll need to configure a few integrations. Don't worry – we've made it super easy!</p>
 
       <div style="text-align: center; margin: 30px 0;">
-        <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/login" class="button">
+        <a href="${getBaseUrl()}/login" class="button">
           Go to Dashboard
         </a>
       </div>
@@ -432,8 +437,8 @@ export function getWelcomeEmailHtml(name: string, companyName: string): string {
 
       <p>Need help getting started?</p>
       <ul>
-        <li><a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/docs">Documentation & Guides</a></li>
-        <li><a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/support">Contact Support</a></li>
+        <li><a href="${getBaseUrl()}/docs">Documentation & Guides</a></li>
+        <li><a href="${getBaseUrl()}/support">Contact Support</a></li>
         <li><a href="mailto:support@partsiq.com">Email: support@partsiq.com</a></li>
       </ul>
 
@@ -450,7 +455,7 @@ export function getWelcomeEmailHtml(name: string, companyName: string): string {
       <p>Your 14-day free trial gives you full access to all features. No credit card required!</p>
 
       <div style="text-align: center; margin: 30px 0;">
-        <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/login" class="button">
+        <a href="${getBaseUrl()}/login" class="button">
           Get Started Now
         </a>
       </div>
@@ -477,7 +482,7 @@ export function getMasterAdminNotificationHtml(
   primaryUseCase: string,
   trialEndsAt: Date
 ): string {
-  const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/admin/tenants`;
+  const dashboardUrl = `${getBaseUrl()}/admin/tenants`;
 
   return `
 <!DOCTYPE html>

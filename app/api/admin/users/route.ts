@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { UserRole } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
-import { sendEmail } from "@/lib/email/resend";
+import { sendEmail, getBaseUrl } from "@/lib/email/resend";
 
 // Generate a random temporary password
 function generateTemporaryPassword(): string {
@@ -257,10 +257,10 @@ export async function POST(request: Request) {
               </div>
 
               <p>You can log in at:</p>
-              <p><a href="${process.env.NEXT_PUBLIC_APP_URL}/login" style="color: #9333ea; font-weight: 600;">${process.env.NEXT_PUBLIC_APP_URL}/login</a></p>
+              <p><a href="${getBaseUrl()}/login" style="color: #9333ea; font-weight: 600;">${getBaseUrl()}/login</a></p>
             </div>
             <div class="footer">
-              <p>Need help? <a href="${process.env.NEXT_PUBLIC_APP_URL}/support" style="color: #9333ea;">Contact Support</a></p>
+              <p>Need help? <a href="${getBaseUrl()}/support" style="color: #9333ea;">Contact Support</a></p>
             </div>
           </div>
         </body>

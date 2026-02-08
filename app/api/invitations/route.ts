@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { randomUUID, randomBytes } from "crypto";
-import { sendEmail } from "@/lib/email/resend";
+import { sendEmail, getBaseUrl } from "@/lib/email/resend";
 import bcrypt from "bcryptjs";
 
 // Generate a random temporary password
@@ -30,7 +30,7 @@ async function sendInvitationEmail(
   temporaryPassword: string,
   message?: string
 ) {
-  const invitationUrl = `${process.env.NEXT_PUBLIC_APP_URL}/invite/accept?token=${token}`;
+  const invitationUrl = `${getBaseUrl()}/invite/accept?token=${token}`;
 
   const html = `
     <!DOCTYPE html>
@@ -85,7 +85,7 @@ async function sendInvitationEmail(
           </p>
         </div>
         <div class="footer">
-          <p>Need help? <a href="${process.env.NEXT_PUBLIC_APP_URL}/support" style="color: #9333ea;">Contact Support</a></p>
+          <p>Need help? <a href="${getBaseUrl()}/support" style="color: #9333ea;">Contact Support</a></p>
         </div>
       </div>
     </body>

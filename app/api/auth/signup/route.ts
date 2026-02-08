@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
-import { sendEmail, getVerificationEmailHtml, getMasterAdminNotificationHtml } from "@/lib/email/resend";
+import { sendEmail, getVerificationEmailHtml, getMasterAdminNotificationHtml, getBaseUrl } from "@/lib/email/resend";
 
 // Helper to generate organization slug from company name
 function generateSlug(name: string): string {
@@ -18,7 +18,7 @@ async function sendVerificationEmail(
   name: string,
   token: string
 ) {
-  const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL}/verify-email?token=${token}`;
+  const verificationUrl = `${getBaseUrl()}/verify-email?token=${token}`;
   const html = getVerificationEmailHtml(name, verificationUrl);
 
   await sendEmail({

@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { Suspense, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -9,8 +9,10 @@ import { Mail, CheckCircle2, Loader2, RefreshCw } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
 
-export default function VerifyEmailPendingPage() {
+function VerifyEmailContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const email = searchParams.get("email")
   const [resending, setResending] = useState(false)
   const [resent, setResent] = useState(false)
 
@@ -21,6 +23,7 @@ export default function VerifyEmailPendingPage() {
       const response = await fetch("/api/auth/resend-verification", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
       })
 
       const data = await response.json()
@@ -151,5 +154,13 @@ export default function VerifyEmailPendingPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function VerifyEmailPendingPage() {
+  return (
+    <Suspense>
+      <VerifyEmailContent />
+    </Suspense>
   )
 }

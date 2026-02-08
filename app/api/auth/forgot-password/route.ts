@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { randomUUID } from "crypto";
-import { sendEmail, getPasswordResetEmailHtml } from "@/lib/email/resend";
+import { sendEmail, getPasswordResetEmailHtml, getBaseUrl } from "@/lib/email/resend";
 
 // Rate limiting (3 requests per email per hour)
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
@@ -82,7 +82,7 @@ export async function POST(request: Request) {
     });
 
     // Send reset email
-    const resetUrl = `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/reset-password?token=${token}`;
+    const resetUrl = `${getBaseUrl()}/reset-password?token=${token}`;
     const html = getPasswordResetEmailHtml(user.name || "User", resetUrl);
 
     await sendEmail({

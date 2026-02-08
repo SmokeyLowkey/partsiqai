@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { randomUUID } from "crypto";
-import { sendEmail, getVerificationEmailHtml } from "@/lib/email/resend";
+import { sendEmail, getVerificationEmailHtml, getBaseUrl } from "@/lib/email/resend";
 
 // Rate limiting storage (in-memory for now - consider Redis in production)
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
@@ -41,7 +41,7 @@ async function sendVerificationEmail(
   name: string,
   token: string
 ) {
-  const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL}/verify-email?token=${token}`;
+  const verificationUrl = `${getBaseUrl()}/verify-email?token=${token}`;
   const html = getVerificationEmailHtml(name, verificationUrl);
 
   await sendEmail({
