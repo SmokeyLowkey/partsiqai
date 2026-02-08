@@ -47,7 +47,7 @@ export default function SupportPage() {
                 <p className="text-slate-600 mb-6">
                   Comprehensive guides and tutorials for getting started with PartsIQ
                 </p>
-                <Button variant="outline" className="w-full border-slate-300 text-foreground hover:bg-slate-50 hover:text-background">
+                <Button variant="outline" className="w-full border-slate-300 text-slate-950 hover:bg-slate-100 hover:text-slate-950 bg-transparent">
                   Browse Docs
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
@@ -63,7 +63,7 @@ export default function SupportPage() {
                   Get help from our support team via email. Response within 24 hours.
                 </p>
                 <a href="mailto:support@partsiq.com">
-                  <Button variant="outline" className="w-full border-slate-300 text-foreground hover:bg-slate-50 hover:text-background">
+                  <Button variant="outline" className="w-full border-slate-300 text-slate-950 hover:bg-slate-100 hover:text-slate-950 bg-transparent">
                     Email Us
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
@@ -79,7 +79,7 @@ export default function SupportPage() {
                 <p className="text-slate-600 mb-6">
                   Chat with our team in real-time during business hours
                 </p>
-                <Button className="w-full bg-slate-950 text-foreground hover:text-background hover:bg-slate-800">
+                <Button className="w-full bg-slate-950 text-white hover:bg-slate-800">
                   Start Chat
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
@@ -190,7 +190,7 @@ export default function SupportPage() {
               Our support team is ready to help
             </p>
             <Link href="/contact">
-              <Button size="lg" className="bg-slate-950 text-foreground hover:text-background hover:bg-slate-800 px-8 h-14 text-lg font-medium">
+              <Button size="lg" className="bg-slate-950 text-white hover:bg-slate-800 px-8 h-14 text-lg font-medium">
                 Contact Support
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Button>

@@ -59,6 +59,7 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
+  FileSearch,
 } from "lucide-react";
 
 type SystemSetting = {
@@ -151,6 +152,10 @@ export default function SettingsPage() {
     username: "neo4j",
     password: "",
     database: "neo4j",
+  });
+
+  const [mistralConfig, setMistralConfig] = useState({
+    apiKey: "",
   });
 
   useEffect(() => {
@@ -300,6 +305,9 @@ export default function SettingsPage() {
             password: neo4jConfig.password,
             database: neo4jConfig.database,
           };
+          break;
+        case "MISTRAL":
+          credentials = { apiKey: mistralConfig.apiKey };
           break;
       }
 
@@ -892,6 +900,71 @@ export default function SettingsPage() {
                   disabled={testingIntegration === "NEO4J"}
                 >
                   {testingIntegration === "NEO4J" ? (
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  ) : null}
+                  Test Connection
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Mistral Integration */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-orange-100 dark:bg-orange-900 rounded-lg">
+                  <FileSearch className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                </div>
+                <div>
+                  <h3 className="font-medium">Mistral AI</h3>
+                  <p className="text-sm text-muted-foreground">PDF OCR extraction for maintenance manuals</p>
+                </div>
+              </div>
+              {getStatusBadge(getIntegrationStatus("MISTRAL"))}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-12">
+              <div className="space-y-2">
+                <Label>API Key</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type={showApiKeys["mistral"] ? "text" : "password"}
+                    value={mistralConfig.apiKey}
+                    onChange={(e) => setMistralConfig({ ...mistralConfig, apiKey: e.target.value })}
+                    placeholder="Enter Mistral API key"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => toggleShowApiKey("mistral")}
+                  >
+                    {showApiKeys["mistral"] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pl-12">
+              <Button
+                onClick={() => handleSaveIntegration("MISTRAL")}
+                disabled={savingIntegration === "MISTRAL" || !mistralConfig.apiKey}
+              >
+                {savingIntegration === "MISTRAL" ? (
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4 mr-2" />
+                )}
+                Save
+              </Button>
+              {getIntegrationStatus("MISTRAL") && (
+                <Button
+                  variant="outline"
+                  onClick={() => handleTestIntegration("MISTRAL")}
+                  disabled={testingIntegration === "MISTRAL"}
+                >
+                  {testingIntegration === "MISTRAL" ? (
                     <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                   ) : null}
                   Test Connection

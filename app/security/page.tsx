@@ -165,7 +165,7 @@ export default function SecurityPage() {
               Our security team is available to answer any questions about our practices and certifications
             </p>
             <Link href="/contact">
-              <Button size="lg" className="bg-slate-950 text-foreground hover:text-background hover:bg-slate-800 px-8 h-14 text-lg font-medium">
+              <Button size="lg" className="bg-slate-950 text-white hover:bg-slate-800 px-8 h-14 text-lg font-medium">
                 Contact Security Team
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Button>

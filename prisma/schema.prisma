@@ -1400,6 +1400,7 @@ enum IntegrationType {
   NEO4J // Graph database
   REDIS // Optional: per-org Redis instance
   SMTP // Alternative email provider
+  MISTRAL // Mistral AI for PDF OCR extraction
 }
 
 enum TestStatus {

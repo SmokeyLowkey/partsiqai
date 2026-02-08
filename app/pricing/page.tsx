@@ -63,7 +63,7 @@ export default function PricingPage() {
                 </ul>
 
                 <Link href="/login" className="mt-auto">
-                  <Button size="lg" variant="outline" className="w-full border-slate-300 text-foreground hover:bg-slate-50 hover:text-background h-12">
+                  <Button size="lg" variant="outline" className="w-full border-slate-300 text-slate-950 hover:bg-slate-100 hover:text-slate-950 bg-transparent h-12">
                     Get Started
                   </Button>
                 </Link>
@@ -168,7 +168,7 @@ export default function PricingPage() {
                 </ul>
 
                 <Link href="/contact" className="mt-auto">
-                  <Button size="lg" variant="outline" className="w-full border-slate-300 text-foreground hover:bg-slate-50 hover:text-background h-12">
+                  <Button size="lg" variant="outline" className="w-full border-slate-300 text-slate-950 hover:bg-slate-100 hover:text-slate-950 bg-transparent h-12">
                     Contact Sales
                   </Button>
                 </Link>
@@ -239,7 +239,7 @@ export default function PricingPage() {
                 Contact our sales team to get a custom quote tailored to your organization's needs
               </p>
               <Link href="/contact">
-                <Button size="lg" className="bg-white text-background hover:text-foreground hover:bg-background px-8 h-14 text-lg font-medium">
+                <Button size="lg" className="bg-white text-slate-950 hover:bg-slate-100 px-8 h-14 text-lg font-medium">
                   Contact Sales
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Button>

@@ -59,7 +59,7 @@ export default function HomePage() {
                 <Button
                   size="lg"
                   variant="outline"
-                  className="border-slate-700 text-white hover:bg-slate-900 px-8 h-14 text-lg"
+                  className="border-slate-700 bg-transparent text-white hover:bg-slate-900 px-8 h-14 text-lg"
                 >
                   Sign In
                 </Button>
@@ -912,7 +912,7 @@ export default function HomePage() {
                   <Button
                     size="lg"
                     variant="outline"
-                    className="border-slate-700 text-white hover:bg-slate-900 px-8 h-14 text-lg"
+                    className="border-slate-700 bg-transparent text-white hover:bg-slate-900 px-8 h-14 text-lg"
                   >
                     Sign In
                   </Button>
@@ -934,7 +934,7 @@ export default function HomePage() {
                   AI-powered industrial parts procurement platform. Reduce sourcing time and keep your operations running smoothly.
                 </p>
                 <Link href="/login">
-                  <Button variant="outline" className="border-slate-700 text-white hover:bg-slate-900">
+                  <Button variant="outline" className="border-slate-700 bg-transparent text-white hover:bg-slate-900">
                     Sign In
                   </Button>
                 </Link>

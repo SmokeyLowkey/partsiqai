@@ -31,7 +31,7 @@ export default function FeaturesPage() {
               From AI-powered search to equipment tracking, PartsIQ provides a complete platform for managing your parts sourcing workflow.
             </p>
             <Link href="/login">
-              <Button size="lg" className="bg-white text-background hover:text-foreground hover:bg-background px-8 h-14 text-lg font-medium">
+              <Button size="lg" className="bg-white text-slate-950 hover:bg-slate-100 px-8 h-14 text-lg font-medium">
                 Get Started
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
@@ -255,7 +255,7 @@ export default function FeaturesPage() {
                 </Button>
               </Link>
               <Link href="/pricing">
-                <Button size="lg" variant="outline" className="border-slate-300 text-foreground hover:bg-slate-50 hover:text-background px-8 h-14 text-lg">
+                <Button size="lg" variant="outline" className="border-slate-300 text-slate-950 hover:bg-slate-100 hover:text-slate-950 bg-transparent px-8 h-14 text-lg">
                   View Pricing
                 </Button>
               </Link>

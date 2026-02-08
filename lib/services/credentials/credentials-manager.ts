@@ -242,6 +242,9 @@ export class CredentialsManager {
         case 'NEO4J':
           await this.testNeo4j(credentials as any);
           break;
+        case 'MISTRAL':
+          await this.testMistral(credentials as any);
+          break;
       }
 
       // Update test status
@@ -341,6 +344,17 @@ export class CredentialsManager {
     } finally {
       await driver.close();
     }
+  }
+
+  private async testMistral(creds: { apiKey: string }) {
+    // Use OpenAI-compatible SDK with Mistral's base URL
+    const client = new OpenAI({
+      baseURL: 'https://api.mistral.ai/v1',
+      apiKey: creds.apiKey,
+    });
+
+    // Test by listing models to verify API key
+    await client.models.list();
   }
 }
 
