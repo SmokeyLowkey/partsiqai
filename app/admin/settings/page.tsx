@@ -329,11 +329,11 @@ export default function SettingsPage() {
       const result = await response.json();
 
       toast({
-        title: result.testResult?.success ? "Integration Saved & Connected" : "Integration Saved",
-        description: result.testResult?.success
+        title: result.testResult ? "Integration Saved & Connected" : "Integration Saved",
+        description: result.testResult
           ? "Credentials saved and connection verified successfully"
-          : result.testResult?.error || "Credentials saved but connection test failed",
-        variant: result.testResult?.success ? "default" : "destructive",
+          : "Credentials saved but connection test failed",
+        variant: result.testResult ? "default" : "destructive",
       });
 
       fetchIntegrations();
