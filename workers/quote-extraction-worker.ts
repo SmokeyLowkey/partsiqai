@@ -29,6 +29,7 @@ const ExtractedQuoteSchema = z.object({
       totalPrice: z.number(),
       leadTime: z.string().nullable().optional(),
       availability: z.enum(['IN_STOCK', 'BACKORDERED', 'SPECIAL_ORDER', 'UNKNOWN']).nullable().optional(),
+      availabilityNote: z.string().nullable().optional(),
       source: z.enum(['PDF_ATTACHMENT', 'EMAIL_BODY']).optional().default('PDF_ATTACHMENT'),
       isAlternative: z.boolean().optional().default(false),
       alternativeReason: z.string().nullable().optional(),
@@ -171,10 +172,12 @@ CRITICAL INSTRUCTIONS:
 4. Part numbers may have variations (spaces, dashes) - match them intelligently to requested parts
 5. If an email says "both items are 1-2 days away" without specific prices, put this info in miscellaneousCosts.details
 6. **AVAILABILITY MUST BE ONE OF**: "IN_STOCK", "BACKORDERED", "SPECIAL_ORDER", or "UNKNOWN" (use EXACT values)
-   - Use "IN_STOCK" for: available, in stock, ready, on hand, immediate delivery, ships today/tomorrow
-   - Use "BACKORDERED" for: backordered, out of stock, not available, temporarily unavailable, longer lead times (7+ days)
+   - Use "IN_STOCK" ONLY for: explicitly says "in stock", "on hand", "ships today", "immediate availability", "ready to ship"
+   - Use "BACKORDERED" for: backordered, out of stock, not available, temporarily unavailable, any lead time/wait (e.g., "available in 2 days", "1-2 days away", "ships in 3 days")
    - Use "SPECIAL_ORDER" for: special order, custom order, made to order, non-stock item, requires authorization
    - Use "UNKNOWN" for: unclear, not specified, pending confirmation, or any ambiguous status
+   - IMPORTANT: "available for pick up in X days" or "X days away" is NOT in stock — use BACKORDERED with the lead time
+7. **availabilityNote**: Always include the EXACT supplier text about availability/lead time (e.g., "Parts available for pick up in 2 days", "In stock, ships today"). This preserves the supplier's original wording.
 7. **ALTERNATIVE/AFTERMARKET PARTS**: If supplier offers different part numbers than requested:
    - Set isAlternative: true if it's an aftermarket or substitute part
    - Set alternativeReason: explain why (e.g., "OEM discontinued", "Aftermarket equivalent", "Better availability")
@@ -188,7 +191,7 @@ EXAMPLES:
 - "$200 for freight" → miscellaneousCosts.amount = 200, details = "Freight cost"
 - "1-2 days away" without prices → miscellaneousCosts.details = "Lead time: 1-2 days"
 - "Additional $50 handling fee" → miscellaneousCosts.amount += 50, details includes "handling fee"
-- "both items are 1-2 days away" → availability: "IN_STOCK" (short lead time implies in stock)
+- "both items are 1-2 days away" → availability: "BACKORDERED", leadTime: "1-2 days", availabilityNote: "both items are 1-2 days away"
 
 Respond with a JSON object in this EXACT format:
 {
@@ -205,6 +208,7 @@ Respond with a JSON object in this EXACT format:
       "totalPrice": total price as number (unitPrice * quantity),
       "leadTime": "lead time info or null",
       "availability": "MUST BE EXACTLY: IN_STOCK, BACKORDERED, SPECIAL_ORDER, or UNKNOWN",
+      "availabilityNote": "exact supplier text about availability/lead time, or null",
       "source": "PDF_ATTACHMENT or EMAIL_BODY",
       "isAlternative": false or true if this is an aftermarket/substitute part,
       "alternativeReason": "reason if alternative (e.g., 'OEM discontinued', 'Aftermarket equivalent') or null",
@@ -644,6 +648,11 @@ export const quoteExtractionWorker = new Worker<QuoteExtractionJobData>(
                 }
               }
 
+              // Override: if marked IN_STOCK but has a lead time, it's actually backordered
+              if (availability === 'IN_STOCK' && leadTimeDays && leadTimeDays > 0) {
+                availability = 'BACKORDERED';
+              }
+
               // Determine if supplier part number differs (normalize for comparison)
               const normalizedExtracted = item.partNumber.replace(/[\s-]/g, '').toUpperCase();
               const normalizedRequested = existingItem.partNumber.replace(/[\s-]/g, '').toUpperCase();
@@ -651,6 +660,9 @@ export const quoteExtractionWorker = new Worker<QuoteExtractionJobData>(
               const finalSupplierPartNumber = isAlternativePart ? item.partNumber : null;
 
               workerLogger.debug({ requestedPart: existingItem.partNumber, extractedPart: item.partNumber, isAlternative: isAlternativePart }, 'Part matching result');
+
+              // Use raw supplier text for notes (availabilityNote), fall back to lead time or enum
+              const noteText = item.availabilityNote || item.leadTime || item.availability;
 
               // Create or update SupplierQuoteItem for this supplier's quote
               await prisma.supplierQuoteItem.upsert({
@@ -667,7 +679,7 @@ export const quoteExtractionWorker = new Worker<QuoteExtractionJobData>(
                   availability,
                   leadTimeDays,
                   supplierPartNumber: finalSupplierPartNumber,
-                  notes: item.availability,
+                  notes: noteText,
                   validUntil: extractedData.validUntil ? new Date(extractedData.validUntil) : null,
                   extractedFromEmailId: emailMessageId,
                 },
@@ -680,7 +692,7 @@ export const quoteExtractionWorker = new Worker<QuoteExtractionJobData>(
                   availability,
                   leadTimeDays,
                   supplierPartNumber: finalSupplierPartNumber,
-                  notes: item.availability,
+                  notes: noteText,
                   validUntil: extractedData.validUntil ? new Date(extractedData.validUntil) : null,
                   extractedFromEmailId: emailMessageId,
                 },
@@ -741,7 +753,12 @@ export const quoteExtractionWorker = new Worker<QuoteExtractionJobData>(
                   }
                 }
               }
-              
+
+              // Override: if marked IN_STOCK but has a lead time, it's actually backordered
+              if (availability === 'IN_STOCK' && leadTimeDays && leadTimeDays > 0) {
+                availability = 'BACKORDERED';
+              }
+
               await prisma.supplierQuoteItem.create({
                 data: {
                   quoteRequestItemId: newItem.id,
@@ -752,7 +769,7 @@ export const quoteExtractionWorker = new Worker<QuoteExtractionJobData>(
                   availability,
                   leadTimeDays,
                   supplierPartNumber: null, // This IS the supplier's part number
-                  notes: item.availability,
+                  notes: item.availabilityNote || item.leadTime || item.availability,
                   validUntil: extractedData.validUntil ? new Date(extractedData.validUntil) : null,
                   extractedFromEmailId: emailMessageId,
                 },

@@ -22,6 +22,7 @@ const ExtractedQuoteSchema = z.object({
       totalPrice: z.number(),
       leadTime: z.string().nullable().optional(),
       availability: z.string().nullable().optional(),
+      availabilityNote: z.string().nullable().optional(),
     })
   ).default([]),
   notes: z.string().nullable().optional(),
@@ -219,6 +220,13 @@ INSTRUCTIONS:
 2. For each item found, extract: part number, description, quantity, unit price, total price, lead time, availability
 3. If the email just has a total price without item breakdown, still include what you can find
 4. Part numbers may have slight variations (spaces, dashes) - match them intelligently
+5. AVAILABILITY RULES:
+   - Use "IN_STOCK" ONLY for: explicitly says "in stock", "on hand", "ships today", "immediate availability"
+   - Use "BACKORDERED" for: backordered, out of stock, any wait time (e.g., "available in 2 days", "1-2 days away")
+   - Use "SPECIAL_ORDER" for: special order, custom order, made to order
+   - Use null if unclear
+   - IMPORTANT: "available for pick up in X days" or "X days away" is NOT in stock — use BACKORDERED
+6. availabilityNote: Always include the EXACT supplier text about availability/lead time
 
 Respond with a JSON object in this EXACT format:
 {
@@ -234,7 +242,8 @@ Respond with a JSON object in this EXACT format:
       "unitPrice": unit price as number,
       "totalPrice": total price as number (unitPrice * quantity),
       "leadTime": "lead time info or null",
-      "availability": "IN_STOCK, BACKORDERED, SPECIAL_ORDER, or null"
+      "availability": "IN_STOCK, BACKORDERED, SPECIAL_ORDER, or null",
+      "availabilityNote": "exact supplier text about availability/lead time, or null"
     }
   ],
   "notes": "any special notes or conditions",
@@ -327,7 +336,7 @@ IMPORTANT: Numbers should be numbers, not strings.`;
               'OUT OF STOCK': 'BACKORDERED',
             };
             const availabilityValue = item.availability?.toUpperCase() || '';
-            const availability = availabilityMap[availabilityValue] || 'UNKNOWN';
+            let availability = availabilityMap[availabilityValue] || 'UNKNOWN';
 
             // Parse lead time
             let leadTimeDays: number | null = null;
@@ -340,6 +349,14 @@ IMPORTANT: Numbers should be numbers, not strings.`;
                 }
               }
             }
+
+            // Override: if marked IN_STOCK but has a lead time, it's actually backordered
+            if (availability === 'IN_STOCK' && leadTimeDays && leadTimeDays > 0) {
+              availability = 'BACKORDERED';
+            }
+
+            // Use raw supplier text for notes, fall back to lead time or enum
+            const noteText = item.availabilityNote || item.leadTime || item.availability;
 
             // Skip creating SupplierQuoteItem if both unitPrice and totalPrice are null
             // This means the supplier didn't provide pricing for this item
@@ -362,7 +379,7 @@ IMPORTANT: Numbers should be numbers, not strings.`;
                 currency: extractedData.currency || 'USD',
                 availability,
                 leadTimeDays,
-                notes: item.availability,
+                notes: noteText,
                 validUntil: extractedData.validUntil ? new Date(extractedData.validUntil) : null,
               },
               create: {
@@ -373,7 +390,7 @@ IMPORTANT: Numbers should be numbers, not strings.`;
                 currency: extractedData.currency || 'USD',
                 availability,
                 leadTimeDays,
-                notes: item.availability,
+                notes: noteText,
                 validUntil: extractedData.validUntil ? new Date(extractedData.validUntil) : null,
               },
             });
