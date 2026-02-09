@@ -128,25 +128,30 @@ export const authConfig = {
       const needsRefresh = trigger === "update" || (now - lastRefresh > 30_000)
 
       if (needsRefresh && token.id) {
-        const freshUser = await prisma.user.findUnique({
-          where: { id: token.id as string },
-          include: {
-            organization: {
-              select: {
-                subscriptionStatus: true,
+        try {
+          const freshUser = await prisma.user.findUnique({
+            where: { id: token.id as string },
+            include: {
+              organization: {
+                select: {
+                  subscriptionStatus: true,
+                },
               },
             },
-          },
-        })
+          })
 
-        if (freshUser) {
-          token.role = freshUser.role
-          token.organizationId = freshUser.organizationId
-          token.subscriptionStatus = freshUser.organization.subscriptionStatus
-          token.isEmailVerified = freshUser.isEmailVerified
-          token.onboardingStatus = freshUser.onboardingStatus
-          token.mustChangePassword = freshUser.mustChangePassword
-          token.refreshedAt = now
+          if (freshUser) {
+            token.role = freshUser.role
+            token.organizationId = freshUser.organizationId
+            token.subscriptionStatus = freshUser.organization.subscriptionStatus
+            token.isEmailVerified = freshUser.isEmailVerified
+            token.onboardingStatus = freshUser.onboardingStatus
+            token.mustChangePassword = freshUser.mustChangePassword
+            token.refreshedAt = now
+          }
+        } catch {
+          // DB query may fail in Edge Runtime (middleware) — use cached token data.
+          // The token is still valid; we just skip the periodic refresh.
         }
       }
 

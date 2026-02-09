@@ -243,8 +243,10 @@ export function ConvertToOrderDialog({
       setShowSuccess(true);
 
       // Wait 2 seconds then redirect to order page
+      // Don't call onSuccess() here — it triggers router.refresh() on the current page,
+      // which creates competing server requests and can cause auth failures in middleware.
+      // We're navigating away anyway, so refreshing the current page is unnecessary.
       setTimeout(() => {
-        onSuccess?.();
         router.push(`/customer/orders/${data.order.id}`);
       }, 2000);
     } catch (err: any) {
