@@ -7,6 +7,14 @@ export interface IngestionFileMetadata {
   serialNumberRange?: string;
 }
 
+export interface MergedEntry {
+  diagramTitle?: string;
+  quantity?: string;
+  remarks?: string;
+  sourceUrl?: string;
+  partKey?: number;
+}
+
 export interface PartIngestionRecord {
   partKey?: number;
   partNumber: string;
@@ -25,6 +33,7 @@ export interface PartIngestionRecord {
   cost?: number;
   relatedParts?: string[];
   requiredParts?: string[];
+  mergedEntries?: MergedEntry[];
 }
 
 export interface ValidationError {

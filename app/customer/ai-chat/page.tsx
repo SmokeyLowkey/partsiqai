@@ -113,6 +113,14 @@ interface FormattedPart {
     sourceUrl?: string;
     quantity?: string;
     remarks?: string;
+    partKey?: number;
+    mergedEntries?: Array<{
+      diagramTitle?: string;
+      quantity?: string;
+      remarks?: string;
+      sourceUrl?: string;
+      partKey?: number;
+    }>;
   };
   callToAction: string;
 }
@@ -727,12 +735,6 @@ export default function AIChatPage() {
                           {part.metadata && (
                             <div className="space-y-2">
                               <p className="text-xs font-semibold">Additional Information:</p>
-                              {part.metadata.diagramTitle && (
-                                <div className="text-xs">
-                                  <span className="text-muted-foreground">Diagram: </span>
-                                  <span>{part.metadata.diagramTitle}</span>
-                                </div>
-                              )}
                               {part.metadata.categoryBreadcrumb && (
                                 <div className="text-xs">
                                   <span className="text-muted-foreground">Category Path: </span>
@@ -745,30 +747,82 @@ export default function AIChatPage() {
                                   <span>{part.metadata.text}</span>
                                 </div>
                               )}
-                              {part.metadata.quantity && (
-                                <div className="text-xs">
-                                  <span className="text-muted-foreground">Quantity: </span>
-                                  <span>{part.metadata.quantity}</span>
+
+                              {/* Merged entries — show all locations when part appears in multiple diagrams */}
+                              {part.metadata.mergedEntries && part.metadata.mergedEntries.length > 1 ? (
+                                <div className="space-y-1.5">
+                                  <p className="text-xs font-semibold text-muted-foreground">
+                                    Found in {part.metadata.mergedEntries.length} locations:
+                                  </p>
+                                  {part.metadata.mergedEntries.map((entry, entryIdx) => (
+                                    <div key={entryIdx} className="text-xs bg-muted/50 rounded p-2 space-y-0.5 border border-border/50">
+                                      {entry.diagramTitle && (
+                                        <div>
+                                          <span className="text-muted-foreground">Diagram: </span>
+                                          <span>{entry.diagramTitle}</span>
+                                        </div>
+                                      )}
+                                      {entry.quantity && (
+                                        <div>
+                                          <span className="text-muted-foreground">Qty: </span>
+                                          <span>{entry.quantity}</span>
+                                        </div>
+                                      )}
+                                      {entry.remarks && (
+                                        <div>
+                                          <span className="text-muted-foreground">Remarks: </span>
+                                          <span>{entry.remarks}</span>
+                                        </div>
+                                      )}
+                                      {entry.sourceUrl && (
+                                        <a
+                                          href={entry.sourceUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-blue-600 hover:underline flex items-center gap-1"
+                                        >
+                                          <ExternalLink className="h-3 w-3" />
+                                          Source
+                                        </a>
+                                      )}
+                                    </div>
+                                  ))}
                                 </div>
-                              )}
-                              {part.metadata.remarks && (
-                                <div className="text-xs">
-                                  <span className="text-muted-foreground">Remarks: </span>
-                                  <span>{part.metadata.remarks}</span>
-                                </div>
-                              )}
-                              {part.metadata.sourceUrl && (
-                                <div className="text-xs">
-                                  <a
-                                    href={part.metadata.sourceUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-600 hover:underline flex items-center gap-1"
-                                  >
-                                    <ExternalLink className="h-3 w-3" />
-                                    View Source Documentation
-                                  </a>
-                                </div>
+                              ) : (
+                                <>
+                                  {/* Single-entry display (no mergedEntries or only 1 entry) */}
+                                  {part.metadata.diagramTitle && (
+                                    <div className="text-xs">
+                                      <span className="text-muted-foreground">Diagram: </span>
+                                      <span>{part.metadata.diagramTitle}</span>
+                                    </div>
+                                  )}
+                                  {part.metadata.quantity && (
+                                    <div className="text-xs">
+                                      <span className="text-muted-foreground">Quantity: </span>
+                                      <span>{part.metadata.quantity}</span>
+                                    </div>
+                                  )}
+                                  {part.metadata.remarks && (
+                                    <div className="text-xs">
+                                      <span className="text-muted-foreground">Remarks: </span>
+                                      <span>{part.metadata.remarks}</span>
+                                    </div>
+                                  )}
+                                  {part.metadata.sourceUrl && (
+                                    <div className="text-xs">
+                                      <a
+                                        href={part.metadata.sourceUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-600 hover:underline flex items-center gap-1"
+                                      >
+                                        <ExternalLink className="h-3 w-3" />
+                                        View Source Documentation
+                                      </a>
+                                    </div>
+                                  )}
+                                </>
                               )}
                             </div>
                           )}

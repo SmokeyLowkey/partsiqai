@@ -1,6 +1,7 @@
 import { downloadFromS3 } from '../storage/s3-client';
 import { parseJsonIngestionFile, parseCsvIngestionFile } from './parsers';
 import { validateRecords } from './validators';
+import { mergeRecords } from './record-merger';
 import { ingestToPostgres } from './postgres-ingester';
 import { ingestToPinecone } from './pinecone-ingester';
 import { ingestToNeo4j } from './neo4j-ingester';
@@ -111,6 +112,12 @@ export async function runIngestion(
   }
 
   const validRecords = validation.valid;
+
+  // Merge records for Neo4j (dedup by partNumber+categoryBreadcrumb, preserve detail in mergedEntries)
+  // Pinecone keeps all records (each gets its own vector with indexed ID)
+  const mergedRecords = mergeRecords(validRecords);
+  logger.info({ before: validRecords.length, after: mergedRecords.length }, 'Records merged for Neo4j');
+
   let postgresStatus = options.skipPostgres ? 'SKIPPED' : 'PENDING';
   let pineconeStatus = options.skipPinecone ? 'SKIPPED' : 'PENDING';
   let neo4jStatus = options.skipNeo4j ? 'SKIPPED' : 'PENDING';
@@ -219,13 +226,13 @@ export async function runIngestion(
     });
 
     try {
-      const n4jResult = await ingestToNeo4j(validRecords, organizationId, (processed) => {
-        const percent = 75 + Math.round((processed / validRecords.length) * 25);
+      const n4jResult = await ingestToNeo4j(mergedRecords, organizationId, (processed) => {
+        const percent = 75 + Math.round((processed / mergedRecords.length) * 25);
         onProgress({
           percent,
           phase: 'neo4j',
           processed,
-          total: validRecords.length,
+          total: mergedRecords.length,
           success: totalSuccess,
           failed: totalFailed,
           postgresStatus,

@@ -91,6 +91,7 @@ export async function ingestToNeo4j(
           quantity: record.quantity || null,
           remarks: record.remarks || null,
           sourceUrl: record.sourceUrl || null,
+          mergedEntries: record.mergedEntries ? JSON.stringify(record.mergedEntries) : null,
         }));
 
         // MERGE Part nodes with composite key (part_number + category_breadcrumb)
@@ -108,7 +109,8 @@ export async function ingestToNeo4j(
               p.technical_domain = part.technicalDomain,
               p.quantity = part.quantity,
               p.remarks = part.remarks,
-              p.source_url = part.sourceUrl
+              p.source_url = part.sourceUrl,
+              p.merged_entries = part.mergedEntries
           `,
           { parts: batchParams }
         );

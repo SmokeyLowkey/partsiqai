@@ -5,6 +5,8 @@ import type { Logger } from 'pino';
 const EMBED_BATCH_SIZE = 96; // Pinecone embed API batch limit (model constraint)
 const UPSERT_BATCH_SIZE = 100; // Pinecone upsert batch limit
 const API_VERSION = '2025-04';
+const BATCH_DELAY_MS = 1500; // Delay between batches to respect free-tier rate limits
+const MAX_RETRIES = 5;
 
 interface EmbedResponse {
   data: Array<{
@@ -12,6 +14,11 @@ interface EmbedResponse {
     sparse_indices?: number[];
     sparse_values?: number[];
   }>;
+}
+
+/** Sleep helper */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -40,6 +47,9 @@ export async function ingestToPinecone(
   let failed = 0;
   const errors: ValidationError[] = [];
 
+  // Track occurrence counts for duplicate composite keys so each row gets a unique vector ID
+  const idCounters = new Map<string, number>();
+
   // Process in embedding batch sizes
   for (let i = 0; i < records.length; i += EMBED_BATCH_SIZE) {
     const batch = records.slice(i, i + EMBED_BATCH_SIZE);
@@ -53,13 +63,16 @@ export async function ingestToPinecone(
       );
 
       // Generate dense embeddings (input_type: 'passage' for indexing)
-      const denseResponse = await fetchEmbed(apiKey, 'llama-text-embed-v2', texts, 'passage');
+      const denseResponse = await fetchEmbedWithRetry(apiKey, 'llama-text-embed-v2', texts, 'passage', logger);
       if (!denseResponse?.data || denseResponse.data.length !== texts.length) {
         throw new Error(`Dense embedding returned ${denseResponse?.data?.length ?? 0} results for ${texts.length} inputs`);
       }
 
+      // Delay between embed calls to avoid rate limits
+      await sleep(BATCH_DELAY_MS);
+
       // Generate sparse embeddings
-      const sparseResponse = await fetchEmbed(apiKey, 'pinecone-sparse-english-v0', texts, 'passage');
+      const sparseResponse = await fetchEmbedWithRetry(apiKey, 'pinecone-sparse-english-v0', texts, 'passage', logger);
 
       // Build upsert vectors
       const vectors: any[] = [];
@@ -80,7 +93,10 @@ export async function ingestToPinecone(
 
         const namespace = record.namespace || 'default';
         const breadcrumb = record.categoryBreadcrumb || '';
-        const vectorId = `${namespace}_${record.partNumber}_${breadcrumb}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const baseKey = `${namespace}_${record.partNumber}_${breadcrumb}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const idx = idCounters.get(baseKey) || 0;
+        idCounters.set(baseKey, idx + 1);
+        const vectorId = idx === 0 ? baseKey : `${baseKey}_${idx}`;
 
         const vector: any = {
           id: vectorId,
@@ -127,25 +143,13 @@ export async function ingestToPinecone(
         const upsertBatch = vectors.slice(k, k + UPSERT_BATCH_SIZE);
         const namespace = batch[0].namespace || '';
 
-        const response = await fetch(`${host}/vectors/upsert`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Api-Key': apiKey,
-            'X-Pinecone-API-Version': API_VERSION,
-          },
-          body: JSON.stringify({
-            vectors: upsertBatch,
-            namespace,
-          }),
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Pinecone upsert failed: ${response.status} ${errorText}`);
-        }
-
+        await upsertWithRetry(host, apiKey, upsertBatch, namespace, logger);
         success += upsertBatch.length;
+
+        // Delay between upsert sub-batches
+        if (k + UPSERT_BATCH_SIZE < vectors.length) {
+          await sleep(BATCH_DELAY_MS);
+        }
       }
     } catch (error: any) {
       // If the entire batch fails, mark all records as failed
@@ -162,39 +166,107 @@ export async function ingestToPinecone(
     }
 
     onProgress(i + batch.length);
+
+    // Delay between embedding batches to respect rate limits
+    if (i + EMBED_BATCH_SIZE < records.length) {
+      await sleep(BATCH_DELAY_MS);
+    }
   }
 
   logger.info({ success, failed }, 'Pinecone ingestion complete');
   return { success, failed, errors };
 }
 
-async function fetchEmbed(
+/**
+ * Fetch embeddings with retry + exponential backoff on 429 rate limit.
+ */
+async function fetchEmbedWithRetry(
   apiKey: string,
   model: string,
   texts: string[],
-  inputType: 'passage' | 'query'
+  inputType: 'passage' | 'query',
+  logger: Logger
 ): Promise<EmbedResponse> {
-  const response = await fetch('https://api.pinecone.io/embed', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Api-Key': apiKey,
-      'X-Pinecone-API-Version': API_VERSION,
-    },
-    body: JSON.stringify({
-      model,
-      parameters: {
-        input_type: inputType,
-        truncate: 'END',
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    const response = await fetch('https://api.pinecone.io/embed', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Api-Key': apiKey,
+        'X-Pinecone-API-Version': API_VERSION,
       },
-      inputs: texts.map((text) => ({ text })),
-    }),
-  });
+      body: JSON.stringify({
+        model,
+        parameters: {
+          input_type: inputType,
+          truncate: 'END',
+        },
+        inputs: texts.map((text) => ({ text })),
+      }),
+    });
 
-  if (!response.ok) {
+    if (response.ok) {
+      return response.json();
+    }
+
+    if (response.status === 429) {
+      const retryAfter = response.headers.get('retry-after');
+      const waitMs = retryAfter
+        ? parseInt(retryAfter, 10) * 1000
+        : Math.min(2000 * Math.pow(2, attempt), 30000);
+      logger.warn({ model, attempt: attempt + 1, waitMs }, 'Pinecone rate limited, backing off');
+      await sleep(waitMs);
+      continue;
+    }
+
     const errorText = await response.text();
     throw new Error(`Pinecone embed API failed (${model}): ${response.status} ${errorText}`);
   }
 
-  return response.json();
+  throw new Error(`Pinecone embed API failed after ${MAX_RETRIES} retries (rate limited)`);
+}
+
+/**
+ * Upsert vectors with retry + exponential backoff on 429 rate limit.
+ */
+async function upsertWithRetry(
+  host: string,
+  apiKey: string,
+  vectors: any[],
+  namespace: string,
+  logger: Logger
+): Promise<void> {
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    const response = await fetch(`${host}/vectors/upsert`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Api-Key': apiKey,
+        'X-Pinecone-API-Version': API_VERSION,
+      },
+      body: JSON.stringify({
+        vectors,
+        namespace,
+      }),
+    });
+
+    if (response.ok) {
+      return;
+    }
+
+    if (response.status === 429) {
+      const retryAfter = response.headers.get('retry-after');
+      const waitMs = retryAfter
+        ? parseInt(retryAfter, 10) * 1000
+        : Math.min(2000 * Math.pow(2, attempt), 30000);
+      logger.warn({ attempt: attempt + 1, waitMs, vectorCount: vectors.length }, 'Pinecone upsert rate limited, backing off');
+      await sleep(waitMs);
+      continue;
+    }
+
+    const errorText = await response.text();
+    throw new Error(`Pinecone upsert failed: ${response.status} ${errorText}`);
+  }
+
+  throw new Error(`Pinecone upsert failed after ${MAX_RETRIES} retries (rate limited)`);
 }

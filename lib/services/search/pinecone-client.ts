@@ -242,7 +242,7 @@ export class PineconeSearchAgent {
     });
 
     // Parse results
-    return (queryResults.matches || []).map((match) => {
+    const rawResults = (queryResults.matches || []).map((match) => {
       const metadata = match.metadata || {};
 
       // Handle John Deere catalog field names (primary) with fallbacks
@@ -286,9 +286,60 @@ export class PineconeSearchAgent {
           sourceUrl: metadata.source_url,
           quantity: metadata.quantity,
           remarks: metadata.remarks,
+          partKey: metadata.part_key,
         },
       };
     });
+
+    // Aggregate results by part_number — multiple vectors may exist for the same part
+    // (indexed IDs: partNumber_breadcrumb_0, _1, _2, etc.)
+    return this.aggregateByPartNumber(rawResults);
+  }
+
+  /**
+   * Aggregate multiple Pinecone hits for the same part_number into a single result.
+   * Collects diagram-level detail (diagramTitle, quantity, remarks, sourceUrl, partKey)
+   * from all hits into a mergedEntries array on the highest-scoring result.
+   */
+  private aggregateByPartNumber(results: PartResult[]): PartResult[] {
+    const groups = new Map<string, PartResult[]>();
+
+    for (const result of results) {
+      const group = groups.get(result.partNumber);
+      if (group) {
+        group.push(result);
+      } else {
+        groups.set(result.partNumber, [result]);
+      }
+    }
+
+    const aggregated: PartResult[] = [];
+
+    for (const group of groups.values()) {
+      // Sort by score descending — highest-scoring result is the primary
+      group.sort((a, b) => b.score - a.score);
+      const primary = { ...group[0] };
+
+      if (group.length > 1) {
+        // Collect metadata entries from all hits
+        const mergedEntries = group.map((r) => ({
+          diagramTitle: r.metadata?.diagramTitle,
+          quantity: r.metadata?.quantity,
+          remarks: r.metadata?.remarks,
+          sourceUrl: r.metadata?.sourceUrl,
+          partKey: r.metadata?.partKey,
+        }));
+
+        primary.metadata = {
+          ...primary.metadata,
+          mergedEntries,
+        };
+      }
+
+      aggregated.push(primary);
+    }
+
+    return aggregated;
   }
 
   /**

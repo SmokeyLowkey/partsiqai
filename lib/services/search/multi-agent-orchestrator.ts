@@ -306,6 +306,8 @@ export class MultiAgentOrchestrator {
             sourceUrl: result.metadata.sourceUrl || existing.metadata?.sourceUrl,
             quantity: result.metadata.quantity || existing.metadata?.quantity,
             remarks: result.metadata.remarks || existing.metadata?.remarks,
+            // Preserve merged entries from Pinecone aggregation
+            mergedEntries: result.metadata.mergedEntries || existing.metadata?.mergedEntries,
           };
         }
       } else {

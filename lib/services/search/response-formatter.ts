@@ -52,6 +52,14 @@ export interface FormattedPart {
     sourceUrl?: string;
     quantity?: string;
     remarks?: string;
+    partKey?: number;
+    mergedEntries?: Array<{
+      diagramTitle?: string;
+      quantity?: string;
+      remarks?: string;
+      sourceUrl?: string;
+      partKey?: number;
+    }>;
   };
 }
 
