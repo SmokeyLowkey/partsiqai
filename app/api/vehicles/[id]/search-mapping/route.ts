@@ -63,24 +63,27 @@ export async function PUT(
     const { status } = body;
 
     // Extract only the valid mapping fields (exclude id, relations, timestamps)
+    // Trim all string values to prevent leading/trailing whitespace issues
+    const trimOrNull = (val: any): string | null => (typeof val === 'string' && val.trim()) ? val.trim() : null;
+
     const mappingData = {
       // Pinecone fields
-      pineconeNamespace: body.pineconeNamespace || null,
-      pineconeMachineModel: body.pineconeMachineModel || null,
-      pineconeManufacturer: body.pineconeManufacturer || null,
-      pineconeYear: body.pineconeYear || null,
+      pineconeNamespace: trimOrNull(body.pineconeNamespace),
+      pineconeMachineModel: trimOrNull(body.pineconeMachineModel),
+      pineconeManufacturer: trimOrNull(body.pineconeManufacturer),
+      pineconeYear: body.pineconeYear ? Number(body.pineconeYear) : null,
       // Neo4j fields
-      neo4jModelName: body.neo4jModelName || null,
-      neo4jManufacturer: body.neo4jManufacturer || null,
-      neo4jSerialRange: body.neo4jSerialRange || null,
+      neo4jModelName: trimOrNull(body.neo4jModelName),
+      neo4jManufacturer: trimOrNull(body.neo4jManufacturer),
+      neo4jSerialRange: trimOrNull(body.neo4jSerialRange),
       neo4jTechnicalDomains: body.neo4jTechnicalDomains || [],
       neo4jCategories: body.neo4jCategories || [],
-      neo4jNamespace: body.neo4jNamespace || null,
+      neo4jNamespace: trimOrNull(body.neo4jNamespace),
       // PostgreSQL fields
-      postgresCategory: body.postgresCategory || null,
-      postgresSubcategory: body.postgresSubcategory || null,
-      postgresMake: body.postgresMake || null,
-      postgresModel: body.postgresModel || null,
+      postgresCategory: trimOrNull(body.postgresCategory),
+      postgresSubcategory: trimOrNull(body.postgresSubcategory),
+      postgresMake: trimOrNull(body.postgresMake),
+      postgresModel: trimOrNull(body.postgresModel),
     };
 
     const vehicle = await prisma.vehicle.findUnique({

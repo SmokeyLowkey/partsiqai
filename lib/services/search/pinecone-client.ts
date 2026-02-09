@@ -108,19 +108,19 @@ export class PineconeSearchAgent {
           // Use admin-configured nomenclature (skip year - it's optional and causes false negatives)
           if (mapping.pineconeManufacturer) {
             filterConditions.push({
-              manufacturer: { $eq: mapping.pineconeManufacturer }
+              manufacturer: { $eq: mapping.pineconeManufacturer.trim() }
             });
           }
 
           if (mapping.pineconeMachineModel) {
             filterConditions.push({
-              machine_model: { $eq: mapping.pineconeMachineModel }
+              machine_model: { $eq: mapping.pineconeMachineModel.trim() }
             });
           }
 
-          // Use namespace if configured
+          // Use namespace if configured (trim to avoid leading/trailing spaces)
           if (mapping.pineconeNamespace) {
-            namespace = mapping.pineconeNamespace;
+            namespace = mapping.pineconeNamespace.trim();
             console.log('[PineconeSearchAgent] Using namespace:', namespace);
           }
 

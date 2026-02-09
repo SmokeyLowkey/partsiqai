@@ -165,7 +165,7 @@ export class Neo4jSearchAgent {
         params.modelName = mapping.neo4jModelName;
 
         if (mapping.neo4jNamespace) {
-          params.namespace = mapping.neo4jNamespace;
+          params.namespace = mapping.neo4jNamespace.trim();
         }
       } else {
         // Basic query without vehicle filters

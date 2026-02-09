@@ -176,7 +176,7 @@ export class MultiAgentOrchestrator {
 
       if (this.llmClient && rankedResults.length > 0) {
         try {
-          const synthesis = await this.llmSynthesis(query, results);
+          const synthesis = await this.llmSynthesis(query, results, rankedResults);
           finalResults = synthesis.rankedResults;
           suggestedFilters = synthesis.suggestedFilters;
           relatedQueries = synthesis.relatedQueries;
@@ -373,7 +373,8 @@ export class MultiAgentOrchestrator {
       postgres: PartResult[];
       pinecone: PartResult[];
       neo4j: PartResult[];
-    }
+    },
+    mergedRankedResults: EnrichedPartResult[]
   ): Promise<{
     rankedResults: EnrichedPartResult[];
     suggestedFilters: string[];
@@ -486,35 +487,25 @@ export class MultiAgentOrchestrator {
     });
 
     // Map LLM results back to EnrichedPartResult format
+    // Use mergedRankedResults (which have properly combined metadata from all sources)
+    // instead of raw per-source results to avoid losing metadata
     const enrichedResults: EnrichedPartResult[] = synthesis.results.map((r) => {
-      // Find the original result to get full data
-      const allResults = [
-        ...results.postgres,
-        ...results.pinecone,
-        ...results.neo4j,
-      ];
-      const original = allResults.find((orig) => orig.partNumber === r.partNumber);
-
-      // Determine which agents found this part
-      const foundBy: Array<'postgres' | 'pinecone' | 'neo4j'> = [];
-      if (results.postgres.some(p => p.partNumber === r.partNumber)) foundBy.push('postgres');
-      if (results.pinecone.some(p => p.partNumber === r.partNumber)) foundBy.push('pinecone');
-      if (results.neo4j.some(p => p.partNumber === r.partNumber)) foundBy.push('neo4j');
+      // Find from the already-merged results which have combined metadata/compatibility
+      const merged = mergedRankedResults.find((m) => m.partNumber === r.partNumber);
 
       return {
         partNumber: r.partNumber,
         description: r.description,
-        price: r.price || original?.price,
-        stockQuantity: original?.stockQuantity,
-        category: original?.category,
-        compatibility: original?.compatibility,
-        score: original?.score || 50,
-        source: original?.source || 'postgres',
+        price: r.price || merged?.price,
+        stockQuantity: merged?.stockQuantity,
+        category: merged?.category,
+        compatibility: merged?.compatibility,
+        score: merged?.score || 50,
+        source: merged?.source || 'postgres',
         confidence: r.matchConfidence,
-        foundBy: foundBy.length > 0 ? foundBy : ['postgres'],
+        foundBy: merged?.foundBy || ['postgres'],
         reason: `LLM evaluated match confidence: ${r.matchConfidence}%`,
-        // Preserve rich metadata from Pinecone/Neo4j (remarks, sourceUrl, quantity, categoryBreadcrumb, etc.)
-        metadata: original?.metadata,
+        metadata: merged?.metadata,
       };
     });
 
