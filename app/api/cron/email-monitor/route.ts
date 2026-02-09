@@ -32,23 +32,32 @@ export async function GET(req: NextRequest) {
 
     cronLogger.info('Email monitor triggered');
 
-    // Get all organizations with Gmail integration configured
-    const organizations = await prisma.integrationCredential.findMany({
+    // Get all organizations that have users with active email integrations
+    // Email is configured per-user (UserEmailIntegration), not per-org (IntegrationCredential)
+    const orgsWithEmail = await prisma.organization.findMany({
       where: {
-        integrationType: 'GMAIL',
-        isActive: true,
-      },
-      select: {
-        organizationId: true,
-        organization: {
-          select: {
-            name: true,
+        users: {
+          some: {
+            emailIntegration: {
+              isActive: true,
+              providerType: { in: ['GMAIL_OAUTH', 'MICROSOFT_OAUTH'] },
+            },
           },
         },
       },
+      select: {
+        id: true,
+        name: true,
+      },
     });
 
-    cronLogger.info({ count: organizations.length }, 'Found organizations with Gmail configured');
+    // Map to the shape expected by the rest of the function
+    const organizations = orgsWithEmail.map((org) => ({
+      organizationId: org.id,
+      organization: { name: org.name },
+    }));
+
+    cronLogger.info({ count: organizations.length }, 'Found organizations with email configured');
 
     // Queue email monitor jobs for each organization
     const jobPromises = organizations.map(async (org) => {
