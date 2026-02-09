@@ -6,7 +6,8 @@ export async function GET() {
 
   let dbStatus = 'ok';
   try {
-    await prisma.$queryRaw`SELECT 1`;
+    // Use Prisma's executeRaw for safe database connectivity check
+    await prisma.$executeRaw`SELECT 1`;
   } catch {
     dbStatus = 'error';
   }

@@ -157,27 +157,17 @@ export async function GET(request: Request) {
         },
       }),
       // Orders by day for the period - filtered by org
-      isMasterAdmin
-        ? prisma.$queryRaw`
-            SELECT
-              DATE("createdAt") as date,
-              COUNT(*)::int as count,
-              COALESCE(SUM("total")::float, 0) as total
-            FROM "orders"
-            WHERE "createdAt" >= ${startDate}
-            GROUP BY DATE("createdAt")
-            ORDER BY date ASC
-          `
-        : prisma.$queryRaw`
-            SELECT
-              DATE("createdAt") as date,
-              COUNT(*)::int as count,
-              COALESCE(SUM("total")::float, 0) as total
-            FROM "orders"
-            WHERE "createdAt" >= ${startDate} AND "organizationId" = ${organizationId}
-            GROUP BY DATE("createdAt")
-            ORDER BY date ASC
-          `,
+      // Fetch orders and group by date in JavaScript (safer than raw SQL)
+      prisma.order.findMany({
+        where: {
+          createdAt: { gte: startDate },
+          ...orgFilter,
+        },
+        select: {
+          createdAt: true,
+          total: true,
+        },
+      }),
 
       // Quotes - filtered by org for non-master admins
       prisma.quoteRequest.count({ where: orgFilter }),
@@ -237,6 +227,22 @@ export async function GET(request: Request) {
       }),
     ]);
 
+    // Group orders by date in JavaScript (safer than raw SQL)
+    const ordersByDay = ordersOverTime.reduce((acc: Record<string, { date: string; count: number; total: number }>, order) => {
+      const date = order.createdAt.toISOString().split('T')[0]; // Get YYYY-MM-DD
+      if (!acc[date]) {
+        acc[date] = { date, count: 0, total: 0 };
+      }
+      acc[date].count += 1;
+      acc[date].total += Number(order.total) || 0;
+      return acc;
+    }, {});
+    
+    // Convert to array and sort by date
+    const ordersOverTimeFormatted = Object.values(ordersByDay).sort((a, b) => 
+      a.date.localeCompare(b.date)
+    );
+
     // Calculate growth percentages
     const previousPeriodStart = new Date(startDate);
     previousPeriodStart.setDate(previousPeriodStart.getDate() - days);
@@ -282,7 +288,7 @@ export async function GET(request: Request) {
         totalValue: orderTotalValue._sum?.total || 0,
         averageValue: orderTotalValue._avg?.total || 0,
         recent: recentOrders,
-        overTime: ordersOverTime,
+        overTime: ordersOverTimeFormatted,
         growth: orderGrowth,
       },
       quotes: {
