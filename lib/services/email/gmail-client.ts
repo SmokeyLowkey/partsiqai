@@ -353,7 +353,20 @@ export class GmailClient {
         requestBody,
       };
 
-      const response = await this.gmail.users.messages.send(requestParams);
+      let response;
+      try {
+        response = await this.gmail.users.messages.send(requestParams);
+      } catch (sendError: any) {
+        // If threadId causes a 404 (thread doesn't exist in this account — e.g., manager
+        // sending on a thread owned by the technician's Gmail), retry without threadId.
+        if (sendError.code === 404 && options?.threadId) {
+          console.warn('Thread not found in this account, retrying without threadId');
+          delete requestBody.threadId;
+          response = await this.gmail.users.messages.send(requestParams);
+        } else {
+          throw sendError;
+        }
+      }
 
       console.log('Email sent successfully, message ID:', response.data.id, 'thread ID:', response.data.threadId);
       return {
@@ -362,7 +375,7 @@ export class GmailClient {
       };
     } catch (error: any) {
       console.error('Error sending email:', error);
-      
+
       // If we get invalid_grant, try to refresh the token and retry once
       if (error.message?.includes('invalid_grant') || error.code === 401) {
         console.log('Token expired, attempting to refresh and retry...');
