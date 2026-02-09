@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { QuoteStatusBadge } from '@/components/quote-requests';
+import { Badge } from '@/components/ui/badge';
 import {
   Search,
   Filter,
@@ -27,6 +28,8 @@ import {
   FileText,
   Truck,
   Building2,
+  UserCheck,
+  CheckCircle,
 } from 'lucide-react';
 import { QuoteStatus } from '@prisma/client';
 
@@ -38,6 +41,8 @@ interface QuoteRequestListItem {
   requestDate: string;
   totalAmount: number | null;
   itemCount: number;
+  managerTakeoverAt: string | null;
+  managerTakeoverId: string | null;
   supplier: {
     id: string;
     name: string;
@@ -112,6 +117,10 @@ export default function QuoteRequestsPage() {
     sent: quoteRequests.filter((qr) => qr.status === 'SENT').length,
     received: quoteRequests.filter((qr) => qr.status === 'RECEIVED').length,
     approved: quoteRequests.filter((qr) => qr.status === 'APPROVED').length,
+    managerReviewing: quoteRequests.filter(
+      (qr) => qr.managerTakeoverAt && qr.status !== 'CONVERTED_TO_ORDER'
+    ).length,
+    completed: quoteRequests.filter((qr) => qr.status === 'CONVERTED_TO_ORDER').length,
   };
 
   return (
@@ -131,7 +140,7 @@ export default function QuoteRequestsPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-6">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
@@ -180,6 +189,34 @@ export default function QuoteRequestsPage() {
                 <p className="text-2xl font-bold">{stats.approved}</p>
               </div>
               <FileText className="h-8 w-8 text-green-500" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">
+                  Manager Reviewing
+                </p>
+                <p className="text-2xl font-bold">{stats.managerReviewing}</p>
+              </div>
+              <UserCheck className="h-8 w-8 text-purple-600" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">
+                  Completed
+                </p>
+                <p className="text-2xl font-bold">{stats.completed}</p>
+              </div>
+              <CheckCircle className="h-8 w-8 text-green-600" />
             </div>
           </CardContent>
         </Card>
@@ -264,6 +301,18 @@ export default function QuoteRequestsPage() {
                   </div>
                   <div className="flex items-center space-x-2">
                     <QuoteStatusBadge status={qr.status} />
+                    {qr.managerTakeoverAt && qr.status !== 'CONVERTED_TO_ORDER' && (
+                      <Badge className="bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800">
+                        <UserCheck className="h-3 w-3 mr-1" />
+                        Manager Reviewing
+                      </Badge>
+                    )}
+                    {qr.status === 'CONVERTED_TO_ORDER' && (
+                      <Badge className="bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800">
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Completed
+                      </Badge>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"

@@ -14,11 +14,16 @@ import { Send, Inbox, Eye, Mail, Clock, RefreshCw, Paperclip, Download, FileText
 import { QuoteRequestEmailThreadWithDetails } from '@/types/quote-request';
 import { FollowUpDialog } from './FollowUpDialog';
 import { ReplyDialog } from './ReplyDialog';
+import { QuoteStatus, UserRole } from '@prisma/client';
 
 interface CommunicationHistoryProps {
   emailThreads: QuoteRequestEmailThreadWithDetails[];
   selectedSupplierId?: string;
   quoteRequestId: string;
+  currentUserId: string;
+  currentUserRole: UserRole;
+  quoteCreatedById: string;
+  quoteStatus: QuoteStatus;
   onRefresh?: () => void;
 }
 
@@ -26,6 +31,10 @@ export function CommunicationHistory({
   emailThreads,
   selectedSupplierId,
   quoteRequestId,
+  currentUserId,
+  currentUserRole,
+  quoteCreatedById,
+  quoteStatus,
   onRefresh,
 }: CommunicationHistoryProps) {
   const [previewThread, setPreviewThread] = useState<QuoteRequestEmailThreadWithDetails | null>(null);
@@ -69,6 +78,23 @@ export function CommunicationHistory({
   const filteredThreads = selectedSupplierId
     ? emailThreads.filter((thread) => thread.supplierId === selectedSupplierId)
     : emailThreads;
+
+  // Group threads by role
+  const technicianThreads = filteredThreads.filter((thread) => thread.threadRole === 'TECHNICIAN');
+  const managerThreads = filteredThreads.filter((thread) => thread.threadRole === 'MANAGER');
+
+  // Determine if user is a manager
+  const isManager = currentUserRole === 'ADMIN' || currentUserRole === 'MASTER_ADMIN';
+
+  // For technicians, filter out manager threads that aren't visible yet
+  const visibleManagerThreads = isManager
+    ? managerThreads
+    : managerThreads.filter((thread) => thread.visibleToCreator);
+
+  // Get hidden manager threads (for placeholder)
+  const hiddenManagerThreads = isManager
+    ? []
+    : managerThreads.filter((thread) => !thread.visibleToCreator);
 
   const getDaysSince = (date: Date | null): number => {
     if (!date) return 0;
@@ -120,7 +146,7 @@ export function CommunicationHistory({
     }
   };
 
-  if (filteredThreads.length === 0) {
+  if (technicianThreads.length === 0 && visibleManagerThreads.length === 0 && hiddenManagerThreads.length === 0) {
     return (
       <div className="space-y-2">
         <h4 className="font-medium text-sm">Communication History</h4>
@@ -146,174 +172,223 @@ export function CommunicationHistory({
     });
   };
 
-  return (
-    <>
-      <div className="space-y-2">
-        <h4 className="font-medium text-sm">Communication History</h4>
-        <div className="space-y-4">
-          {filteredThreads.map((thread) => {
-            const sortedMessages = getSortedMessages(thread.emailThread.messages);
-            const firstMessage = sortedMessages[0];
+  // Shared render function for thread cards
+  const renderThreadCard = (thread: QuoteRequestEmailThreadWithDetails, sectionType: 'technician' | 'manager') => {
+    const sortedMessages = getSortedMessages(thread.emailThread.messages);
+    const firstMessage = sortedMessages[0];
+    const wasUnlockedAfterConversion = sectionType === 'manager' && thread.visibleToCreator && quoteStatus === 'CONVERTED_TO_ORDER';
 
-            return (
-              <div
-                key={thread.id}
-                className="border rounded-lg overflow-hidden"
-              >
-                {/* Thread Header */}
-                <div className="flex items-center justify-between p-3 bg-muted/50 border-b">
-                  <div className="flex items-center gap-2">
-                    {getStatusBadge(thread.status)}
-                    <span className="font-medium text-sm">
-                      {thread.supplier.name}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      - {thread.emailThread.subject || 'Quote Request'}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-xs">
-                      {sortedMessages.length} message{sortedMessages.length !== 1 ? 's' : ''}
-                    </Badge>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setPreviewThread(thread)}
-                    >
-                      <Eye className="h-4 w-4 mr-1" />
-                      Full View
-                    </Button>
-                  </div>
-                </div>
+    return (
+      <div
+        key={thread.id}
+        className="border rounded-lg overflow-hidden"
+      >
+        {/* Thread Header */}
+        <div className="flex items-center justify-between p-3 bg-muted/50 border-b">
+          <div className="flex items-center gap-2">
+            {getStatusBadge(thread.status)}
+            <span className="font-medium text-sm">
+              {thread.supplier.name}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              - {thread.emailThread.subject || 'Quote Request'}
+            </span>
+            {wasUnlockedAfterConversion && (
+              <Badge variant="outline" className="text-xs bg-purple-50 dark:bg-purple-950 text-purple-700 dark:text-purple-300">
+                Unlocked after order conversion
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-xs">
+              {sortedMessages.length} message{sortedMessages.length !== 1 ? 's' : ''}
+            </Badge>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPreviewThread(thread)}
+            >
+              <Eye className="h-4 w-4 mr-1" />
+              Full View
+            </Button>
+          </div>
+        </div>
 
-                {/* Message Timeline */}
-                <div className="p-3 space-y-3">
-                  {sortedMessages.map((message, index) => (
-                    <div
-                      key={message.id}
-                      className={`flex gap-3 ${index !== sortedMessages.length - 1 ? 'pb-3 border-b border-dashed' : ''}`}
-                    >
-                      {/* Timeline indicator */}
-                      <div className="flex flex-col items-center">
-                        <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                            message.direction === 'OUTBOUND'
-                              ? 'bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400'
-                              : 'bg-green-100 dark:bg-green-950 text-green-600 dark:text-green-400'
-                          }`}
-                        >
-                          {message.direction === 'OUTBOUND' ? (
-                            <Send className="h-4 w-4" />
-                          ) : (
-                            <Inbox className="h-4 w-4" />
-                          )}
-                        </div>
-                        {index !== sortedMessages.length - 1 && (
-                          <div className="w-0.5 flex-1 bg-border mt-2" />
-                        )}
-                      </div>
-
-                      {/* Message content */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs font-medium">
-                            {message.direction === 'OUTBOUND' ? 'Sent' : 'Received'}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {formatDate(message.sentAt || message.receivedAt || null)}
-                          </span>
-                        </div>
-                        <div className="text-sm text-muted-foreground line-clamp-3 whitespace-pre-wrap">
-                          {message.body.substring(0, 200)}
-                          {message.body.length > 200 && '...'}
-                        </div>
-
-                        {/* Attachments */}
-                        {message.attachments && message.attachments.length > 0 && (
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {message.attachments.map((attachment) => (
-                              <Button
-                                key={attachment.id}
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs gap-1"
-                                onClick={() => handleDownloadAttachment(attachment.id, attachment.filename)}
-                                disabled={downloadingAttachment === attachment.id}
-                              >
-                                {getFileIcon(attachment.contentType)}
-                                <span className="max-w-[120px] truncate">{attachment.filename}</span>
-                                <span className="text-muted-foreground">({formatFileSize(attachment.size)})</span>
-                                <Download className="h-3 w-3 ml-1" />
-                              </Button>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Reply button for inbound messages */}
-                        {message.direction === 'INBOUND' && (
-                          <div className="mt-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-7 text-xs"
-                              onClick={() => setReplyMessage({ thread, message })}
-                            >
-                              <Reply className="h-3 w-3 mr-1" />
-                              Reply
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Footer with quoted amount and follow-up */}
-                <div className="p-3 bg-muted/30 border-t space-y-2">
-                  {/* Quoted Amount if available */}
-                  {thread.quotedAmount && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">
-                        Quoted Amount:
-                      </span>
-                      <span className="font-medium text-green-600 dark:text-green-400">
-                        {new Intl.NumberFormat('en-US', {
-                          style: 'currency',
-                          currency: 'USD',
-                        }).format(thread.quotedAmount)}
-                      </span>
-                    </div>
+        {/* Message Timeline - rest of the existing message rendering logic */}
+        <div className="p-3 space-y-3">
+          {sortedMessages.map((message, index) => (
+            <div
+              key={message.id}
+              className={`flex gap-3 ${index !== sortedMessages.length - 1 ? 'pb-3 border-b border-dashed' : ''}`}
+            >
+              {/* Timeline indicator */}
+              <div className="flex flex-col items-center">
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    message.direction === 'OUTBOUND'
+                      ? 'bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400'
+                      : 'bg-green-100 dark:bg-green-950 text-green-600 dark:text-green-400'
+                  }`}
+                >
+                  {message.direction === 'OUTBOUND' ? (
+                    <Send className="h-4 w-4" />
+                  ) : (
+                    <Inbox className="h-4 w-4" />
                   )}
+                </div>
+                {index !== sortedMessages.length - 1 && (
+                  <div className="w-0.5 flex-1 bg-border mt-2" />
+                )}
+              </div>
 
-                  {/* Follow-up section for threads awaiting response */}
-                  {thread.status === 'SENT' && (
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Clock className="h-3 w-3" />
-                        <span>
-                          Awaiting response ({getDaysSince(
-                            firstMessage?.sentAt ||
-                              firstMessage?.receivedAt ||
-                              null
-                          )} days)
-                        </span>
-                      </div>
+              {/* Message content */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs font-medium">
+                    {message.direction === 'OUTBOUND' ? 'Sent' : 'Received'}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {formatDate(message.sentAt || message.receivedAt || null)}
+                  </span>
+                </div>
+                <div className="text-sm text-muted-foreground line-clamp-3 whitespace-pre-wrap">
+                  {message.body.substring(0, 200)}
+                  {message.body.length > 200 && '...'}
+                </div>
+
+                {/* Attachments */}
+                {message.attachments && message.attachments.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {message.attachments.map((attachment) => (
                       <Button
+                        key={attachment.id}
                         variant="outline"
                         size="sm"
-                        onClick={() => setFollowUpThread(thread)}
-                        className="h-7 text-xs"
+                        className="h-7 text-xs gap-1"
+                        onClick={() => handleDownloadAttachment(attachment.id, attachment.filename)}
+                        disabled={downloadingAttachment === attachment.id}
                       >
-                        <RefreshCw className="h-3 w-3 mr-1" />
-                        Send Follow-Up
+                        {getFileIcon(attachment.contentType)}
+                        <span className="max-w-[120px] truncate">{attachment.filename}</span>
+                        <span className="text-muted-foreground">({formatFileSize(attachment.size)})</span>
+                        <Download className="h-3 w-3 ml-1" />
                       </Button>
-                    </div>
-                  )}
-                </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Reply button for inbound messages */}
+                {message.direction === 'INBOUND' && (
+                  <div className="mt-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => setReplyMessage({ thread, message })}
+                    >
+                      <Reply className="h-3 w-3 mr-1" />
+                      Reply
+                    </Button>
+                  </div>
+                )}
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
+
+        {/* Footer with quoted amount and follow-up */}
+        <div className="p-3 bg-muted/30 border-t space-y-2">
+          {/* Quoted Amount if available */}
+          {thread.quotedAmount && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">
+                Quoted Amount:
+              </span>
+              <span className="font-medium text-green-600 dark:text-green-400">
+                {new Intl.NumberFormat('en-US', {
+                  style: 'currency',
+                  currency: 'USD',
+                }).format(thread.quotedAmount)}
+              </span>
+            </div>
+          )}
+
+          {/* Follow-up section for threads awaiting response */}
+          {thread.status === 'SENT' && (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                <span>
+                  Awaiting response ({getDaysSince(
+                    firstMessage?.sentAt ||
+                      firstMessage?.receivedAt ||
+                      null
+                  )} days)
+                </span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setFollowUpThread(thread)}
+                className="h-7 text-xs"
+              >
+                <RefreshCw className="h-3 w-3 mr-1" />
+                Send Follow-Up
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <div className="space-y-4">
+        {/* Technician Communication Section */}
+        {technicianThreads.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <h4 className="font-medium text-sm">Technician Communication</h4>
+              <Badge variant="outline" className="bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
+                {technicianThreads.length} thread{technicianThreads.length !== 1 ? 's' : ''}
+              </Badge>
+            </div>
+            <div className="space-y-4">
+              {technicianThreads.map((thread) => renderThreadCard(thread, 'technician'))}
+            </div>
+          </div>
+        )}
+
+        {/* Manager Communication Section */}
+        {(visibleManagerThreads.length > 0 || hiddenManagerThreads.length > 0) && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <h4 className="font-medium text-sm">Manager Communication</h4>
+              <Badge variant="outline" className="bg-purple-50 dark:bg-purple-950 text-purple-700 dark:text-purple-300">
+                {visibleManagerThreads.length + hiddenManagerThreads.length} thread{(visibleManagerThreads.length + hiddenManagerThreads.length) !== 1 ? 's' : ''}
+              </Badge>
+            </div>
+            <div className="space-y-4">
+              {visibleManagerThreads.map((thread) => renderThreadCard(thread, 'manager'))}
+              
+              {/* Placeholder for hidden manager threads */}
+              {hiddenManagerThreads.length > 0 && (
+                <div className="border rounded-lg p-6 text-center bg-muted/30">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="w-12 h-12 rounded-full bg-purple-100 dark:bg-purple-950 flex items-center justify-center">
+                      <Mail className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+                    </div>
+                    <p className="text-sm font-medium">Manager is communicating with {hiddenManagerThreads.length} supplier{hiddenManagerThreads.length !== 1 ? 's' : ''}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Full communication history will be visible after order conversion
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Email Preview Dialog */}

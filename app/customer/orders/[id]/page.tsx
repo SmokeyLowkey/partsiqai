@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import {
   Card,
@@ -147,6 +148,7 @@ const orderStatusIcons: Record<OrderStatus, any> = {
 export default function OrderDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { data: session } = useSession();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [showConfirmationDialog, setShowConfirmationDialog] = useState(false);
@@ -727,8 +729,17 @@ export default function OrderDetailPage() {
                 responseDate: new Date(),
                 quotedAmount: null,
                 isPrimary: true,
+                threadRole: 'TECHNICIAN',
+                parentThreadId: null,
+                visibleToCreator: true,
+                takeoverAt: null,
+                takeoverById: null,
               }]}
               quoteRequestId={order.quoteReference?.id || ''}
+              currentUserId={session?.user?.id || ''}
+              currentUserRole={session?.user?.role || 'USER'}
+              quoteCreatedById={order.createdBy.id}
+              quoteStatus={'CONVERTED_TO_ORDER'}
               onRefresh={fetchOrder}
             />
           </CardContent>

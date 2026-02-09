@@ -218,6 +218,13 @@ export async function GET(
       })),
     };
 
+    // Filter email threads for technicians - hide manager threads that are not yet visible
+    if (session.user.role === 'TECHNICIAN') {
+      response.emailThreads = response.emailThreads.filter(
+        (t) => t.threadRole === 'TECHNICIAN' || t.visibleToCreator === true
+      );
+    }
+
     return NextResponse.json({ quoteRequest: response });
   } catch (error: any) {
     console.error('Get quote request API error:', error);

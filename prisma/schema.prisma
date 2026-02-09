@@ -60,6 +60,7 @@ model Organization {
   maintenanceSchedules   MaintenanceSchedule[]
   jobQueues              JobQueue[]
   emailSyncState         EmailSyncState?
+  userEmailSyncStates    UserEmailSyncState[]
   integrationCredentials IntegrationCredential[]
   invoices               Invoice[]
   paymentMethods         PaymentMethod[]
@@ -111,11 +112,15 @@ model User {
   lastLoginAt                   DateTime?
   accounts                      Account[]
   chatConversations             ChatConversation[]
-  emailThreadsCreated           EmailThread[]
+  emailThreadsCreated           EmailThread[]             @relation("EmailThreadCreatedBy")
+  emailThreadsOwned             EmailThread[]             @relation("EmailThreadOwner")
   orders                        Order[]
   resetToken                    PasswordReset?
   quoteRequestsCreated          QuoteRequest[]            @relation("QuoteRequestCreatedBy")
   quoteRequestsApproved         QuoteRequest[]            @relation("QuoteRequestApprovedBy")
+  quoteRequestManagerTakeover   QuoteRequest[]            @relation("QuoteRequestManagerTakeover")
+  quoteRequestEmailThreadTakeover QuoteRequestEmailThread[]
+  userEmailSyncState            UserEmailSyncState?
   sessions                      Session[]
   organization                  Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   vehicles                       Vehicle[]
@@ -799,10 +804,12 @@ model EmailThread {
   supplierId               String?
   quoteRequestId           String?
   createdById              String
+  ownerUserId              String?
   createdAt                DateTime                 @default(now())
   updatedAt                DateTime                 @updatedAt
   messages                 EmailMessage[]
-  createdBy                User                     @relation(fields: [createdById], references: [id])
+  createdBy                User                     @relation("EmailThreadCreatedBy", fields: [createdById], references: [id])
+  ownerUser                User?                    @relation("EmailThreadOwner", fields: [ownerUserId], references: [id])
   organization             Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   quoteRequest             QuoteRequest?            @relation(fields: [quoteRequestId], references: [id])
   supplier                 Supplier?                @relation(fields: [supplierId], references: [id])
@@ -881,6 +888,9 @@ model QuoteRequest {
   approvedById               String?
   approvedAt                 DateTime?
   approvalNotes              String?
+  // Manager takeover fields
+  managerTakeoverAt          DateTime?
+  managerTakeoverId          String?
   createdAt                  DateTime                  @default(now())
   updatedAt                  DateTime                  @updatedAt
   vehicleId                  String?
@@ -894,6 +904,7 @@ model QuoteRequest {
   items                      QuoteRequestItem[]
   createdBy                  User                      @relation("QuoteRequestCreatedBy", fields: [createdById], references: [id])
   approvedBy                 User?                     @relation("QuoteRequestApprovedBy", fields: [approvedById], references: [id])
+  managerTakeover            User?                     @relation("QuoteRequestManagerTakeover", fields: [managerTakeoverId], references: [id])
   organization               Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   pickList                   ChatPickList?             @relation(fields: [pickListId], references: [id])
   selectedSupplier           Supplier?                 @relation("SelectedQuoteSupplier", fields: [selectedSupplierId], references: [id])
@@ -972,21 +983,29 @@ model SupplierQuoteItem {
 }
 
 model QuoteRequestEmailThread {
-  id             String            @id @default(cuid())
-  quoteRequestId String
-  emailThreadId  String            @unique
-  supplierId     String
-  isPrimary      Boolean           @default(false)
-  status         QuoteThreadStatus @default(SENT)
-  responseDate   DateTime?
-  quotedAmount   Decimal?          @db.Decimal(10, 2)
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-  emailThread    EmailThread       @relation(fields: [emailThreadId], references: [id])
-  quoteRequest   QuoteRequest      @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
-  supplier       Supplier          @relation(fields: [supplierId], references: [id])
+  id                String            @id @default(cuid())
+  quoteRequestId    String
+  emailThreadId     String            @unique
+  supplierId        String
+  isPrimary         Boolean           @default(false)
+  status            QuoteThreadStatus @default(SENT)
+  responseDate      DateTime?
+  quotedAmount      Decimal?          @db.Decimal(10, 2)
+  threadRole        ThreadRole        @default(TECHNICIAN)
+  parentThreadId    String?
+  visibleToCreator  Boolean           @default(true)
+  takeoverAt        DateTime?
+  takeoverById      String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  emailThread       EmailThread       @relation(fields: [emailThreadId], references: [id])
+  quoteRequest      QuoteRequest      @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
+  supplier          Supplier          @relation(fields: [supplierId], references: [id])
+  parentThread      QuoteRequestEmailThread? @relation("ThreadHierarchy", fields: [parentThreadId], references: [id])
+  childThreads      QuoteRequestEmailThread[] @relation("ThreadHierarchy")
+  takeoverBy        User?             @relation(fields: [takeoverById], references: [id])
 
-  @@unique([quoteRequestId, supplierId])
+  @@unique([quoteRequestId, supplierId, threadRole])
   @@index([quoteRequestId])
   @@index([supplierId])
   @@map("quote_request_email_threads")
@@ -1278,6 +1297,11 @@ enum QuoteThreadStatus {
   NOT_SELECTED
 }
 
+enum ThreadRole {
+  TECHNICIAN
+  MANAGER
+}
+
 enum IntervalType {
   HOURS
   DAYS
@@ -1358,6 +1382,22 @@ model EmailSyncState {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@map("email_sync_state")
+}
+
+model UserEmailSyncState {
+  id             String     @id @default(cuid())
+  userId         String     @unique
+  organizationId String
+  lastSyncAt     DateTime
+  lastEmailId    String?
+  syncStatus     SyncStatus @default(ACTIVE)
+  errorCount     Int        @default(0)
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("user_email_sync_state")
 }
 
 // SaaS Multi-tenant Integration Credentials

@@ -78,6 +78,11 @@ export async function POST(
           approvedAt: new Date(),
           approvalNotes: notes,
           ...(selectedSupplierId && { selectedSupplierId }),
+          // Implicit manager takeover on approval (only if not already set)
+          ...(!quoteRequest.managerTakeoverAt && {
+            managerTakeoverAt: new Date(),
+            managerTakeoverId: currentUser.id,
+          }),
         },
         include: {
           createdBy: {

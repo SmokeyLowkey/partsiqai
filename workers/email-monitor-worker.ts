@@ -46,39 +46,50 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
     try {
       await job.updateProgress(10);
 
-      // Find a user with email integration configured for this organization
-      const userWithEmail = await prisma.userEmailIntegration.findFirst({
+      // Find ALL users with email integration configured for this organization
+      const usersWithEmail = await prisma.userEmailIntegration.findMany({
         where: {
           user: { organizationId },
           providerType: { in: ['GMAIL_OAUTH', 'MICROSOFT_OAUTH'] },
           isActive: true,
         },
-        select: { userId: true },
+        select: { userId: true, user: { select: { email: true, name: true } } },
       });
 
-      if (!userWithEmail) {
-        throw new Error('No user with email integration found for this organization');
+      if (usersWithEmail.length === 0) {
+        throw new Error('No users with email integration found for this organization');
       }
 
-      // Get email client using that user's credentials (supports Gmail and Microsoft)
-      const emailClient = await getEmailClientForUser(userWithEmail.userId);
-      const emailParser = new EmailParser();
+      workerLogger.info({ userCount: usersWithEmail.length, organizationId }, 'Found users with email integrations');
 
       await job.updateProgress(20);
 
-      // Get last sync state
-      const emailSyncState = await prisma.emailSyncState.findUnique({
-        where: { organizationId },
-      });
+      let totalProcessedCount = 0;
+      let totalSkippedCount = 0;
+      let totalEmailsFound = 0;
 
-      // Fetch new emails since last sync
-      const emails = await emailClient.fetchNewEmails(
-        emailSyncState?.lastEmailId || undefined
-      );
+      // Process each user's inbox independently
+      for (const userWithEmail of usersWithEmail) {
+        const userId = userWithEmail.userId;
+        workerLogger.info({ userId, organizationId }, 'Processing inbox for user');
 
-      workerLogger.info({ emailCount: emails.length, organizationId }, 'Found new emails for organization');
+        try {
+          // Get email client using this user's credentials
+          const emailClient = await getEmailClientForUser(userId);
+          const emailParser = new EmailParser();
 
-      await job.updateProgress(50);
+          // Get last sync state for THIS user
+          const userSyncState = await prisma.userEmailSyncState.findUnique({
+            where: { userId },
+          });
+
+          // Fetch new emails since last sync for this user
+          const emails = await emailClient.fetchNewEmails(
+            userSyncState?.lastEmailId || undefined
+          );
+
+          totalEmailsFound += emails.length;
+          workerLogger.info({ emailCount: emails.length, userId, organizationId }, 'Found new emails for user');
 
       // Get a system user to use as createdById for threads (first admin of the org)
       const systemUser = await prisma.user.findFirst({
@@ -141,7 +152,7 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
           });
 
           if (!thread) {
-            // Create new thread
+            // Create new thread with ownerUserId set to the user whose inbox this email was found in
             thread = await prisma.emailThread.create({
               data: {
                 organizationId,
@@ -150,6 +161,7 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
                 supplierId: supplier?.id,
                 status: 'RESPONSE_RECEIVED', // Incoming email = response received
                 createdById: systemUser.id,
+                ownerUserId: userId, // Set the owner to the user whose inbox this came from
               },
             });
           }
@@ -279,73 +291,114 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
         }
       }
 
+          totalProcessedCount += processedCount;
+          totalSkippedCount += skippedCount;
+
+          // Update sync state for THIS user
+          if (emails.length > 0) {
+            const lastEmail = emails[0]; // Emails are returned newest first
+
+            await prisma.userEmailSyncState.upsert({
+              where: { userId },
+              update: {
+                lastEmailId: lastEmail.id,
+                lastSyncAt: new Date(),
+                syncStatus: 'ACTIVE',
+                errorCount: 0,
+              },
+              create: {
+                userId,
+                organizationId,
+                lastEmailId: lastEmail.id,
+                lastSyncAt: new Date(),
+                syncStatus: 'ACTIVE',
+                errorCount: 0,
+              },
+            });
+          } else {
+            // Update lastSyncAt even if no new emails for this user
+            await prisma.userEmailSyncState.upsert({
+              where: { userId },
+              update: {
+                lastSyncAt: new Date(),
+                syncStatus: 'ACTIVE',
+              },
+              create: {
+                userId,
+                organizationId,
+                lastSyncAt: new Date(),
+                syncStatus: 'ACTIVE',
+              },
+            });
+          }
+
+          workerLogger.info({ userId, processedCount, skippedCount }, 'Completed processing inbox for user');
+
+        } catch (userError: any) {
+          workerLogger.error({ err: userError, userId }, 'Error processing inbox for user');
+
+          // Update sync state with error for this user
+          await prisma.userEmailSyncState.upsert({
+            where: { userId },
+            update: {
+              syncStatus: 'ERROR',
+              errorCount: { increment: 1 },
+              lastSyncAt: new Date(),
+            },
+            create: {
+              userId,
+              organizationId,
+              syncStatus: 'ERROR',
+              errorCount: 1,
+              lastSyncAt: new Date(),
+            },
+          }).catch((err) => {
+            workerLogger.error({ err }, 'Failed to update user sync state with error');
+          });
+
+          // Continue processing other users - don't let one user's error block the others
+        }
+      }
+
       await job.updateProgress(90);
 
-      // Update sync state
-      if (emails.length > 0) {
-        const lastEmail = emails[0]; // Emails are returned newest first
-
-        await prisma.emailSyncState.upsert({
-          where: { organizationId },
-          update: {
-            lastEmailId: lastEmail.id,
-            lastSyncAt: new Date(),
-            syncStatus: 'ACTIVE',
-            errorCount: 0,
-          },
-          create: {
-            organizationId,
-            lastEmailId: lastEmail.id,
-            lastSyncAt: new Date(),
-            syncStatus: 'ACTIVE',
-            errorCount: 0,
-          },
-        });
-      } else {
-        // Update lastSyncAt even if no new emails
-        await prisma.emailSyncState.upsert({
-          where: { organizationId },
-          update: {
-            lastSyncAt: new Date(),
-            syncStatus: 'ACTIVE',
-          },
-          create: {
-            organizationId,
-            lastSyncAt: new Date(),
-            syncStatus: 'ACTIVE',
-          },
-        });
-      }
+      // Also update the legacy EmailSyncState for backward compatibility
+      await prisma.emailSyncState.upsert({
+        where: { organizationId },
+        update: {
+          lastSyncAt: new Date(),
+          syncStatus: 'ACTIVE',
+        },
+        create: {
+          organizationId,
+          lastSyncAt: new Date(),
+          syncStatus: 'ACTIVE',
+        },
+      }).catch((err) => {
+        workerLogger.error({ err }, 'Failed to update legacy email sync state');
+      });
 
       await job.updateProgress(100);
 
-      workerLogger.info({ jobId: job.id, processedCount, skippedCount }, 'Email monitor job completed');
+      workerLogger.info({ 
+        jobId: job.id, 
+        processedCount: totalProcessedCount, 
+        skippedCount: totalSkippedCount,
+        totalEmailsFound,
+        usersProcessed: usersWithEmail.length
+      }, 'Email monitor job completed');
 
       return {
         success: true,
-        emailsFound: emails.length,
-        emailsProcessed: processedCount,
-        emailsSkipped: skippedCount,
+        emailsFound: totalEmailsFound,
+        emailsProcessed: totalProcessedCount,
+        emailsSkipped: totalSkippedCount,
+        usersProcessed: usersWithEmail.length,
       };
     } catch (error: any) {
       workerLogger.error({ err: error, jobId: job.id }, 'Email monitor job failed');
 
-      // Update sync state with error
-      await prisma.emailSyncState.upsert({
-        where: { organizationId },
-        update: {
-          syncStatus: 'ERROR',
-          errorCount: { increment: 1 },
-          lastSyncAt: new Date(),
-        },
-        create: {
-          organizationId,
-          syncStatus: 'ERROR',
-          errorCount: 1,
-          lastSyncAt: new Date(),
-        },
-      });
-
+      // Error at job level (not user-specific) - log it but don't fail individual sync states
       throw error;
     }
   },

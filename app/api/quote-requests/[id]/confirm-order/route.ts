@@ -243,6 +243,15 @@ export async function POST(
         },
       });
 
+      // Unlock manager threads - make them visible to the technician
+      await tx.quoteRequestEmailThread.updateMany({
+        where: { 
+          quoteRequestId: quoteRequest.id, 
+          threadRole: 'MANAGER' 
+        },
+        data: { visibleToCreator: true },
+      });
+
       // Update supplier quote items to mark as selected
       await tx.supplierQuoteItem.updateMany({
         where: {

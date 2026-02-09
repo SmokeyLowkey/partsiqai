@@ -1,4 +1,4 @@
-import { QuoteStatus, ItemAvailability, QuoteThreadStatus, UserRole } from '@prisma/client';
+import { QuoteStatus, ItemAvailability, QuoteThreadStatus, UserRole, ThreadRole } from '@prisma/client';
 
 export interface QuoteRequestWithDetails {
   id: string;
@@ -21,6 +21,10 @@ export interface QuoteRequestWithDetails {
   approvalNotes: string | null;
   selectedSupplierId: string | null;
 
+  // Manager takeover fields
+  managerTakeoverAt: Date | null;
+  managerTakeoverId: string | null;
+
   // Relations
   vehicle: VehicleSummary | null;
   supplier: SupplierSummary | null;
@@ -30,6 +34,7 @@ export interface QuoteRequestWithDetails {
   emailThreads: QuoteRequestEmailThreadWithDetails[];
   createdBy: UserSummary;
   approvedBy: UserSummary | null;
+  managerTakeover: UserSummary | null;
   pickList: PickListSummary | null;
 }
 
@@ -109,6 +114,11 @@ export interface QuoteRequestEmailThreadWithDetails {
   status: QuoteThreadStatus;
   responseDate: Date | null;
   quotedAmount: number | null;
+  threadRole: ThreadRole;
+  parentThreadId: string | null;
+  visibleToCreator: boolean;
+  takeoverAt: Date | null;
+  takeoverById: string | null;
   emailThread: EmailThreadSummary;
 }
 

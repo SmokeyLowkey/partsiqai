@@ -687,6 +687,10 @@ export default function QuoteRequestDetailPage() {
                             )}
                             selectedSupplierId={s.id}
                             quoteRequestId={quoteRequest.id}
+                            currentUserId={session?.user?.id || ''}
+                            currentUserRole={session?.user?.role || 'USER'}
+                            quoteCreatedById={quoteRequest.createdBy.id}
+                            quoteStatus={quoteRequest.status}
                             onRefresh={fetchQuoteRequest}
                           />
                         </TabsContent>
@@ -702,6 +706,10 @@ export default function QuoteRequestDetailPage() {
                   emailThreads={quoteRequest.emailThreads}
                   selectedSupplierId={selectedSupplierTab || undefined}
                   quoteRequestId={quoteRequest.id}
+                  currentUserId={session?.user?.id || ''}
+                  currentUserRole={session?.user?.role || 'USER'}
+                  quoteCreatedById={quoteRequest.createdBy.id}
+                  quoteStatus={quoteRequest.status}
                   onRefresh={fetchQuoteRequest}
                 />
               )}

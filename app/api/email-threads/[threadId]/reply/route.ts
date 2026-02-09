@@ -39,6 +39,16 @@ export async function POST(
           where: { id: messageId },
         },
         supplier: true,
+        createdBy: true,
+        quoteRequestEmailThreads: {
+          include: {
+            quoteRequest: {
+              include: {
+                createdBy: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -73,6 +83,104 @@ export async function POST(
       );
     }
 
+    // MANAGER TAKEOVER DETECTION
+    // Check if this is a manager replying to a technician's quote request thread
+    // Type for activeThread that's compatible with both emailThread and managerThread.emailThread
+    let activeThread: {
+      id: string;
+      subject: string;
+      externalThreadId: string | null;
+      supplier: { id: string; name: string; email: string | null } | null;
+      createdBy: { id: string; email: string; name: string | null };
+      messages: { id: string; externalMessageId: string | null; from: string; subject: string; inReplyTo: string | null }[];
+    } = emailThread;
+    let isManagerTakeover = false;
+    const currentUserRole = session.user.role;
+    const isManager = currentUserRole === 'ADMIN' || currentUserRole === 'MASTER_ADMIN';
+    
+    // Get the quote request email thread if it exists
+    const quoteRequestEmailThread = emailThread.quoteRequestEmailThreads;
+    const quoteRequest = quoteRequestEmailThread?.quoteRequest;
+
+    if (quoteRequest && isManager && userId !== quoteRequest.createdById) {
+      // This is a manager replying to a technician's quote request
+      isManagerTakeover = true;
+
+      // Check if a manager thread already exists for this quote + supplier
+      let managerThread = await prisma.quoteRequestEmailThread.findFirst({
+        where: {
+          quoteRequestId: quoteRequest.id,
+          supplierId: emailThread.supplierId!,
+          threadRole: 'MANAGER',
+        },
+        include: {
+          emailThread: {
+            include: {
+              supplier: true,
+              createdBy: true,
+              messages: {
+                where: { id: messageId },
+              },
+            },
+          },
+        },
+      });
+
+      if (!managerThread) {
+        // Create new manager thread
+        const newEmailThread = await prisma.emailThread.create({
+          data: {
+            organizationId,
+            subject: emailThread.subject,
+            supplierId: emailThread.supplierId,
+            quoteRequestId: quoteRequest.id,
+            status: 'WAITING_RESPONSE',
+            createdById: userId,
+            ownerUserId: userId, // Manager owns this thread
+          },
+        });
+
+        managerThread = await prisma.quoteRequestEmailThread.create({
+          data: {
+            quoteRequestId: quoteRequest.id,
+            emailThreadId: newEmailThread.id,
+            supplierId: emailThread.supplierId!,
+            threadRole: 'MANAGER',
+            parentThreadId: quoteRequestEmailThread?.id, // Link to technician's thread
+            visibleToCreator: false, // Hidden from technician until order conversion
+            takeoverAt: new Date(),
+            takeoverById: userId,
+            status: 'SENT',
+          },
+          include: {
+            emailThread: {
+              include: {
+                supplier: true,
+                createdBy: true,
+                messages: {
+                  where: { id: messageId },
+                },
+              },
+            },
+          },
+        });
+
+        // Record takeover on the quote request
+        await prisma.quoteRequest.update({
+          where: { id: quoteRequest.id },
+          data: {
+            managerTakeoverAt: new Date(),
+            managerTakeoverId: userId,
+          },
+        });
+
+        console.log('Manager takeover created - new thread for manager communication');
+      }
+
+      // Use the manager's thread for this reply
+      activeThread = managerThread.emailThread;
+    }
+
     // Initialize email client with user's credentials (supports Gmail and Microsoft)
     const emailClient = await getEmailClientForUser(userId);
 
@@ -87,9 +195,10 @@ export async function POST(
     const references = originalMessage.externalMessageId || undefined;
 
     console.log('Sending reply with threading:', {
-      threadId: emailThread.externalThreadId,
+      threadId: activeThread.externalThreadId,
       inReplyTo: originalMessage.externalMessageId,
-      references
+      references,
+      isManagerTakeover,
     });
 
     console.log('==================== MESSAGE DETAILS ====================');
@@ -100,36 +209,38 @@ export async function POST(
       subject: originalMessage.subject,
       inReplyTo: originalMessage.inReplyTo
     });
+    console.log('Is Manager Takeover:', isManagerTakeover);
+    console.log('Active Thread ID:', activeThread.id);
     console.log('========================================================');
 
     // Send reply with threading headers
     const { messageId: newMessageId, threadId: returnedThreadId } = await emailClient.sendEmail(
-      emailThread.supplier.email,
+      activeThread.supplier?.email || '',
       subject,
       `<div style="font-family: Arial, sans-serif; line-height: 1.6;">${htmlBody}</div>`,
       undefined, // cc
       undefined, // bcc
       {
-        threadId: emailThread.externalThreadId || undefined,
+        threadId: activeThread.externalThreadId || undefined,
         inReplyTo: originalMessage.externalMessageId || undefined,
         references,
       }
     );
 
     console.log('==================== THREAD ID COMPARISON ====================');
-    console.log('Quote Request Thread (externalThreadId from DB):', emailThread.externalThreadId);
+    console.log('Quote Request Thread (externalThreadId from DB):', activeThread.externalThreadId);
     console.log('Gmail API Response Thread ID:', returnedThreadId);
-    console.log('Match:', emailThread.externalThreadId === returnedThreadId);
-    console.log('Supplier:', emailThread.supplier.name, '(' + emailThread.supplier.email + ')');
+    console.log('Match:', activeThread.externalThreadId === returnedThreadId);
+    console.log('Supplier:', activeThread.supplier!.name, '(' + activeThread.supplier!.email + ')');
     console.log('=============================================================');
 
     // Create new EmailMessage record for the reply
     const newMessage = await prisma.emailMessage.create({
       data: {
-        threadId: emailThread.id,
+        threadId: activeThread.id,
         direction: 'OUTBOUND',
         from: session.user.email!,
-        to: emailThread.supplier.email,
+        to: activeThread.supplier?.email || '',
         cc: [],
         bcc: [],
         subject,
@@ -141,11 +252,12 @@ export async function POST(
       },
     });
 
-    // Update thread status
+    // Update thread status and externalThreadId
     await prisma.emailThread.update({
-      where: { id: emailThread.id },
+      where: { id: activeThread.id },
       data: {
         status: 'WAITING_RESPONSE',
+        externalThreadId: returnedThreadId || activeThread.externalThreadId,
         updatedAt: new Date(),
       },
     });
@@ -154,7 +266,7 @@ export async function POST(
     if (quoteRequestId) {
       const quoteRequestThread = await prisma.quoteRequestEmailThread.findFirst({
         where: {
-          emailThreadId: emailThread.id,
+          emailThreadId: activeThread.id,
           quoteRequestId,
         },
       });

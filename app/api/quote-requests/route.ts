@@ -85,6 +85,13 @@ export async function GET(req: NextRequest) {
             email: true,
           },
         },
+        managerTakeover: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
       },
       orderBy: {
         createdAt: 'desc',
