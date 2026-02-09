@@ -67,6 +67,12 @@ export async function POST(
             email: true,
           },
         },
+        managerTakeover: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
       },
     });
 
@@ -212,6 +218,12 @@ export async function POST(
       return selection === 'ORIGINAL' && hasAlternative;
     });
 
+    // Determine contact person (use current user if manager takeover, otherwise technician)
+    const isManagerTakeover = !!quoteRequest.managerTakeover;
+    const contactPerson = isManagerTakeover 
+      ? { name: session.user.name, email: session.user.email }
+      : quoteRequest.createdBy;
+    
     // Generate email using AI with comprehensive context
     let emailContent: { subject: string; body: string };
 
@@ -222,12 +234,14 @@ export async function POST(
 
 CONTEXT:
 - Company: ${quoteRequest.organization.name}
-- Contact: ${quoteRequest.createdBy.name || quoteRequest.createdBy.email}
+- Contact: ${contactPerson.name || contactPerson.email}
 - Order Number: ${orderNumber} (Pending)
 - Supplier: ${supplier.name}
 - Quote Reference: ${quoteRequest.quoteNumber}
 - Vehicle: ${vehicleInfo}
 - Fulfillment Method: ${fulfillmentMethod || 'DELIVERY'}
+${isManagerTakeover ? `- IMPORTANT: This order is being placed by ${contactPerson.name || 'a manager'} in regards to previous conversations between ${quoteRequest.createdBy.name || 'technician'} and ${supplier.name}
+` : ''}
 
 ORDER ITEMS (${selectedItems.length} items):
 ${partsList}
@@ -240,7 +254,8 @@ ${orderNotes ? `SPECIAL INSTRUCTIONS:\n${orderNotes}\n\n` : ''}${rejectedAlterna
 1. Generate a subject line that includes the order number
 2. Generate a professional order confirmation email that:
    - Confirms the order has been placed
-   - References the quote (Quote #${quoteRequest.quoteNumber})
+   ${isManagerTakeover ? `- Mentions this is in regards to previous communications with ${quoteRequest.createdBy.name || 'the technician'}
+   ` : ''}- References the quote (Quote #${quoteRequest.quoteNumber})
    - Lists all ordered items with quantities and prices
    - IMPORTANT: For items marked as "ALTERNATIVE PART", clearly note this is an alternative/aftermarket part and confirm we accept it
    - IMPORTANT: For items marked as "REQUESTING ORIGINAL PART", ask supplier to confirm availability and pricing of the original part number
@@ -279,7 +294,7 @@ Output your response as JSON with the following structure:
       
       emailContent = {
         subject: `Order Confirmation - ${orderNumber}`,
-        body: `Dear ${supplier.name},\n\nWe are pleased to confirm our order based on your quote ${quoteRequest.quoteNumber}.\n\nOrder Details:\n${partsList}\n\nTotal: $${subtotal.toFixed(2)}\n\nFulfillment Method: ${fulfillmentMethod || 'DELIVERY'}\n${isPickup ? 'Please let us know when the order is ready for pickup.' : 'Please provide tracking information once the order ships.'}\n\n${orderNotes ? `Special Instructions:\n${orderNotes}\n\n` : ''}Best regards,\n${quoteRequest.createdBy.name || 'The Team'}\n${quoteRequest.organization.name}`,
+        body: `Dear ${supplier.name},\n\n${isManagerTakeover ? `I am reaching out regarding your previous conversations with ${quoteRequest.createdBy.name || 'our technician'}.\n\n` : ''}We are pleased to confirm our order based on your quote ${quoteRequest.quoteNumber}.\n\nOrder Details:\n${partsList}\n\nTotal: $${subtotal.toFixed(2)}\n\nFulfillment Method: ${fulfillmentMethod || 'DELIVERY'}\n${isPickup ? 'Please let us know when the order is ready for pickup.' : 'Please provide tracking information once the order ships.'}\n\n${orderNotes ? `Special Instructions:\n${orderNotes}\n\n` : ''}Best regards,\n${contactPerson.name || 'The Team'}\n${quoteRequest.organization.name}`,
       };
     }
 

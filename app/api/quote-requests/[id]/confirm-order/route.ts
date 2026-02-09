@@ -89,6 +89,12 @@ export async function POST(
             email: true,
           },
         },
+        managerTakeover: {
+          select: {
+            name: true,
+            email: true,
+          },
+        },
       },
     });
 
@@ -342,12 +348,11 @@ export async function POST(
         }
       );
 
-      // Get from email
-      const fromEmail =
-        quoteRequest.organization.billingEmail ||
-        quoteRequest.createdBy.email ||
-        session.user.email ||
-        'noreply@example.com';
+      // Get from email - use current user if manager takeover, otherwise use technician
+      const isManagerTakeover = !!quoteRequest.managerTakeover;
+      const fromEmail = isManagerTakeover
+        ? (session.user.email || quoteRequest.organization.billingEmail || 'noreply@example.com')
+        : (quoteRequest.createdBy.email || quoteRequest.organization.billingEmail || session.user.email || 'noreply@example.com');
 
       // Create email message record
       await prisma.emailMessage.create({
