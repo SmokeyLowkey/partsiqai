@@ -117,10 +117,17 @@ export const authConfig = {
         token.isEmailVerified = user.isEmailVerified
         token.onboardingStatus = user.onboardingStatus
         token.mustChangePassword = user.mustChangePassword
+        token.refreshedAt = Date.now()
       }
 
-      // On update() call, refetch fresh user data from database
-      if (trigger === "update" && token.id) {
+      // Refresh mutable fields from DB on update() calls OR every 30 seconds
+      // This ensures middleware always has fresh data for onboardingStatus,
+      // isEmailVerified, subscriptionStatus, etc.
+      const now = Date.now()
+      const lastRefresh = (token.refreshedAt as number) || 0
+      const needsRefresh = trigger === "update" || (now - lastRefresh > 30_000)
+
+      if (needsRefresh && token.id) {
         const freshUser = await prisma.user.findUnique({
           where: { id: token.id as string },
           include: {
@@ -139,6 +146,7 @@ export const authConfig = {
           token.isEmailVerified = freshUser.isEmailVerified
           token.onboardingStatus = freshUser.onboardingStatus
           token.mustChangePassword = freshUser.mustChangePassword
+          token.refreshedAt = now
         }
       }
 

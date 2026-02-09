@@ -22,6 +22,14 @@ export default function OrganizationPage() {
     primaryColor: "#2563eb",
   })
 
+  // Determine dashboard path from session role
+  const getDashboardPath = () => {
+    const role = session?.user?.role
+    return role === "ADMIN" || role === "MASTER_ADMIN"
+      ? "/admin/dashboard"
+      : "/customer/dashboard"
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -44,15 +52,12 @@ export default function OrganizationPage() {
 
       toast.success("Setup complete! Welcome to PartsIQ")
 
-      // Update session with fresh data from database
+      // Force session refresh so the JWT picks up the new onboardingStatus
       await update()
 
-      // Redirect to dashboard
-      const redirectPath = session?.user?.role === "ADMIN" || session?.user?.role === "MASTER_ADMIN"
-        ? "/admin/dashboard"
-        : "/customer/dashboard"
-
-      window.location.href = redirectPath
+      // Full page reload to dashboard — the JWT callback will refresh
+      // mutable fields from DB, so middleware will see COMPLETED status
+      window.location.href = getDashboardPath()
     } catch (err: any) {
       setError(err.message)
       toast.error(err.message)
@@ -62,24 +67,27 @@ export default function OrganizationPage() {
   }
 
   const handleSkip = async () => {
+    setLoading(true)
     try {
-      await fetch("/api/onboarding/skip", {
+      const response = await fetch("/api/onboarding/skip", {
         method: "POST",
       })
 
+      if (!response.ok) {
+        throw new Error("Failed to skip onboarding")
+      }
+
       toast.success("You can complete setup later from Settings")
 
-      // Update session with fresh data from database
+      // Force session refresh
       await update()
 
-      // Redirect to dashboard
-      const redirectPath = session?.user?.role === "ADMIN" || session?.user?.role === "MASTER_ADMIN"
-        ? "/admin/dashboard"
-        : "/customer/dashboard"
-
-      window.location.href = redirectPath
-    } catch (err) {
+      window.location.href = getDashboardPath()
+    } catch (err: any) {
       console.error("Error skipping onboarding:", err)
+      toast.error(err.message || "Failed to skip onboarding")
+    } finally {
+      setLoading(false)
     }
   }
 
