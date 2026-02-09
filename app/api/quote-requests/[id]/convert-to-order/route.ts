@@ -75,7 +75,9 @@ export async function POST(
     }
 
     // Validation 0: Check approval requirement for technicians
-    if (quoteRequest.requiresApproval && quoteRequest.status !== 'APPROVED') {
+    // Managers/admins can convert regardless of approval status (they ARE the approvers)
+    const isManagerOrAdmin = ['ADMIN', 'MASTER_ADMIN', 'MANAGER'].includes(session.user.role);
+    if (quoteRequest.requiresApproval && quoteRequest.status !== 'APPROVED' && !isManagerOrAdmin) {
       return NextResponse.json({
         error: 'This quote requires manager approval before it can be converted to an order',
         currentStatus: quoteRequest.status,
