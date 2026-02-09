@@ -3,6 +3,7 @@ import { getServerSession, canConvertToOrder } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { OpenRouterClient } from '@/lib/services/llm/openrouter-client';
 import { generateOrderNumber } from '@/lib/utils/order-number';
+import { getEmailClientForUser } from '@/lib/services/email/email-client-factory';
 
 // POST /api/quote-requests/[id]/convert-to-order - Generate email preview for order conversion
 export async function POST(
@@ -80,6 +81,18 @@ export async function POST(
       return NextResponse.json({ error: 'Quote request not found' }, { status: 404 });
     }
 
+    // CRITICAL VALIDATION: Check email credentials BEFORE generating preview
+    // This provides immediate feedback to users who need to configure email
+    try {
+      await getEmailClientForUser(session.user.id);
+    } catch (credentialError: any) {
+      return NextResponse.json({
+        error: 'Cannot convert to order: Email credentials not configured',
+        details: credentialError.message || 'Please set up your email integration in Settings before converting quotes to orders.',
+        needsEmailSetup: true,
+      }, { status: 400 });
+    }
+
     // Validation 0: Check approval requirement for technicians
     // Managers/admins can convert regardless of approval status (they ARE the approvers)
     const isManagerOrAdmin = ['ADMIN', 'MASTER_ADMIN', 'MANAGER'].includes(session.user.role);
@@ -144,6 +157,14 @@ export async function POST(
 
     if (!supplier) {
       return NextResponse.json({ error: 'Supplier not found' }, { status: 404 });
+    }
+
+    // Validate supplier has email address
+    if (!supplier.email) {
+      return NextResponse.json({
+        error: 'Cannot send order: Supplier does not have an email address',
+        supplierId: supplierId,
+      }, { status: 400 });
     }
 
     // Filter items based on user selections

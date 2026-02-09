@@ -119,6 +119,26 @@ export async function POST(
       return NextResponse.json({ error: 'Email thread not found' }, { status: 404 });
     }
 
+    // CRITICAL VALIDATION: Check email credentials BEFORE creating order
+    // This prevents orphaned orders when email sending fails
+    try {
+      await getEmailClientForUser(session.user.id);
+    } catch (credentialError: any) {
+      return NextResponse.json({
+        error: 'Cannot convert to order: Email credentials not configured',
+        details: credentialError.message || 'Please set up your email integration in Settings before converting quotes to orders.',
+        needsEmailSetup: true,
+      }, { status: 400 });
+    }
+
+    // Validate supplier has email address
+    if (!quoteRequest.supplier?.email) {
+      return NextResponse.json({
+        error: 'Cannot send order: Supplier does not have an email address',
+        supplierId: supplierId,
+      }, { status: 400 });
+    }
+
     // Filter supplier items
     const supplierItems = quoteRequest.items.filter(item =>
       item.supplierQuotes && item.supplierQuotes.length > 0
@@ -309,21 +329,8 @@ export async function POST(
     // Send the email
     try {
       // Initialize email client using current user's credentials (supports Gmail and Microsoft)
+      // This was pre-validated earlier, but we need the actual client instance to send
       const emailClient = await getEmailClientForUser(session.user.id);
-      
-      if (!quoteRequest.supplier?.email) {
-        return NextResponse.json({
-          success: true,
-          warning: 'Order created but supplier has no email address',
-          order: {
-            id: order.id,
-            orderNumber: order.orderNumber,
-            status: order.status,
-            total: order.total,
-            itemCount: order.orderItems.length,
-          },
-        });
-      }
 
       // Convert plain text body to HTML
       const htmlBody = emailBody
