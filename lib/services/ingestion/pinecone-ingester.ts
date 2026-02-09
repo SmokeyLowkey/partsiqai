@@ -2,7 +2,7 @@ import { credentialsManager } from '../credentials/credentials-manager';
 import type { PartIngestionRecord, PhaseResult, ValidationError } from './types';
 import type { Logger } from 'pino';
 
-const EMBED_BATCH_SIZE = 20; // Pinecone embed API batch limit
+const EMBED_BATCH_SIZE = 96; // Pinecone embed API batch limit (model constraint)
 const UPSERT_BATCH_SIZE = 100; // Pinecone upsert batch limit
 const API_VERSION = '2025-04';
 
@@ -79,7 +79,8 @@ export async function ingestToPinecone(
         }
 
         const namespace = record.namespace || 'default';
-        const vectorId = `${namespace}_${record.partNumber}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const breadcrumb = record.categoryBreadcrumb || '';
+        const vectorId = `${namespace}_${record.partNumber}_${breadcrumb}`.replace(/[^a-zA-Z0-9_-]/g, '_');
 
         const vector: any = {
           id: vectorId,

@@ -3,7 +3,7 @@ import { credentialsManager } from '../credentials/credentials-manager';
 import type { PartIngestionRecord, PhaseResult, ValidationError } from './types';
 import type { Logger } from 'pino';
 
-const BATCH_SIZE = 50;
+const BATCH_SIZE = 1000;
 
 /**
  * Parse serial number range string that may contain multiple (PIN: ...) entries.
@@ -93,16 +93,16 @@ export async function ingestToNeo4j(
           sourceUrl: record.sourceUrl || null,
         }));
 
-        // MERGE Part nodes with all properties
+        // MERGE Part nodes with composite key (part_number + category_breadcrumb)
+        // so the same part in different categories is preserved as separate nodes
         await session.run(
           `
           UNWIND $parts AS part
-          MERGE (p:Part {part_number: part.partNumber})
+          MERGE (p:Part {part_number: part.partNumber, category_breadcrumb: COALESCE(part.categoryBreadcrumb, '')})
           SET p.part_title = part.partTitle,
               p.machine_model = part.machineModel,
               p.manufacturer = part.manufacturer,
               p.namespace = part.namespace,
-              p.category_breadcrumb = part.categoryBreadcrumb,
               p.diagram_title = part.diagramTitle,
               p.serial_number_range = part.serialNumberRange,
               p.technical_domain = part.technicalDomain,
@@ -118,7 +118,7 @@ export async function ingestToNeo4j(
           `
           UNWIND $parts AS part
           WITH part WHERE part.technicalDomain IS NOT NULL
-          MATCH (p:Part {part_number: part.partNumber})
+          MATCH (p:Part {part_number: part.partNumber, category_breadcrumb: COALESCE(part.categoryBreadcrumb, '')})
           MATCH (d:TechnicalDomain {name: part.technicalDomain})
           MERGE (p)-[:CONTAINS_PART]-(d)
           `,
@@ -130,7 +130,7 @@ export async function ingestToNeo4j(
           `
           UNWIND $parts AS part
           WITH part WHERE part.diagramTitle IS NOT NULL
-          MATCH (p:Part {part_number: part.partNumber})
+          MATCH (p:Part {part_number: part.partNumber, category_breadcrumb: COALESCE(part.categoryBreadcrumb, '')})
           MATCH (diag:Diagram {diagram_title: part.diagramTitle})
           MERGE (p)-[:SHOWN_IN_DIAGRAM]->(diag)
           `,
@@ -142,7 +142,7 @@ export async function ingestToNeo4j(
           `
           UNWIND $parts AS part
           WITH part WHERE part.categoryBreadcrumb IS NOT NULL
-          MATCH (p:Part {part_number: part.partNumber})
+          MATCH (p:Part {part_number: part.partNumber, category_breadcrumb: COALESCE(part.categoryBreadcrumb, '')})
           MATCH (c:Category {name: part.categoryBreadcrumb})
           MERGE (p)-[:BELONGS_TO_CATEGORY]->(c)
           `,
@@ -155,6 +155,7 @@ export async function ingestToNeo4j(
           .flatMap((r) =>
             parseSerialRanges(r.serialNumberRange!).map((range) => ({
               partNumber: r.partNumber,
+              categoryBreadcrumb: r.categoryBreadcrumb || '',
               range,
             }))
           );
@@ -163,7 +164,7 @@ export async function ingestToNeo4j(
           await session.run(
             `
             UNWIND $partRanges AS pr
-            MATCH (p:Part {part_number: pr.partNumber})
+            MATCH (p:Part {part_number: pr.partNumber, category_breadcrumb: pr.categoryBreadcrumb})
             MATCH (s:SerialNumberRange {range: pr.range})
             MERGE (p)-[:VALID_FOR_RANGE]->(s)
             `,
@@ -308,12 +309,16 @@ async function createPartRelationships(
   records: PartIngestionRecord[],
   logger: Logger
 ): Promise<void> {
-  const relations: { from: string; to: string }[] = [];
+  const relations: { from: string; fromCategory: string; to: string }[] = [];
 
   for (const record of records) {
     if (record.requiredParts) {
       for (const required of record.requiredParts) {
-        relations.push({ from: record.partNumber, to: required });
+        relations.push({
+          from: record.partNumber,
+          fromCategory: record.categoryBreadcrumb || '',
+          to: required,
+        });
       }
     }
   }
@@ -325,7 +330,7 @@ async function createPartRelationships(
     await session.run(
       `
       UNWIND $relations AS rel
-      MATCH (p1:Part {part_number: rel.from})
+      MATCH (p1:Part {part_number: rel.from, category_breadcrumb: rel.fromCategory})
       MATCH (p2:Part {part_number: rel.to})
       MERGE (p1)-[:REQUIRES_PART]->(p2)
       `,
