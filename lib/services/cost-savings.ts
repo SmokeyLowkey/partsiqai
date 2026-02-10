@@ -11,8 +11,12 @@ interface CostSavingsResult {
 }
 
 /**
- * Calculate cost savings for an order by comparing the actual order total
- * against what it would have cost at OEM/list prices (part.cost)
+ * Calculate cost savings for an order by comparing the supplier's quoted prices
+ * against the manufacturer list prices stored in the Parts table (part.price).
+ *
+ * - manualCost  = sum of (part.price × quantity) — what you'd pay at list price
+ * - platformCost = sum of (orderItem.totalPrice) — what you actually paid the supplier
+ * - totalSavings = manualCost − platformCost (positive = you saved money)
  */
 export async function calculateOrderCostSavings(orderId: string): Promise<CostSavingsResult | null> {
   const order = await prisma.order.findUnique({
@@ -31,26 +35,39 @@ export async function calculateOrderCostSavings(orderId: string): Promise<CostSa
     return null;
   }
 
-  // Calculate OEM cost (manual cost) from part.cost values
+  // Calculate manufacturer list price total (manualCost) from part.price.
+  // Uses part.price (manufacturer list price, always set) as primary reference,
+  // falling back to part.cost (OEM cost, optional) if price is 0.
+  // EXCLUDES MISC-* items (shipping, taxes, fees) as they aren't parts.
   let manualCost = 0;
-  let itemsWithOemPrice = 0;
+  let platformCost = 0;
+  let itemsWithListPrice = 0;
 
   for (const item of order.orderItems) {
-    if (item.part?.cost) {
-      // OEM cost = part.cost * quantity
-      const oemItemCost = Number(item.part.cost) * item.quantity;
-      manualCost += oemItemCost;
-      itemsWithOemPrice++;
+    // Skip MISC-* items (operational costs like shipping, taxes)
+    if (item.partNumber.startsWith('MISC-')) {
+      continue;
+    }
+
+    if (item.part) {
+      const listPrice = Number(item.part.price) > 0
+        ? Number(item.part.price)
+        : (item.part.cost ? Number(item.part.cost) : 0);
+
+      if (listPrice > 0) {
+        manualCost += listPrice * item.quantity;
+        platformCost += Number(item.totalPrice);
+        itemsWithListPrice++;
+      }
     }
   }
 
-  // If no items have OEM prices, we can't calculate savings
-  if (itemsWithOemPrice === 0 || manualCost === 0) {
-    console.log(`No OEM prices found for order ${orderId}, skipping cost savings calculation`);
+  // If no items have list prices, we can't calculate savings
+  if (itemsWithListPrice === 0 || manualCost === 0) {
+    console.log(`No manufacturer list prices found for order ${orderId}, skipping cost savings calculation`);
     return null;
   }
 
-  const platformCost = Number(order.total);
   const totalSavings = manualCost - platformCost;
   const savingsPercent = manualCost > 0 ? (totalSavings / manualCost) * 100 : 0;
 

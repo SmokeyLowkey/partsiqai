@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Users, ShoppingCart, Package, Building2, TrendingUp, AlertCircle, CheckCircle, Clock, Truck } from "lucide-react"
+import { Users, ShoppingCart, Package, Building2, TrendingUp, AlertCircle, CheckCircle, Clock, Truck, DollarSign, Timer, BarChart3 } from "lucide-react"
 import { prisma } from "@/lib/prisma"
 import { getServerSession } from "@/lib/auth"
 import { redirect } from "next/navigation"
@@ -25,6 +25,7 @@ async function getMasterAdminStats() {
     totalParts,
     totalQuoteRequests,
     recentOrders,
+    orderAnalytics,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { createdAt: { gte: lastMonth } } }),
@@ -47,7 +48,29 @@ async function getMasterAdminStats() {
         },
       },
     }),
+    // Platform-wide analytics
+    prisma.orderAnalytics.findMany({}),
   ])
+
+  // Aggregate analytics
+  let totalSavings = 0
+  let totalManualCost = 0
+  let totalPlatformCost = 0
+  let totalLeadTimeDays = 0
+  let onTimeCount = 0
+  const completedCount = orderAnalytics.length
+
+  for (const a of orderAnalytics) {
+    totalSavings += Number(a.actualSavings)
+    totalManualCost += Number(a.manualCost)
+    totalPlatformCost += Number(a.platformCost)
+    totalLeadTimeDays += a.totalLeadTimeDays
+    if (a.onTimeDelivery) onTimeCount++
+  }
+
+  const avgLeadTime = completedCount > 0 ? totalLeadTimeDays / completedCount : 0
+  const onTimeRate = completedCount > 0 ? (onTimeCount / completedCount) * 100 : 0
+  const savingsPercent = totalManualCost > 0 ? (totalSavings / totalManualCost) * 100 : 0
 
   const userGrowth = lastMonthUsers > 0 ? Math.round((lastMonthUsers / (totalUsers - lastMonthUsers)) * 100) : 0
   const orderGrowth = lastMonthOrders > 0 ? Math.round((lastMonthOrders / (totalOrders - lastMonthOrders)) * 100) : 0
@@ -63,6 +86,15 @@ async function getMasterAdminStats() {
     totalParts,
     totalQuoteRequests,
     recentOrders,
+    analytics: {
+      totalSavings,
+      totalManualCost,
+      totalPlatformCost,
+      savingsPercent,
+      avgLeadTime,
+      onTimeRate,
+      completedOrders: completedCount,
+    },
   }
 }
 
@@ -81,6 +113,8 @@ async function getOrgAdminStats(organizationId: string) {
     totalQuoteRequests,
     recentOrders,
     organization,
+    orderAnalytics,
+    recentCompletedOrders,
   ] = await Promise.all([
     prisma.user.count({ where: { organizationId } }),
     prisma.user.count({ where: { organizationId, createdAt: { gte: lastMonth } } }),
@@ -103,7 +137,46 @@ async function getOrgAdminStats(organizationId: string) {
       where: { id: organizationId },
       select: { name: true },
     }),
+    // Fetch all order analytics for this org
+    prisma.orderAnalytics.findMany({
+      where: { organizationId },
+    }),
+    // Recent completed orders with item-level price comparison
+    prisma.order.findMany({
+      where: { organizationId, status: "DELIVERED" },
+      take: 5,
+      orderBy: { completedAt: "desc" },
+      include: {
+        supplier: { select: { name: true } },
+        orderItems: {
+          include: {
+            part: { select: { price: true, cost: true, partNumber: true, description: true } },
+          },
+        },
+        orderAnalytics: true,
+      },
+    }),
   ])
+
+  // Aggregate analytics
+  let totalSavings = 0
+  let totalManualCost = 0
+  let totalPlatformCost = 0
+  let totalLeadTimeDays = 0
+  let onTimeCount = 0
+  const completedCount = orderAnalytics.length
+
+  for (const a of orderAnalytics) {
+    totalSavings += Number(a.actualSavings)
+    totalManualCost += Number(a.manualCost)
+    totalPlatformCost += Number(a.platformCost)
+    totalLeadTimeDays += a.totalLeadTimeDays
+    if (a.onTimeDelivery) onTimeCount++
+  }
+
+  const avgLeadTime = completedCount > 0 ? totalLeadTimeDays / completedCount : 0
+  const onTimeRate = completedCount > 0 ? (onTimeCount / completedCount) * 100 : 0
+  const savingsPercent = totalManualCost > 0 ? (totalSavings / totalManualCost) * 100 : 0
 
   const userGrowth = lastMonthUsers > 0 ? Math.round((lastMonthUsers / (totalUsers - lastMonthUsers)) * 100) : 0
   const orderGrowth = lastMonthOrders > 0 ? Math.round((lastMonthOrders / (totalOrders - lastMonthOrders)) * 100) : 0
@@ -118,6 +191,16 @@ async function getOrgAdminStats(organizationId: string) {
     totalQuoteRequests,
     recentOrders,
     organizationName: organization?.name || "Your Organization",
+    analytics: {
+      totalSavings,
+      totalManualCost,
+      totalPlatformCost,
+      savingsPercent,
+      avgLeadTime,
+      onTimeRate,
+      completedOrders: completedCount,
+    },
+    recentCompletedOrders,
   }
 }
 
@@ -201,6 +284,71 @@ function MasterAdminDashboard({ stats }: { stats: Awaited<ReturnType<typeof getM
           </CardContent>
         </Card>
       </div>
+
+      {/* Analytics Overview */}
+      {stats.analytics.completedOrders > 0 && (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card className="border-green-200 dark:border-green-800">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-foreground">Total Cost Savings</CardTitle>
+              <DollarSign className="h-4 w-4 text-green-600 dark:text-green-400" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                ${stats.analytics.totalSavings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {stats.analytics.savingsPercent > 0 ? `${stats.analytics.savingsPercent.toFixed(1)}% below list price` : 'No savings data yet'}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-foreground">List Price Total</CardTitle>
+              <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-foreground">
+                ${stats.analytics.totalManualCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Paid ${stats.analytics.totalPlatformCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} via suppliers
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-foreground">Avg Lead Time</CardTitle>
+              <Timer className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-foreground">
+                {stats.analytics.avgLeadTime.toFixed(1)} days
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {stats.analytics.completedOrders} orders completed
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-foreground">On-Time Delivery</CardTitle>
+              <CheckCircle className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-foreground">
+                {stats.analytics.onTimeRate.toFixed(0)}%
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Delivered on or before expected date
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
         {/* Recent Orders */}
@@ -428,6 +576,71 @@ function OrgAdminDashboard({ stats }: { stats: Awaited<ReturnType<typeof getOrgA
         </Card>
       </div>
 
+      {/* Analytics Overview */}
+      {stats.analytics.completedOrders > 0 && (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card className="border-green-200 dark:border-green-800">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-foreground">Total Cost Savings</CardTitle>
+              <DollarSign className="h-4 w-4 text-green-600 dark:text-green-400" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                ${stats.analytics.totalSavings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {stats.analytics.savingsPercent > 0 ? `${stats.analytics.savingsPercent.toFixed(1)}% below list price` : 'No savings data yet'}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-foreground">List Price Total</CardTitle>
+              <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-foreground">
+                ${stats.analytics.totalManualCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Paid ${stats.analytics.totalPlatformCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} via suppliers
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-foreground">Avg Lead Time</CardTitle>
+              <Timer className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-foreground">
+                {stats.analytics.avgLeadTime.toFixed(1)} days
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {stats.analytics.completedOrders} orders completed
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-foreground">On-Time Delivery</CardTitle>
+              <CheckCircle className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-foreground">
+                {stats.analytics.onTimeRate.toFixed(0)}%
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Delivered on or before expected date
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
         {/* Recent Orders */}
         <Card className="col-span-4">
@@ -540,6 +753,90 @@ function OrgAdminDashboard({ stats }: { stats: Awaited<ReturnType<typeof getOrgA
           </CardContent>
         </Card>
       </div>
+
+      {/* Recent Completed Orders — Price Comparison */}
+      {stats.recentCompletedOrders.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Completed Orders — Price Comparison</CardTitle>
+            <CardDescription>Supplier prices vs manufacturer list prices</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              {stats.recentCompletedOrders.map((order: any) => {
+                const analytics = order.orderAnalytics
+                const orderSavings = analytics ? Number(analytics.actualSavings) : 0
+                const orderSavingsPercent = analytics ? Number(analytics.savingsPercent) : 0
+                return (
+                  <div key={order.id} className="border border-border rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <span className="font-semibold text-foreground">{order.orderNumber}</span>
+                        <span className="text-sm text-muted-foreground ml-2">
+                          {order.supplier?.name || 'Unknown supplier'}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        {orderSavings !== 0 ? (
+                          <Badge variant={orderSavings > 0 ? "default" : "destructive"} className="text-xs">
+                            {orderSavings > 0 ? 'Saved' : 'Over'} ${Math.abs(orderSavings).toFixed(2)} ({Math.abs(orderSavingsPercent).toFixed(1)}%)
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs">No price data</Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-border text-muted-foreground">
+                            <th className="text-left py-1 pr-4">Part</th>
+                            <th className="text-right py-1 px-2">Qty</th>
+                            <th className="text-right py-1 px-2">List Price</th>
+                            <th className="text-right py-1 px-2">Supplier Price</th>
+                            <th className="text-right py-1 pl-2">Savings</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {order.orderItems.map((item: any) => {
+                            const listPrice = item.part ? (Number(item.part.price) > 0 ? Number(item.part.price) : (item.part.cost ? Number(item.part.cost) : null)) : null
+                            const supplierUnitPrice = Number(item.unitPrice)
+                            const itemSavings = listPrice !== null ? (listPrice - supplierUnitPrice) * item.quantity : null
+                            return (
+                              <tr key={item.id} className="border-b border-border/50">
+                                <td className="py-1.5 pr-4">
+                                  <span className="font-medium text-foreground">{item.partNumber}</span>
+                                  {item.part?.description && (
+                                    <span className="text-xs text-muted-foreground ml-1 hidden md:inline">
+                                      — {item.part.description.substring(0, 40)}{item.part.description.length > 40 ? '...' : ''}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="text-right py-1.5 px-2 text-muted-foreground">{item.quantity}</td>
+                                <td className="text-right py-1.5 px-2 text-muted-foreground">
+                                  {listPrice !== null ? `$${listPrice.toFixed(2)}` : '—'}
+                                </td>
+                                <td className="text-right py-1.5 px-2 font-medium text-foreground">
+                                  ${supplierUnitPrice.toFixed(2)}
+                                </td>
+                                <td className={`text-right py-1.5 pl-2 font-medium ${itemSavings !== null && itemSavings > 0 ? 'text-green-600 dark:text-green-400' : itemSavings !== null && itemSavings < 0 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
+                                  {itemSavings !== null ? (
+                                    `${itemSavings >= 0 ? '' : '-'}$${Math.abs(itemSavings).toFixed(2)}`
+                                  ) : '—'}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Quick Actions - Limited for Org Admins */}
       <Card>
