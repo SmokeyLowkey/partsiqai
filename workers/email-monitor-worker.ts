@@ -412,10 +412,12 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
             });
 
             if (originalMessage?.thread?.quoteRequestEmailThreads) {
-              // Update quote request email thread status
+              // Update quote request email thread status, but only if not already
+              // in a terminal/protected state (ACCEPTED = converted to order)
               await prisma.quoteRequestEmailThread.updateMany({
                 where: {
                   emailThreadId: originalMessage.thread.id,
+                  status: { notIn: ['ACCEPTED'] },
                 },
                 data: {
                   status: 'RESPONDED',

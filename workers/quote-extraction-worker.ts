@@ -540,11 +540,17 @@ export const quoteExtractionWorker = new Worker<QuoteExtractionJobData>(
       }
 
       if (existingQuoteRequestThread) {
-        // Update existing quote request with extracted data
+        // Only update quote request status to RECEIVED if it's still in an early state.
+        // Don't overwrite statuses that indicate further progress in the workflow
+        // (UNDER_REVIEW, APPROVED, REJECTED, CONVERTED_TO_ORDER).
+        const currentStatus = existingQuoteRequestThread.quoteRequest.status;
+        const protectedStatuses = ['UNDER_REVIEW', 'APPROVED', 'REJECTED', 'CONVERTED_TO_ORDER'];
+        const shouldUpdateStatus = !protectedStatuses.includes(currentStatus);
+
         await prisma.quoteRequest.update({
           where: { id: existingQuoteRequestThread.quoteRequestId },
           data: {
-            status: 'RECEIVED',
+            ...(shouldUpdateStatus ? { status: 'RECEIVED' } : {}),
             responseDate: new Date(),
             totalAmount: extractedData.totalAmount,
             notes: extractedData.notes
@@ -552,6 +558,13 @@ export const quoteExtractionWorker = new Worker<QuoteExtractionJobData>(
               : existingQuoteRequestThread.quoteRequest.notes,
           },
         });
+
+        if (!shouldUpdateStatus) {
+          workerLogger.info(
+            { currentStatus, quoteRequestId: existingQuoteRequestThread.quoteRequestId },
+            'Preserved quote request status (not overwriting with RECEIVED)'
+          );
+        }
 
         // Update quote request email thread
         await prisma.quoteRequestEmailThread.update({
