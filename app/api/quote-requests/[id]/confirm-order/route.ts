@@ -337,7 +337,7 @@ export async function POST(
       const lastMessage = supplierThread.emailThread.messages[0];
 
       // Send the email
-      const { messageId } = await emailClient.sendEmail(
+      const { messageId, threadId: gmailThreadId } = await emailClient.sendEmail(
         quoteRequest.supplier.email,
         emailSubject,
         `<div style="font-family: Arial, sans-serif; line-height: 1.6;">${htmlBody}</div>`,
@@ -348,6 +348,16 @@ export async function POST(
           inReplyTo: lastMessage?.externalMessageId || undefined,
         }
       );
+
+      // Update externalThreadId if Gmail assigned a different thread
+      // (happens when manager sends from a different Gmail account — the original
+      // threadId doesn't exist in their account, so Gmail creates a new thread)
+      if (gmailThreadId && gmailThreadId !== supplierThread.emailThread.externalThreadId) {
+        await prisma.emailThread.update({
+          where: { id: supplierThread.emailThread.id },
+          data: { externalThreadId: gmailThreadId },
+        });
+      }
 
       // Get from email - use current user if manager takeover, otherwise use technician
       const isManagerTakeover = !!quoteRequest.managerTakeover;

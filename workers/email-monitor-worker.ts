@@ -151,6 +151,35 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
             },
           });
 
+          // If no thread found by Gmail threadId, try to resolve via inReplyTo header.
+          // This handles cross-account threading: when a manager sends an order confirmation
+          // from their Gmail account, Gmail creates a new thread (different threadId).
+          // When the supplier replies, the reply's threadId won't match the original
+          // EmailThread.externalThreadId. We use the In-Reply-To header to find the
+          // original thread and link the reply correctly.
+          if (!thread && parsedEmail.inReplyTo) {
+            const replyToMessage = await prisma.emailMessage.findFirst({
+              where: {
+                externalMessageId: parsedEmail.inReplyTo,
+                thread: { organizationId },
+              },
+              include: { thread: true },
+            });
+
+            if (replyToMessage?.thread) {
+              thread = replyToMessage.thread;
+              // Update externalThreadId so future emails in this Gmail thread match directly
+              await prisma.emailThread.update({
+                where: { id: thread.id },
+                data: { externalThreadId: email.threadId },
+              });
+              workerLogger.info(
+                { threadId: thread.id, newExternalThreadId: email.threadId },
+                'Resolved thread via inReplyTo header (cross-account threading)'
+              );
+            }
+          }
+
           if (!thread) {
             // Create new thread with ownerUserId set to the user whose inbox this email was found in
             thread = await prisma.emailThread.create({
@@ -230,6 +259,7 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
           }
 
           // Also check if this email is a reply to one of our quote request threads
+          // (for updating quote request status — thread resolution already handled above)
           if (parsedEmail.inReplyTo) {
             const originalMessage = await prisma.emailMessage.findFirst({
               where: {
@@ -259,30 +289,34 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
                 },
               });
 
-              // Queue quote extraction for this response
-              await quoteExtractionQueue.add('extract-quote', {
-                organizationId,
-                emailThreadId: originalMessage.thread.id,
-                emailMessageId: emailMessage.id,
-                userId, // Use this user's credentials for attachment downloads
-                emailData: {
-                  id: email.id,
-                  threadId: email.threadId,
-                  subject: parsedEmail.subject,
-                  body: parsedEmail.body,
-                  from: parsedEmail.from,
-                  date: email.date,
-                },
-                attachments: email.attachments.map((att: any) => ({
-                  id: `${email.id}-${att.attachmentId}`,
-                  filename: att.filename,
-                  contentType: att.mimeType,
-                  size: att.size,
-                  gmailAttachmentId: att.attachmentId,
-                })),
-              });
+              // Only queue additional extraction if the message ended up in a different thread
+              // than the original. If thread was resolved via inReplyTo above, the message is
+              // already in the correct thread and extraction was already queued.
+              if (originalMessage.thread.id !== thread.id) {
+                await quoteExtractionQueue.add('extract-quote', {
+                  organizationId,
+                  emailThreadId: originalMessage.thread.id,
+                  emailMessageId: emailMessage.id,
+                  userId,
+                  emailData: {
+                    id: email.id,
+                    threadId: email.threadId,
+                    subject: parsedEmail.subject,
+                    body: parsedEmail.body,
+                    from: parsedEmail.from,
+                    date: email.date,
+                  },
+                  attachments: email.attachments.map((att: any) => ({
+                    id: `${email.id}-${att.attachmentId}`,
+                    filename: att.filename,
+                    contentType: att.mimeType,
+                    size: att.size,
+                    gmailAttachmentId: att.attachmentId,
+                  })),
+                });
 
-              workerLogger.info({ threadId: originalMessage.thread.id }, 'Queued quote extraction for reply to quote request thread');
+                workerLogger.info({ threadId: originalMessage.thread.id }, 'Queued quote extraction for reply to quote request thread');
+              }
             }
           }
 

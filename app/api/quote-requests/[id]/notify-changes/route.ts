@@ -165,11 +165,12 @@ export async function POST(
           },
         });
 
-        // Update thread status
+        // Update thread status and externalThreadId (may differ if sent from different account)
         await prisma.emailThread.update({
           where: { id: emailThread.emailThread.id },
           data: {
             status: 'WAITING_RESPONSE',
+            externalThreadId: sentMessage.threadId || emailThread.emailThread.externalThreadId,
           },
         });
 

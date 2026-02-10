@@ -998,6 +998,97 @@ export const quoteExtractionWorker = new Worker<QuoteExtractionJobData>(
           },
         });
 
+        // Still check for associated orders for tracking extraction
+        // (order replies may not have a linked quote request, e.g., after cross-account threading)
+        if (llmClient) {
+          try {
+            const associatedOrder = await prisma.order.findFirst({
+              where: { emailThreadId },
+              select: {
+                id: true,
+                orderNumber: true,
+                status: true,
+                trackingNumber: true,
+              },
+            });
+
+            if (associatedOrder) {
+              workerLogger.info({ orderNumber: associatedOrder.orderNumber }, 'Email thread associated with order, checking for tracking info');
+
+              const trackingData = await extractTrackingWithLLM(
+                llmClient,
+                emailData,
+                attachmentText,
+                associatedOrder.orderNumber
+              );
+
+              const orderUpdateData: any = {};
+              let hasTrackingUpdates = false;
+
+              if (trackingData.trackingNumber) {
+                orderUpdateData.trackingNumber = trackingData.trackingNumber;
+                hasTrackingUpdates = true;
+              }
+              if (trackingData.carrier) {
+                orderUpdateData.shippingCarrier = trackingData.carrier;
+                hasTrackingUpdates = true;
+              }
+              if (trackingData.shippingMethod) {
+                orderUpdateData.shippingMethod = trackingData.shippingMethod;
+                hasTrackingUpdates = true;
+              }
+              if (trackingData.estimatedDeliveryDate) {
+                try {
+                  orderUpdateData.expectedDelivery = new Date(trackingData.estimatedDeliveryDate);
+                  hasTrackingUpdates = true;
+                } catch (e) {
+                  workerLogger.warn({ estimatedDeliveryDate: trackingData.estimatedDeliveryDate }, 'Invalid estimated delivery date');
+                }
+              }
+              if (trackingData.actualDeliveryDate) {
+                try {
+                  orderUpdateData.actualDelivery = new Date(trackingData.actualDeliveryDate);
+                  hasTrackingUpdates = true;
+                } catch (e) {
+                  workerLogger.warn({ actualDeliveryDate: trackingData.actualDeliveryDate }, 'Invalid actual delivery date');
+                }
+              }
+              if (trackingData.orderStatus && trackingData.orderStatus !== associatedOrder.status) {
+                const statusMapping: Record<string, string> = {
+                  'CONFIRMED': 'PROCESSING',
+                  'SHIPPED': 'IN_TRANSIT',
+                  'ON_HOLD': 'PENDING',
+                };
+                const mappedStatus = statusMapping[trackingData.orderStatus] || trackingData.orderStatus;
+                orderUpdateData.status = mappedStatus as any;
+                hasTrackingUpdates = true;
+                workerLogger.info({ previousStatus: associatedOrder.status, newStatus: mappedStatus }, 'Updating order status');
+              }
+              if (trackingData.notes) {
+                const existingOrder = await prisma.order.findUnique({
+                  where: { id: associatedOrder.id },
+                  select: { internalNotes: true },
+                });
+                const timestamp = new Date().toISOString();
+                orderUpdateData.internalNotes = (existingOrder?.internalNotes || '') + `\n\n[${timestamp}] Tracking Update: ${trackingData.notes}`;
+                hasTrackingUpdates = true;
+              }
+
+              if (hasTrackingUpdates) {
+                await prisma.order.update({
+                  where: { id: associatedOrder.id },
+                  data: { ...orderUpdateData, updatedAt: new Date() },
+                });
+                workerLogger.info({ orderNumber: associatedOrder.orderNumber }, 'Updated order with tracking information');
+              } else {
+                workerLogger.debug({ orderNumber: associatedOrder.orderNumber }, 'No tracking information found in email for order');
+              }
+            }
+          } catch (trackingError: any) {
+            workerLogger.error({ err: trackingError }, 'Error extracting tracking information');
+          }
+        }
+
         await job.updateProgress(100);
 
         workerLogger.info({ jobId: job.id }, 'Quote extraction job completed, no matching quote request found');

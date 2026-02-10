@@ -135,7 +135,7 @@ export async function POST(
       .replace(/\n/g, '<br>');
 
     // Send the follow-up email as a reply in the same thread
-    const { messageId } = await emailClient.sendEmail(
+    const { messageId, threadId: gmailThreadId } = await emailClient.sendEmail(
       quoteRequestEmailThread.supplier.email,
       subject,
       `<div style="font-family: Arial, sans-serif; line-height: 1.6;">${htmlBody}</div>`,
@@ -148,6 +148,15 @@ export async function POST(
         inReplyTo: originalMessage?.externalMessageId || undefined,
       }
     );
+
+    // Update externalThreadId if Gmail assigned a different thread
+    // (happens when sending from a different Gmail account than the original)
+    if (gmailThreadId && gmailThreadId !== quoteRequestEmailThread.emailThread.externalThreadId) {
+      await prisma.emailThread.update({
+        where: { id: quoteRequestEmailThread.emailThread.id },
+        data: { externalThreadId: gmailThreadId },
+      });
+    }
 
     // Get from email
     const fromEmail =
