@@ -180,6 +180,57 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
             }
           }
 
+          // Fallback 3: Try to match by order/quote number in subject line.
+          // Handles the case where a supplier composes a fresh email (not a reply)
+          // referencing an existing order or quote number.
+          if (!thread) {
+            const orderMatch = parsedEmail.subject.match(/ORD-\d{4}-\d{4}/);
+            const quoteMatch = parsedEmail.subject.match(/QR-\d{2}-\d{4}-\d{4}/);
+
+            if (orderMatch) {
+              const order = await prisma.order.findFirst({
+                where: { organizationId, orderNumber: orderMatch[0] },
+                include: { emailThread: true },
+              });
+              if (order?.emailThread) {
+                thread = order.emailThread;
+                await prisma.emailThread.update({
+                  where: { id: thread.id },
+                  data: { externalThreadId: email.threadId },
+                });
+                workerLogger.info(
+                  { threadId: thread.id, orderNumber: orderMatch[0], newExternalThreadId: email.threadId },
+                  'Resolved thread via order number in subject line'
+                );
+              }
+            }
+
+            if (!thread && quoteMatch) {
+              const quoteRequest = await prisma.quoteRequest.findFirst({
+                where: { organizationId, quoteNumber: quoteMatch[0] },
+                include: {
+                  emailThreads: {
+                    ...(supplier?.id ? { where: { supplierId: supplier.id } } : {}),
+                    include: { emailThread: true },
+                    take: 1,
+                  },
+                },
+              });
+              const qrThread = quoteRequest?.emailThreads[0]?.emailThread;
+              if (qrThread) {
+                thread = qrThread;
+                await prisma.emailThread.update({
+                  where: { id: thread.id },
+                  data: { externalThreadId: email.threadId },
+                });
+                workerLogger.info(
+                  { threadId: thread.id, quoteNumber: quoteMatch[0], newExternalThreadId: email.threadId },
+                  'Resolved thread via quote number in subject line'
+                );
+              }
+            }
+          }
+
           if (!thread) {
             // Create new thread with ownerUserId set to the user whose inbox this email was found in
             thread = await prisma.emailThread.create({
