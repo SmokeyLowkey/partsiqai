@@ -126,8 +126,8 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
           // Parse email to extract data
           const parsedEmail = parseEmailData(email, emailParser);
 
-          // Match supplier by email
-          const supplier = await prisma.supplier.findFirst({
+          // Match supplier by exact email (primary or auxiliary)
+          let supplier = await prisma.supplier.findFirst({
             where: {
               organizationId,
               OR: [
@@ -143,6 +143,47 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
             },
           });
 
+          // If no exact match, try matching by email domain.
+          // This catches emails from other contacts at the same supplier company
+          // (e.g., john@acme.com when the registered supplier email is orders@acme.com).
+          if (!supplier) {
+            const senderDomain = parsedEmail.from.split('@')[1]?.toLowerCase();
+            if (senderDomain) {
+              supplier = await prisma.supplier.findFirst({
+                where: {
+                  organizationId,
+                  OR: [
+                    { email: { endsWith: `@${senderDomain}` } },
+                    {
+                      auxiliaryEmails: {
+                        some: {
+                          email: { endsWith: `@${senderDomain}` },
+                        },
+                      },
+                    },
+                  ],
+                },
+              });
+              if (supplier) {
+                workerLogger.info(
+                  { from: parsedEmail.from, supplierId: supplier.id, supplierName: supplier.name },
+                  'Matched supplier by email domain'
+                );
+              }
+            }
+          }
+
+          // Skip emails not from any known supplier domain — reduces junk in the database.
+          // Only process emails from senders whose email or domain matches a registered supplier.
+          if (!supplier) {
+            workerLogger.debug(
+              { from: parsedEmail.from, subject: parsedEmail.subject },
+              'Skipping email — sender does not match any known supplier'
+            );
+            skippedCount++;
+            continue;
+          }
+
           // Create or find email thread by external thread ID
           let thread = await prisma.emailThread.findFirst({
             where: {
@@ -150,6 +191,48 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
               externalThreadId: email.threadId,
             },
           });
+
+          // Verify the found thread is actually linked to the order/quote referenced
+          // in the subject. If not, the thread is orphaned from a previous cross-account
+          // send (before the externalThreadId fix was deployed). Redirect to the correct
+          // thread and move any orphaned messages.
+          if (thread) {
+            const orderMatch = parsedEmail.subject.match(/ORD-\d{4}-\d{4}/);
+            if (orderMatch) {
+              const order = await prisma.order.findFirst({
+                where: { organizationId, orderNumber: orderMatch[0] },
+                select: { emailThreadId: true },
+              });
+              if (order?.emailThreadId && order.emailThreadId !== thread.id) {
+                const correctThread = await prisma.emailThread.findUnique({
+                  where: { id: order.emailThreadId },
+                });
+                if (correctThread) {
+                  const orphanedThreadId = thread.id;
+                  // Move any existing messages from orphaned thread to the correct thread
+                  const moved = await prisma.emailMessage.updateMany({
+                    where: { threadId: orphanedThreadId },
+                    data: { threadId: correctThread.id },
+                  });
+                  // Clear orphaned thread's externalThreadId so it doesn't match again
+                  await prisma.emailThread.update({
+                    where: { id: orphanedThreadId },
+                    data: { externalThreadId: null },
+                  });
+                  // Update correct thread's externalThreadId
+                  await prisma.emailThread.update({
+                    where: { id: correctThread.id },
+                    data: { externalThreadId: email.threadId },
+                  });
+                  thread = correctThread;
+                  workerLogger.info(
+                    { correctThreadId: correctThread.id, orphanedThreadId, orderNumber: orderMatch[0], movedMessages: moved.count },
+                    'Redirected from orphaned thread to order thread (moved existing messages)'
+                  );
+                }
+              }
+            }
+          }
 
           // If no thread found by Gmail threadId, try to resolve via inReplyTo header.
           // This handles cross-account threading: when a manager sends an order confirmation
