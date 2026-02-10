@@ -251,18 +251,18 @@ export default function PartDetailPage({ params }: { params: Promise<{ id: strin
       </div>
 
       {/* Part Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">{part.partNumber}</h1>
-          <p className="text-lg text-muted-foreground">{part.description}</p>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <h1 className="text-3xl font-bold text-foreground break-words">{part.partNumber}</h1>
+          <p className="text-lg text-muted-foreground line-clamp-2 mt-1">{part.description}</p>
           {part.category && (
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="text-sm text-muted-foreground mt-1 truncate">
               {part.category}
               {part.subcategory && ` > ${part.subcategory}`}
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           {getAvailabilityBadge(part.availability)}
           {part.isObsolete && (
             <Badge variant="destructive">Obsolete</Badge>
@@ -417,17 +417,17 @@ export default function PartDetailPage({ params }: { params: Promise<{ id: strin
                     {part.suppliers.map((supplier, index) => (
                       <TableRow key={supplier.id}>
                         <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{supplier.supplierName}</span>
+                          <div className="flex items-center gap-2 max-w-[200px]">
+                            <span className="font-medium truncate">{supplier.supplierName}</span>
                             {supplier.isPreferred && (
-                              <Star className="h-4 w-4 text-yellow-500 fill-current" />
+                              <Star className="h-4 w-4 text-yellow-500 fill-current flex-shrink-0" />
                             )}
                             {index === 0 && (
-                              <Badge className="bg-green-600 text-white text-xs">Best</Badge>
+                              <Badge className="bg-green-600 text-white text-xs flex-shrink-0">Best</Badge>
                             )}
                           </div>
                           {supplier.supplierPartNumber && (
-                            <p className="text-xs text-muted-foreground">
+                            <p className="text-xs text-muted-foreground truncate max-w-[200px]">
                               #{supplier.supplierPartNumber}
                             </p>
                           )}
@@ -560,10 +560,13 @@ export default function PartDetailPage({ params }: { params: Promise<{ id: strin
                     <Button
                       key={vehicle.id}
                       variant="outline"
-                      className="w-full justify-start"
+                      className="w-full justify-start truncate"
                       onClick={() => router.push(`/customer/vehicles/${vehicle.id}`)}
+                      title={`${vehicle.year} ${vehicle.make} ${vehicle.model}`}
                     >
-                      {vehicle.year} {vehicle.make} {vehicle.model}
+                      <span className="truncate">
+                        {vehicle.year} {vehicle.make} {vehicle.model}
+                      </span>
                     </Button>
                   ))}
                 </div>
@@ -594,9 +597,9 @@ export default function PartDetailPage({ params }: { params: Promise<{ id: strin
                       </AccordionTrigger>
                       <AccordionContent>
                         <div className="space-y-1 text-sm">
-                          <p className="font-medium">{interval.serviceName}</p>
+                          <p className="font-medium break-words">{interval.serviceName}</p>
                           {interval.category && (
-                            <p className="text-muted-foreground">
+                            <p className="text-muted-foreground truncate">
                               Category: {interval.category}
                             </p>
                           )}

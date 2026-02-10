@@ -212,13 +212,14 @@ export default async function AdminDashboardPage() {
     redirect("/login")
   }
 
-  if (currentUser.role !== "MASTER_ADMIN" && currentUser.role !== "ADMIN") {
+  if (currentUser.role !== "MASTER_ADMIN" && currentUser.role !== "ADMIN" && currentUser.role !== "MANAGER") {
     redirect("/login")
   }
 
   const isMasterAdmin = currentUser.role === "MASTER_ADMIN"
 
   // Render different dashboards based on role
+  // Managers and Admins see org-level dashboard, Master Admins see platform-wide
   if (isMasterAdmin) {
     const stats = await getMasterAdminStats()
     return <MasterAdminDashboard stats={stats} />

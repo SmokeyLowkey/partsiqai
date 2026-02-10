@@ -18,6 +18,9 @@ export async function POST(
     const { id: quoteRequestId } = await params;
     const body = await request.json();
     const { notes } = body;
+    
+    // Sanitize notes (convert empty string to null)
+    const sanitizedNotes = notes && notes.trim() ? notes.trim() : null;
 
     // Get the quote request
     const quoteRequest = await prisma.quoteRequest.findFirst({
@@ -71,7 +74,7 @@ export async function POST(
       data: {
         requiresApproval: true,
         status: "UNDER_REVIEW",
-        approvalNotes: notes,
+        approvalNotes: sanitizedNotes,
       },
       include: {
         createdBy: {
@@ -93,13 +96,13 @@ export async function POST(
       data: {
         type: "QUOTE_REQUESTED",
         title: "Quote approval requested",
-        description: `${currentUser.name} requested approval for quote ${quoteRequest.quoteNumber}`,
+        description: `${currentUser.name || currentUser.email} requested approval for quote ${quoteRequest.quoteNumber}`,
         userId: currentUser.id,
         organizationId: currentUser.organizationId,
         metadata: {
           quoteRequestId,
           quoteNumber: quoteRequest.quoteNumber,
-          notes,
+          notes: sanitizedNotes,
         },
       },
     });

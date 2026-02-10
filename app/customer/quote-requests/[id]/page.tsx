@@ -320,7 +320,21 @@ export default function QuoteRequestDetailPage() {
               {selectedSuppliers.length > 0 && ` (${selectedSuppliers.length})`}
             </Button>
           )}
-          <Button variant="outline" onClick={() => setShowEditDialog(true)} disabled={updating}>
+          
+          {/* Edit button - disabled for technicians when under review */}
+          <Button 
+            variant="outline" 
+            onClick={() => setShowEditDialog(true)} 
+            disabled={
+              updating || 
+              (userRole === 'TECHNICIAN' && quoteRequest.status === 'UNDER_REVIEW')
+            }
+            title={
+              userRole === 'TECHNICIAN' && quoteRequest.status === 'UNDER_REVIEW' 
+                ? 'Cannot edit quote while under review' 
+                : 'Edit quote'
+            }
+          >
             <Edit className="h-4 w-4 mr-2" />
             Edit Quote
           </Button>

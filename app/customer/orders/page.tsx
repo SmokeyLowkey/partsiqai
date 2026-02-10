@@ -169,6 +169,57 @@ export default function OrdersPage() {
         </CardContent>
       </Card>
 
+      {/* Summary Stats */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Pending Quote</p>
+                <p className="text-2xl font-bold">{stats.pendingQuote}</p>
+              </div>
+              <AlertCircle className="h-8 w-8 text-orange-500" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Processing</p>
+                <p className="text-2xl font-bold">{stats.processing}</p>
+              </div>
+              <Clock className="h-8 w-8 text-blue-500" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">In Transit</p>
+                <p className="text-2xl font-bold">{stats.inTransit}</p>
+              </div>
+              <Truck className="h-8 w-8 text-purple-500" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Delivered</p>
+                <p className="text-2xl font-bold">{stats.delivered}</p>
+              </div>
+              <CheckCircle className="h-8 w-8 text-green-500" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Orders List */}
       <div className="space-y-4">
         {loading ? (
@@ -306,57 +357,6 @@ export default function OrdersPage() {
             </CardContent>
           </Card>
         )}
-      </div>
-
-      {/* Summary Stats */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Pending Quote</p>
-                <p className="text-2xl font-bold">{stats.pendingQuote}</p>
-              </div>
-              <AlertCircle className="h-8 w-8 text-orange-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Processing</p>
-                <p className="text-2xl font-bold">{stats.processing}</p>
-              </div>
-              <Clock className="h-8 w-8 text-blue-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">In Transit</p>
-                <p className="text-2xl font-bold">{stats.inTransit}</p>
-              </div>
-              <Truck className="h-8 w-8 text-purple-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Delivered</p>
-                <p className="text-2xl font-bold">{stats.delivered}</p>
-              </div>
-              <CheckCircle className="h-8 w-8 text-green-500" />
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
   )

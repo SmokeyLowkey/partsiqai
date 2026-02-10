@@ -276,25 +276,33 @@ export function ReplyDialog({
               </p>
             </div>
 
-            {/* Additional Context (conditional) */}
-            {(scenario === 'price_negotiation' || scenario === 'add_parts') && (
-              <div className="space-y-2">
-                <Label htmlFor="additional-context">
-                  {scenario === 'price_negotiation' ? 'Target Price or Details' : 'Part Numbers to Add'}
-                </Label>
-                <Input
-                  id="additional-context"
-                  value={additionalContext}
-                  onChange={(e) => setAdditionalContext(e.target.value)}
-                  placeholder={
-                    scenario === 'price_negotiation'
-                      ? 'e.g., Can you match $50/unit? Or: Looking for better terms'
-                      : 'e.g., 4630526, 4630527, 4630528'
-                  }
-                  disabled={sending || success}
-                />
-              </div>
-            )}
+            {/* Additional Context (for all scenarios) */}
+            <div className="space-y-2">
+              <Label htmlFor="additional-context">
+                {scenario === 'price_negotiation' && 'Target Price or Details'}
+                {scenario === 'add_parts' && 'Part Numbers to Add'}
+                {scenario === 'availability' && 'Specific Parts or Details'}
+                {scenario === 'general' && 'Additional Information'}
+              </Label>
+              <Input
+                id="additional-context"
+                value={additionalContext}
+                onChange={(e) => setAdditionalContext(e.target.value)}
+                placeholder={
+                  scenario === 'price_negotiation'
+                    ? 'e.g., Can you match $50/unit? Or: Looking for better terms'
+                    : scenario === 'add_parts'
+                    ? 'e.g., 4630526, 4630527, 4630528'
+                    : scenario === 'availability'
+                    ? 'e.g., Part numbers or specific items to check'
+                    : 'e.g., Additional context, questions, or specific details'
+                }
+                disabled={sending || success}
+              />
+              <p className="text-xs text-muted-foreground">
+                Optional: Add specific details to help generate a more relevant reply
+              </p>
+            </div>
 
             {/* Generate Reply Button - Prominent placement */}
             <div className="flex justify-center py-2">

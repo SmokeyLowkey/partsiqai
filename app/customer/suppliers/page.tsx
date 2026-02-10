@@ -76,6 +76,9 @@ export default function SuppliersPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [formErrors, setFormErrors] = useState<FormErrors>({});
@@ -177,8 +180,14 @@ export default function SuppliersPage() {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch('/api/suppliers', {
-        method: 'POST',
+      const url = isEditDialogOpen && selectedSupplier 
+        ? `/api/suppliers/${selectedSupplier.id}`
+        : '/api/suppliers';
+      
+      const method = isEditDialogOpen && selectedSupplier ? 'PATCH' : 'POST';
+      
+      const response = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
         },
@@ -188,13 +197,23 @@ export default function SuppliersPage() {
       const data = await response.json();
 
       if (response.ok) {
-        setSuppliers([data.supplier, ...suppliers]);
-        setIsAddDialogOpen(false);
+        if (isEditDialogOpen && selectedSupplier) {
+          setSuppliers(suppliers.map(s => s.id === selectedSupplier.id ? data.supplier : s));
+          setIsEditDialogOpen(false);
+          toast({
+            title: 'Supplier updated successfully',
+            description: `${data.supplier.name} has been updated.`,
+          });
+        } else {
+          setSuppliers([data.supplier, ...suppliers]);
+          setIsAddDialogOpen(false);
+          toast({
+            title: 'Supplier added successfully',
+            description: `${data.supplier.name} has been added to your supplier network.`,
+          });
+        }
         resetForm();
-        toast({
-          title: 'Supplier added successfully',
-          description: `${data.supplier.name} has been added to your supplier network.`,
-        });
+        setSelectedSupplier(null);
       } else if (response.status === 409) {
         setFormErrors({ supplierId: 'This Supplier ID already exists' });
         toast({
@@ -213,12 +232,56 @@ export default function SuppliersPage() {
       } else {
         toast({
           variant: 'destructive',
-          title: 'Failed to add supplier',
+          title: isEditDialogOpen ? 'Failed to update supplier' : 'Failed to add supplier',
           description: data.error || 'An unexpected error occurred.',
         });
       }
     } catch (error) {
-      console.error('Error creating supplier:', error);
+      console.error('Error saving supplier:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Connection Error',
+        description: 'Could not connect to the server. Please try again.',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleEdit = (supplier: Supplier) => {
+    setSelectedSupplier(supplier);
+    setFormData(supplier);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (!selectedSupplier) return;
+
+    setIsSubmitting(true);
+
+    try {
+      const response = await fetch(`/api/suppliers/${selectedSupplier.id}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        setSuppliers(suppliers.filter(s => s.id !== selectedSupplier.id));
+        setIsDeleteDialogOpen(false);
+        setSelectedSupplier(null);
+        toast({
+          title: 'Supplier deleted',
+          description: `${selectedSupplier.name} has been removed from your supplier network.`,
+        });
+      } else {
+        const data = await response.json();
+        toast({
+          variant: 'destructive',
+          title: 'Failed to delete supplier',
+          description: data.error || 'An unexpected error occurred.',
+        });
+      }
+    } catch (error) {
+      console.error('Error deleting supplier:', error);
       toast({
         variant: 'destructive',
         title: 'Connection Error',
@@ -648,11 +711,24 @@ export default function SuppliersPage() {
 
               {/* Actions */}
               <div className="flex gap-2 pt-2">
-                <Button variant="outline" size="sm" className="flex-1">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="flex-1"
+                  onClick={() => handleEdit(supplier)}
+                >
                   <Edit className="h-3 w-3 mr-1" />
                   Edit
                 </Button>
-                <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="text-red-600 hover:text-red-700"
+                  onClick={() => {
+                    setSelectedSupplier(supplier);
+                    setIsDeleteDialogOpen(true);
+                  }}
+                >
                   <Trash2 className="h-3 w-3" />
                 </Button>
               </div>
@@ -660,7 +736,76 @@ export default function SuppliersPage() {
           </Card>
         ))}
       </div>
+      {/* Edit Supplier Dialog */}
+      <Dialog
+        open={isEditDialogOpen}
+        onOpenChange={(open) => {
+          setIsEditDialogOpen(open);
+          if (!open) {
+            resetForm();
+            setSelectedSupplier(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Supplier</DialogTitle>
+            <DialogDescription>
+              Update supplier information
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Same form fields as Add dialog - omitted for brevity */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-name">Supplier Name *</Label>
+                <Input
+                  id="edit-name"
+                  value={formData.name || ''}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-supplierId">Supplier ID *</Label>
+                <Input
+                  id="edit-supplierId"
+                  value={formData.supplierId || ''}
+                  onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}
+                  disabled
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Supplier</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete {selectedSupplier?.name}? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)} disabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={isSubmitting}>
+              {isSubmitting ? 'Deleting...' : 'Delete Supplier'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {filteredSuppliers.length === 0 && (
         <Card>
           <CardContent className="py-12 text-center">
