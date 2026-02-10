@@ -77,34 +77,19 @@ export async function PATCH(
       },
     });
 
-    // Check if all items are now received and update order status
+    // Check if all items are now received (for frontend to show complete button)
     const allItems = await prisma.orderItem.findMany({
       where: { orderId },
     });
 
-    const allReceived = allItems.every(
+    const allItemsReceived = allItems.every(
       (item) => item.quantityReceived >= item.quantity
     );
 
-    if (allReceived && order.status !== 'DELIVERED') {
-      await prisma.order.update({
-        where: { id: orderId },
-        data: {
-          status: 'DELIVERED',
-          actualDelivery: new Date(),
-        },
-      });
-    } else if (!allReceived && order.status === 'DELIVERED') {
-      // If we're unchecking items, revert from DELIVERED
-      await prisma.order.update({
-        where: { id: orderId },
-        data: {
-          status: 'IN_TRANSIT',
-        },
-      });
-    }
-
-    return NextResponse.json({ item: updatedItem });
+    return NextResponse.json({ 
+      item: updatedItem,
+      allItemsReceived,
+    });
   } catch (error) {
     console.error('Error updating order item:', error);
     return NextResponse.json(

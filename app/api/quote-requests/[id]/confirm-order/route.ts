@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession, canConvertToOrder } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getEmailClientForUser } from '@/lib/services/email/email-client-factory';
-import { recordOrderCostSavings } from '@/lib/services/cost-savings';
 import { generateOrderNumber } from '@/lib/utils/order-number';
 
 // POST /api/quote-requests/[id]/confirm-order - Actually create order and send email
@@ -319,11 +318,6 @@ export async function POST(
       });
 
       return newOrder;
-    });
-
-    // Record cost savings for this order (async, non-blocking)
-    recordOrderCostSavings(order.id).catch(err => {
-      console.error('Failed to record cost savings:', err);
     });
 
     // Send the email

@@ -36,6 +36,7 @@ import {
   RefreshCw,
   PiggyBank,
   ExternalLink,
+  Clock,
 } from "lucide-react";
 
 type AnalyticsData = {
@@ -103,6 +104,39 @@ type AnalyticsData = {
       ordersProcessed: number;
     }>;
   };
+  deliveryPerformance?: {
+    avgLeadTimeDays: number;
+    onTimeDeliveryRate: number;
+    fulfillmentRate: number;
+    totalOrdersCompleted: number;
+    recentCompletedOrders: Array<{
+      orderId: string;
+      orderNumber: string;
+      completedAt: Date;
+      leadTimeDays: number;
+      onTime: boolean;
+      totalAmount: number;
+    }>;
+  };
+  supplierPerformance?: Array<{
+    supplierIdentifier: string;
+    month: number;
+    year: number;
+    ordersDelivered: number;
+    avgLeadTimeDays: number;
+    onTimeRate: number;
+    totalSavings: number;
+    avgSavings: number;
+  }>;
+  orderTrends?: Array<{
+    month: number;
+    year: number;
+    ordersCompleted: number;
+    totalRevenue: number;
+    avgOrderValue: number;
+    avgLeadTime: number;
+    onTimeRate: number;
+  }>;
 };
 
 export default function AnalyticsPage() {
@@ -315,6 +349,100 @@ export default function AnalyticsPage() {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* Delivery Performance Section */}
+      {analytics.deliveryPerformance && analytics.deliveryPerformance.totalOrdersCompleted > 0 && (
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Avg Lead Time</CardTitle>
+              <Clock className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {analytics.deliveryPerformance.avgLeadTimeDays} days
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Order to delivery time
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">On-Time Delivery</CardTitle>
+              <Truck className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {analytics.deliveryPerformance.onTimeDeliveryRate.toFixed(1)}%
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Delivered on or before expected date
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Fulfillment Rate</CardTitle>
+              <Package className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {analytics.deliveryPerformance.fulfillmentRate.toFixed(1)}%
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {analytics.deliveryPerformance.totalOrdersCompleted} orders completed
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Supplier Performance Section */}
+      {analytics.supplierPerformance && analytics.supplierPerformance.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Supplier Performance</CardTitle>
+            <CardDescription>Monthly supplier delivery metrics</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Supplier</TableHead>
+                  <TableHead>Period</TableHead>
+                  <TableHead className="text-center">Orders</TableHead>
+                  <TableHead className="text-center">Avg Lead Time</TableHead>
+                  <TableHead className="text-center">On-Time Rate</TableHead>
+                  <TableHead className="text-right">Avg Savings</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {analytics.supplierPerformance.slice(0, 10).map((supplier, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell className="font-medium">{supplier.supplierIdentifier}</TableCell>
+                    <TableCell>
+                      {new Date(supplier.year, supplier.month - 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                    </TableCell>
+                    <TableCell className="text-center">{supplier.ordersDelivered}</TableCell>
+                    <TableCell className="text-center">{supplier.avgLeadTimeDays.toFixed(1)} days</TableCell>
+                    <TableCell className="text-center">
+                      <Badge variant={supplier.onTimeRate >= 80 ? "default" : "secondary"}>
+                        {supplier.onTimeRate.toFixed(1)}%
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      ${supplier.avgSavings.toFixed(2)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       )}
 
       {/* Charts and Detailed Metrics */}

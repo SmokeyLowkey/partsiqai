@@ -563,7 +563,10 @@ model Order {
   pickupLocation     String?
   pickupDate         DateTime?
   shippingCarrier    String?
+  completedAt        DateTime?
+  completedBy        String?
   orderItems         OrderItem[]
+  orderAnalytics     OrderAnalytics?
   createdBy          User              @relation(fields: [createdById], references: [id])
   emailThread        EmailThread?      @relation(fields: [emailThreadId], references: [id])
   organization       Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -625,6 +628,54 @@ model CostSavingsRecord {
   @@unique([organizationId, month, year])
   @@index([organizationId])
   @@map("cost_savings_records")
+}
+
+model OrderAnalytics {
+  id                    String       @id @default(cuid())
+  orderId               String       @unique
+  organizationId        String
+  completedAt           DateTime
+  totalLeadTimeDays     Int
+  expectedVsActualDays  Int
+  onTimeDelivery        Boolean
+  itemsFulfilled        Int
+  itemsOrdered          Int
+  fulfillmentRate       Decimal      @db.Decimal(5, 2)
+  actualSavings         Decimal      @db.Decimal(10, 2)
+  manualCost            Decimal      @db.Decimal(10, 2)
+  platformCost          Decimal      @db.Decimal(10, 2)
+  savingsPercent        Decimal      @db.Decimal(5, 2)
+  supplierIdentifier    String?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  order                 Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, completedAt])
+  @@index([supplierIdentifier])
+  @@map("order_analytics")
+}
+
+model SupplierPerformance {
+  id                 String       @id @default(cuid())
+  supplierIdentifier String
+  organizationId     String
+  month              Int
+  year               Int
+  ordersDelivered    Int          @default(0)
+  totalLeadTimeDays  Int          @default(0)
+  onTimeDeliveries   Int          @default(0)
+  avgLeadTimeDays    Decimal?     @db.Decimal(8, 2)
+  onTimeRate         Decimal?     @db.Decimal(5, 2)
+  totalSavings       Decimal      @default(0) @db.Decimal(10, 2)
+  avgSavings         Decimal?     @db.Decimal(10, 2)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@unique([organizationId, supplierIdentifier, month, year])
+  @@index([organizationId])
+  @@index([supplierIdentifier])
+  @@map("supplier_performance")
 }
 
 model ActivityLog {

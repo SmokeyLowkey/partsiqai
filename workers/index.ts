@@ -23,6 +23,7 @@ import { quoteExtractionWorker } from './quote-extraction-worker';
 import { followUpWorker } from './follow-up-worker';
 import { maintenancePdfWorker } from './maintenance-pdf-worker';
 import { partsIngestionWorker } from './parts-ingestion-worker';
+import { analyticsCollectionWorker } from './analytics-collection-worker';
 
 workerLogger.info('Starting PartsIQ Workers');
 
@@ -37,6 +38,7 @@ const workers = [
   { name: 'Follow-Up', worker: followUpWorker },
   { name: 'Maintenance PDF', worker: maintenancePdfWorker },
   { name: 'Parts Ingestion', worker: partsIngestionWorker },
+  { name: 'Analytics Collection', worker: analyticsCollectionWorker },
 ];
 
 // Graceful shutdown handler

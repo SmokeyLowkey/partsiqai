@@ -66,6 +66,7 @@ export async function calculateOrderCostSavings(orderId: string): Promise<CostSa
 
 /**
  * Record cost savings for an order into the monthly aggregated CostSavingsRecord
+ * @deprecated Use finalizeOrderCostSavings instead - called when order is DELIVERED, not created
  */
 export async function recordOrderCostSavings(orderId: string): Promise<void> {
   try {
@@ -153,6 +154,116 @@ export async function recordOrderCostSavings(orderId: string): Promise<void> {
   } catch (error) {
     console.error('Failed to record cost savings:', error);
     // Don't throw - cost savings recording shouldn't break order flow
+  }
+}
+
+/**
+ * Finalize cost savings for a delivered order
+ * This should be called when an order is completed/delivered, not when created
+ * Uses the completion date (actualDelivery) for month/year calculation
+ */
+export async function finalizeOrderCostSavings(orderId: string): Promise<CostSavingsResult | null> {
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { 
+        organizationId: true, 
+        actualDelivery: true,
+        status: true,
+      },
+    });
+
+    if (!order) {
+      console.error(`Order not found: ${orderId}`);
+      return null;
+    }
+
+    if (order.status !== 'DELIVERED') {
+      console.error(`Order ${orderId} is not in DELIVERED status`);
+      return null;
+    }
+
+    if (!order.actualDelivery) {
+      console.error(`Order ${orderId} has no actual delivery date`);
+      return null;
+    }
+
+    const savings = await calculateOrderCostSavings(orderId);
+    if (!savings) {
+      return null;
+    }
+
+    // Use actual delivery date for month/year (not creation date)
+    const month = order.actualDelivery.getMonth() + 1; // 1-indexed
+    const year = order.actualDelivery.getFullYear();
+
+    // Upsert the monthly cost savings record
+    await prisma.costSavingsRecord.upsert({
+      where: {
+        organizationId_month_year: {
+          organizationId: order.organizationId,
+          month,
+          year,
+        },
+      },
+      create: {
+        organizationId: order.organizationId,
+        month,
+        year,
+        totalSavings: new Decimal(savings.totalSavings),
+        manualCost: new Decimal(savings.manualCost),
+        platformCost: new Decimal(savings.platformCost),
+        savingsPercent: new Decimal(savings.savingsPercent),
+        ordersProcessed: 1,
+        avgOrderValue: new Decimal(savings.avgOrderValue),
+      },
+      update: {
+        totalSavings: {
+          increment: new Decimal(savings.totalSavings),
+        },
+        manualCost: {
+          increment: new Decimal(savings.manualCost),
+        },
+        platformCost: {
+          increment: new Decimal(savings.platformCost),
+        },
+        ordersProcessed: {
+          increment: 1,
+        },
+      },
+    });
+
+    // After upsert with increment, recalculate the derived fields
+    const record = await prisma.costSavingsRecord.findUnique({
+      where: {
+        organizationId_month_year: {
+          organizationId: order.organizationId,
+          month,
+          year,
+        },
+      },
+    });
+
+    if (record && Number(record.manualCost) > 0) {
+      const newSavingsPercent = (Number(record.totalSavings) / Number(record.manualCost)) * 100;
+      const newAvgOrderValue = Number(record.platformCost) / record.ordersProcessed;
+
+      await prisma.costSavingsRecord.update({
+        where: { id: record.id },
+        data: {
+          savingsPercent: new Decimal(newSavingsPercent),
+          avgOrderValue: new Decimal(newAvgOrderValue),
+        },
+      });
+    }
+
+    console.log(`Cost savings finalized for order ${orderId}: $${savings.totalSavings.toFixed(2)} (${savings.savingsPercent.toFixed(1)}%)`);
+    
+    return savings;
+  } catch (error) {
+    console.error('Failed to finalize cost savings:', error);
+    // Don't throw - cost savings recording shouldn't break order flow
+    return null;
   }
 }
 

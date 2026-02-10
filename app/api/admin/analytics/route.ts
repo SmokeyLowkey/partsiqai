@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getAllOrganizationsCostSavings, getOrganizationCostSavings } from "@/lib/services/cost-savings";
+import { 
+  getOrganizationDeliveryMetrics, 
+  getSupplierPerformance, 
+  getOrderTrendAnalytics 
+} from "@/lib/services/analytics-aggregation";
 
 export async function GET(request: Request) {
   try {
@@ -267,6 +272,35 @@ export async function GET(request: Request) {
           months: Math.ceil(days / 30) || 12,
         });
 
+    // Get new analytics data - delivery performance, supplier metrics, trends
+    // Only fetch for organization context (not implemented for master admin cross-org aggregation yet)
+    let deliveryPerformance = null;
+    let supplierPerformance = null;
+    let orderTrends = null;
+
+    if (organizationId) {
+      try {
+        deliveryPerformance = await getOrganizationDeliveryMetrics(
+          organizationId,
+          startDate,
+          new Date()
+        );
+
+        supplierPerformance = await getSupplierPerformance(
+          organizationId,
+          Math.ceil(days / 30) || 12
+        );
+
+        orderTrends = await getOrderTrendAnalytics(
+          organizationId,
+          Math.ceil(days / 30) || 12
+        );
+      } catch (error) {
+        console.error('Error fetching enhanced analytics:', error);
+        // Don't fail the entire request if new analytics fail
+      }
+    }
+
     return NextResponse.json({
       period: days,
       users: {
@@ -320,6 +354,15 @@ export async function GET(request: Request) {
         byOrganization: isMasterAdmin ? (costSavingsData as any).savingsByOrganization : undefined,
         monthly: costSavingsData.monthlySavings,
       },
+      deliveryPerformance: deliveryPerformance ? {
+        avgLeadTimeDays: deliveryPerformance.avgLeadTimeDays,
+        onTimeDeliveryRate: deliveryPerformance.onTimeDeliveryRate,
+        fulfillmentRate: deliveryPerformance.fulfillmentRate,
+        totalOrdersCompleted: deliveryPerformance.totalOrdersCompleted,
+        recentCompletedOrders: deliveryPerformance.completedOrders.slice(0, 10),
+      } : null,
+      supplierPerformance: supplierPerformance || [],
+      orderTrends: orderTrends || [],
       // Include role info so frontend knows what view to show
       viewType: isMasterAdmin ? 'app-wide' : 'organization',
     });

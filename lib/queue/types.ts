@@ -36,6 +36,7 @@ export const QuoteExtractionJobSchema = z.object({
   organizationId: z.string(),
   emailThreadId: z.string(),
   emailMessageId: z.string(),
+  userId: z.string().optional(), // User whose inbox the email was found in (for attachment downloads)
   emailData: z.object({
     id: z.string(),
     threadId: z.string(),
@@ -122,3 +123,10 @@ export const PartsIngestionJobSchema = z.object({
 });
 
 export type PartsIngestionJobData = z.infer<typeof PartsIngestionJobSchema>;
+
+// Analytics Collection Job
+export const AnalyticsCollectionJobSchema = z.object({
+  orderId: z.string(),
+});
+
+export type AnalyticsCollectionJobData = z.infer<typeof AnalyticsCollectionJobSchema>;

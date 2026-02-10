@@ -23,6 +23,14 @@ import {
 } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { CommunicationHistory, OrderConfirmationDialog } from '@/components/quote-requests';
 import {
   ArrowLeft,
@@ -152,6 +160,8 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [showConfirmationDialog, setShowConfirmationDialog] = useState(false);
+  const [showCompleteOrderDialog, setShowCompleteOrderDialog] = useState(false);
+  const [completingOrder, setCompletingOrder] = useState(false);
   const [updatingItem, setUpdatingItem] = useState<string | null>(null);
 
   useEffect(() => {
@@ -213,6 +223,33 @@ export default function OrderDetailPage() {
       console.error('Error updating item received status:', error);
     } finally {
       setUpdatingItem(null);
+    }
+  };
+
+  const handleCompleteOrder = async () => {
+    try {
+      setCompletingOrder(true);
+      
+      const response = await fetch(`/api/orders/${order?.id}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Refresh order data to show updated status
+        await fetchOrder();
+        setShowCompleteOrderDialog(false);
+      } else {
+        const error = await response.json();
+        console.error('Failed to complete order:', error);
+        alert(error.error || 'Failed to complete order');
+      }
+    } catch (error) {
+      console.error('Error completing order:', error);
+      alert('An error occurred while completing the order');
+    } finally {
+      setCompletingOrder(false);
     }
   };
 
@@ -681,6 +718,61 @@ export default function OrderDetailPage() {
         </CardContent>
       </Card>
 
+      {/* Complete Order Section */}
+      {(() => {
+        const allItemsReceived = order.orderItems.every(
+          (item) => item.isReceived && item.quantityReceived >= item.quantity
+        );
+        const canComplete = allItemsReceived && order.status !== 'DELIVERED' && order.status !== 'CANCELLED';
+
+        if (canComplete) {
+          return (
+            <Card className="border-green-200 bg-green-50/50">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className="h-6 w-6 text-green-600" />
+                    <div>
+                      <p className="font-semibold text-green-900">Ready to Complete Order</p>
+                      <p className="text-sm text-green-700">
+                        All items have been received. Complete this order to finalize delivery and generate analytics.
+                      </p>
+                    </div>
+                  </div>
+                  <Button 
+                    onClick={() => setShowCompleteOrderDialog(true)}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                    Complete Order
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        }
+
+        if (order.status === 'DELIVERED') {
+          return (
+            <Card className="border-blue-200 bg-blue-50/50">
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3">
+                  <CheckCircle2 className="h-6 w-6 text-blue-600" />
+                  <div>
+                    <p className="font-semibold text-blue-900">Order Completed</p>
+                    <p className="text-sm text-blue-700">
+                      This order was completed on {formatDate(order.actualDelivery)}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        }
+
+        return null;
+      })()}
+
       {/* Notes */}
       {(order.notes || order.internalNotes) && (
         <div className="grid gap-6 md:grid-cols-2">
@@ -761,6 +853,80 @@ export default function OrderDetailPage() {
           }}
         />
       )}
+
+      {/* Complete Order Dialog */}
+      <Dialog open={showCompleteOrderDialog} onOpenChange={setShowCompleteOrderDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Complete Order #{order.orderNumber}</DialogTitle>
+            <DialogDescription>
+              Confirm that all order items have been received and you want to complete this order.
+              This action will finalize the delivery and generate analytics for your organization.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="space-y-4">
+              <div className="flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-md">
+                <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div className="text-sm text-blue-900">
+                  <p className="font-medium mb-1">What happens when you complete an order:</p>
+                  <ul className="list-disc list-inside space-y-1 text-blue-800">
+                    <li>Order status will be set to DELIVERED</li>
+                    <li>Cost savings will be calculated and recorded</li>
+                    <li>Delivery performance metrics will be generated</li>
+                    <li>Analytics will be available in the admin dashboard</li>
+                  </ul>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Order Summary:</p>
+                <div className="text-sm text-muted-foreground space-y-1">
+                  <div className="flex justify-between">
+                    <span>Items Received:</span>
+                    <span className="font-medium text-foreground">
+                      {order.orderItems.filter(i => i.isReceived).length} / {order.orderItems.length}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Supplier:</span>
+                    <span className="font-medium text-foreground">{order.supplier.name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Total Amount:</span>
+                    <span className="font-medium text-foreground">{formatCurrency(order.total)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowCompleteOrderDialog(false)}
+              disabled={completingOrder}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCompleteOrder}
+              disabled={completingOrder}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {completingOrder ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Completing...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  Complete Order
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

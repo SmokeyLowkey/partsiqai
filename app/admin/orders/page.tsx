@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -185,6 +186,7 @@ export default function OrdersPage() {
                   <TableHead>Total</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Created</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -227,6 +229,13 @@ export default function OrdersPage() {
                     <TableCell>{getStatusBadge(order.status)}</TableCell>
                     <TableCell className="text-muted-foreground">
                       {new Date(order.createdAt).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href={`/customer/orders/${order.id}`}>
+                          View Order
+                        </Link>
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}

@@ -10,6 +10,7 @@ import type {
   PostOrderJobData,
   MaintenancePdfJobData,
   PartsIngestionJobData,
+  AnalyticsCollectionJobData,
 } from './types';
 
 export const QUEUE_NAMES = {
@@ -22,6 +23,7 @@ export const QUEUE_NAMES = {
   QUOTE_EXTRACTION: 'quote-extraction',
   MAINTENANCE_PDF: 'maintenance-pdf',
   PARTS_INGESTION: 'parts-ingestion',
+  ANALYTICS_COLLECTION: 'analytics-collection',
 } as const;
 
 const defaultJobOptions = {
@@ -120,6 +122,15 @@ export const partsIngestionQueue = new Queue<PartsIngestionJobData, any, string>
       removeOnComplete: { age: 86400, count: 10 },
       removeOnFail: { age: 604800, count: 50 },
     },
+  }
+);
+
+// Analytics Collection Queue
+export const analyticsQueue = new Queue<AnalyticsCollectionJobData, any, string>(
+  QUEUE_NAMES.ANALYTICS_COLLECTION,
+  {
+    connection: redisConnection,
+    defaultJobOptions,
   }
 );
 

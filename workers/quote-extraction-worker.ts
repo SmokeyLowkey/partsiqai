@@ -257,7 +257,7 @@ export const quoteExtractionWorker = new Worker<QuoteExtractionJobData>(
       attachmentCount: job.data.attachments?.length || 0,
     }, 'Processing quote extraction job');
 
-    const { organizationId, emailThreadId, emailMessageId, emailData, attachments } = job.data;
+    const { organizationId, emailThreadId, emailMessageId, userId, emailData, attachments } = job.data;
 
     try {
       await job.updateProgress(10);
@@ -271,22 +271,26 @@ export const quoteExtractionWorker = new Worker<QuoteExtractionJobData>(
         workerLogger.warn({ err: error }, 'Failed to initialize LLM client, will save attachments but skip AI extraction');
       }
 
-      // Find a user with email integration configured for this organization
-      const userWithEmail = await prisma.userEmailIntegration.findFirst({
-        where: {
-          user: { organizationId },
-          providerType: { in: ['GMAIL_OAUTH', 'MICROSOFT_OAUTH'] },
-          isActive: true,
-        },
-        select: { userId: true },
-      });
-
-      if (!userWithEmail) {
-        throw new Error('No user with email integration found for this organization');
+      // Use the specific user whose inbox the email was found in (passed from email-monitor).
+      // Fall back to findFirst for backward compatibility with jobs queued before this change.
+      let emailUserId = userId;
+      if (!emailUserId) {
+        const userWithEmail = await prisma.userEmailIntegration.findFirst({
+          where: {
+            user: { organizationId },
+            providerType: { in: ['GMAIL_OAUTH', 'MICROSOFT_OAUTH'] },
+            isActive: true,
+          },
+          select: { userId: true },
+        });
+        if (!userWithEmail) {
+          throw new Error('No user with email integration found for this organization');
+        }
+        emailUserId = userWithEmail.userId;
       }
 
       // Get email client for downloading attachments using that user's credentials (supports Gmail and Microsoft)
-      const emailClient = await getEmailClientForUser(userWithEmail.userId);
+      const emailClient = await getEmailClientForUser(emailUserId);
 
       await job.updateProgress(15);
 

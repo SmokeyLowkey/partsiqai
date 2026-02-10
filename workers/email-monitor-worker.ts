@@ -208,6 +208,7 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
               organizationId,
               emailThreadId: thread.id,
               emailMessageId: emailMessage.id,
+              userId, // Use this user's credentials for attachment downloads
               emailData: {
                 id: email.id,
                 threadId: email.threadId,
@@ -263,6 +264,7 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
                 organizationId,
                 emailThreadId: originalMessage.thread.id,
                 emailMessageId: emailMessage.id,
+                userId, // Use this user's credentials for attachment downloads
                 emailData: {
                   id: email.id,
                   threadId: email.threadId,
