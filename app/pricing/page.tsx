@@ -26,14 +26,14 @@ export default function PricingPage() {
         <div className="container mx-auto px-6">
           <div className="max-w-6xl mx-auto">
             <div className="grid md:grid-cols-3 gap-8">
-              {/* Basic Plan */}
+              {/* Starter Plan */}
               <div className="border-2 border-slate-200 rounded-lg p-8 bg-white flex flex-col">
-                <h3 className="text-2xl font-bold text-slate-950 mb-2">Basic</h3>
-                <p className="text-slate-600 mb-6">For small operations getting started</p>
+                <h3 className="text-2xl font-bold text-slate-950 mb-2">Starter</h3>
+                <p className="text-slate-600 mb-6">For small teams getting started</p>
 
                 <div className="mb-6">
                   <div className="flex items-baseline gap-2">
-                    <span className="text-5xl font-bold text-slate-950">$99</span>
+                    <span className="text-5xl font-bold text-slate-950">$199</span>
                     <span className="text-slate-600">/month</span>
                   </div>
                   <p className="text-sm text-slate-600 mt-2">Billed monthly</p>
@@ -42,19 +42,19 @@ export default function PricingPage() {
                 <ul className="space-y-4 mb-8 flex-grow">
                   <li className="flex items-start gap-3">
                     <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
-                    <span className="text-slate-700">AI-powered part search</span>
+                    <span className="text-slate-700">25 AI-powered calls/month</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                    <span className="text-slate-700">Up to 10 vehicles</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                    <span className="text-slate-700">Email automation included</span>
                   </li>
                   <li className="flex items-start gap-3">
                     <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
                     <span className="text-slate-700">Quote management</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
-                    <span className="text-slate-700">Up to 5 vehicles</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
-                    <span className="text-slate-700">Basic equipment tracking</span>
                   </li>
                   <li className="flex items-start gap-3">
                     <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
@@ -69,7 +69,7 @@ export default function PricingPage() {
                 </Link>
               </div>
 
-              {/* Professional Plan */}
+              {/* Growth Plan */}
               <div className="border-2 border-slate-950 rounded-lg p-8 bg-white relative flex flex-col">
                 <div className="absolute -top-4 left-1/2 -translate-x-1/2">
                   <span className="bg-emerald-600 text-white px-4 py-1 rounded-full text-sm font-medium">
@@ -77,12 +77,12 @@ export default function PricingPage() {
                   </span>
                 </div>
 
-                <h3 className="text-2xl font-bold text-slate-950 mb-2">Professional</h3>
-                <p className="text-slate-600 mb-6">For growing operations teams</p>
+                <h3 className="text-2xl font-bold text-slate-950 mb-2">Growth</h3>
+                <p className="text-slate-600 mb-6">For scaling operations teams</p>
 
                 <div className="mb-6">
                   <div className="flex items-baseline gap-2">
-                    <span className="text-5xl font-bold text-slate-950">$299</span>
+                    <span className="text-5xl font-bold text-slate-950">$449</span>
                     <span className="text-slate-600">/month</span>
                   </div>
                   <p className="text-sm text-slate-600 mt-2">Billed monthly</p>
@@ -91,7 +91,11 @@ export default function PricingPage() {
                 <ul className="space-y-4 mb-8 flex-grow">
                   <li className="flex items-start gap-3">
                     <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
-                    <span className="text-slate-700">Everything in Basic</span>
+                    <span className="text-slate-700">Everything in Starter</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                    <span className="text-slate-700">100 AI calls/month</span>
                   </li>
                   <li className="flex items-start gap-3">
                     <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
@@ -99,19 +103,15 @@ export default function PricingPage() {
                   </li>
                   <li className="flex items-start gap-3">
                     <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
-                    <span className="text-slate-700">Advanced equipment tracking</span>
+                    <span className="text-slate-700">Multi-user accounts</span>
                   </li>
                   <li className="flex items-start gap-3">
                     <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
-                    <span className="text-slate-700">Supplier communication tools</span>
+                    <span className="text-slate-700">Advanced analytics</span>
                   </li>
                   <li className="flex items-start gap-3">
                     <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
-                    <span className="text-slate-700">Price comparison & analytics</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
-                    <span className="text-slate-700">Priority email support</span>
+                    <span className="text-slate-700">Priority support</span>
                   </li>
                 </ul>
 
@@ -130,7 +130,7 @@ export default function PricingPage() {
 
                 <div className="mb-6">
                   <div className="flex items-baseline gap-2">
-                    <span className="text-5xl font-bold text-slate-950">$799</span>
+                    <span className="text-5xl font-bold text-slate-950">$1,299</span>
                     <span className="text-slate-600">/month</span>
                   </div>
                   <p className="text-sm text-slate-600 mt-2">Billed monthly</p>
@@ -139,27 +139,27 @@ export default function PricingPage() {
                 <ul className="space-y-4 mb-8 flex-grow">
                   <li className="flex items-start gap-3">
                     <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
-                    <span className="text-slate-700">Everything in Professional</span>
+                    <span className="text-slate-700">Everything in Growth</span>
                   </li>
                   <li className="flex items-start gap-3">
                     <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
-                    <span className="text-slate-700">Dedicated account manager</span>
+                    <span className="text-slate-700">Unlimited calls</span>
                   </li>
                   <li className="flex items-start gap-3">
                     <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
-                    <span className="text-slate-700">Custom integrations</span>
+                    <span className="text-slate-700">Custom call scripts</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                    <span className="text-slate-700">ERP integrations</span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                    <span className="text-slate-700">White-glove onboarding</span>
                   </li>
                   <li className="flex items-start gap-3">
                     <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
                     <span className="text-slate-700">24/7 priority support</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
-                    <span className="text-slate-700">Advanced analytics & reporting</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
-                    <span className="text-slate-700">Training & onboarding</span>
                   </li>
                   <li className="flex items-start gap-3">
                     <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />

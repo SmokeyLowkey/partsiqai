@@ -11,6 +11,9 @@ import type {
   MaintenancePdfJobData,
   PartsIngestionJobData,
   AnalyticsCollectionJobData,
+  VoipCallInitiationJobData,
+  VoipFallbackJobData,
+  VoipCallRetryJobData,
 } from './types';
 
 export const QUEUE_NAMES = {
@@ -24,6 +27,9 @@ export const QUEUE_NAMES = {
   MAINTENANCE_PDF: 'maintenance-pdf',
   PARTS_INGESTION: 'parts-ingestion',
   ANALYTICS_COLLECTION: 'analytics-collection',
+  VOIP_CALL_INITIATION: 'voip-call-initiation',
+  VOIP_FALLBACK: 'voip-fallback',
+  VOIP_CALL_RETRY: 'voip-call-retry',
 } as const;
 
 const defaultJobOptions = {
@@ -131,6 +137,47 @@ export const analyticsQueue = new Queue<AnalyticsCollectionJobData, any, string>
   {
     connection: redisConnection,
     defaultJobOptions,
+  }
+);
+
+// VOIP Call Initiation Queue
+export const voipCallInitiationQueue = new Queue<VoipCallInitiationJobData, any, string>(
+  QUEUE_NAMES.VOIP_CALL_INITIATION,
+  {
+    connection: redisConnection,
+    defaultJobOptions: {
+      ...defaultJobOptions,
+      attempts: 1, // No auto-retry - use explicit retry worker
+      removeOnComplete: { age: 86400, count: 100 },
+      removeOnFail: { age: 604800, count: 100 },
+    },
+  }
+);
+
+// VOIP Fallback Queue (email fallback when call fails)
+export const voipFallbackQueue = new Queue<VoipFallbackJobData, any, string>(
+  QUEUE_NAMES.VOIP_FALLBACK,
+  {
+    connection: redisConnection,
+    defaultJobOptions: {
+      ...defaultJobOptions,
+      removeOnComplete: { age: 86400, count: 50 },
+      removeOnFail: { age: 604800, count: 50 },
+    },
+  }
+);
+
+// VOIP Call Retry Queue
+export const voipCallRetryQueue = new Queue<VoipCallRetryJobData, any, string>(
+  QUEUE_NAMES.VOIP_CALL_RETRY,
+  {
+    connection: redisConnection,
+    defaultJobOptions: {
+      ...defaultJobOptions,
+      attempts: 1, // Single attempt per retry job
+      removeOnComplete: { age: 86400, count: 100 },
+      removeOnFail: { age: 604800, count: 100 },
+    },
   }
 );
 

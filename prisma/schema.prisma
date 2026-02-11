@@ -12,11 +12,22 @@ model Organization {
   name                   String
   slug                   String                  @unique
   domain                 String?                 @unique
-  subscriptionTier       SubscriptionTier        @default(BASIC)
+  subscriptionTier       SubscriptionTier        @default(STARTER)
   subscriptionStatus     SubscriptionStatus      @default(ACTIVE)
   billingEmail           String?
   maxUsers               Int                     @default(10)
-  maxVehicles            Int                     @default(50)
+  maxVehicles            Int                     @default(10)
+  maxAICalls             Int                     @default(25)
+  aiCallsUsedThisMonth   Int                     @default(0)
+  aiCallsResetDate       DateTime?
+  overageEnabled         Boolean                 @default(false)
+  overageRate            Decimal                 @default(0)
+  hardCapEnabled         Boolean                 @default(true)
+  hardCapMultiplier      Float                   @default(2.0)
+  usePlatformKeys        Boolean                 @default(true)
+  vapiApiKey             String?
+  openrouterApiKey       String?
+  elevenLabsApiKey       String?
   settings               Json?
   logo                   String?
   primaryColor           String?                 @default("#2563eb")
@@ -24,48 +35,43 @@ model Organization {
   sessionTimeoutMinutes  Int                     @default(60)
   requireTwoFactor       Boolean                 @default(false)
   allowedEmailDomains    String[]                @default([])
-
-  // Stripe Integration Fields
-  stripeCustomerId       String?                 @unique
-  stripeSubscriptionId   String?                 @unique
-  stripePriceId          String?
-  subscriptionStartDate  DateTime?
-  subscriptionEndDate    DateTime?
-  trialEndsAt            DateTime?
-  cancelAtPeriodEnd      Boolean                 @default(false)
-
-  // Onboarding tracking
-  onboardingCompletedAt  DateTime?
-
-  // Contact info for follow-up (from signup)
-  primaryContactPhone    String?
-  companySize            String?
-  primaryUseCase         String?
-
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
+  cancelAtPeriodEnd      Boolean                 @default(false)
+  companySize            String?
+  onboardingCompletedAt  DateTime?
+  primaryContactPhone    String?
+  primaryUseCase         String?
+  stripeCustomerId       String?                 @unique
+  stripePriceId          String?
+  stripeSubscriptionId   String?                 @unique
+  subscriptionEndDate    DateTime?
+  subscriptionStartDate  DateTime?
+  trialEndsAt            DateTime?
   activityLogs           ActivityLog[]
   apiKeys                ApiKey[]
   chatConversations      ChatConversation[]
   costSavingsRecords     CostSavingsRecord[]
+  emailSyncState         EmailSyncState?
   emailThreads           EmailThread[]
+  ingestionJobs          IngestionJob[]
+  integrationCredentials IntegrationCredential[]
+  invitations            Invitation[]
+  invoices               Invoice[]
+  jobQueues              JobQueue[]
+  maintenanceSchedules   MaintenanceSchedule[]
   orders                 Order[]
   parts                  Part[]
+  paymentMethods         PaymentMethod[]
   quoteRequests          QuoteRequest[]
   securityAuditLogs      SecurityAuditLog[]
+  supplierCalls          SupplierCall[]
   suppliers              Supplier[]
-  users                  User[]
-  vehicles               Vehicle[]
-  vehicleSearchMappings  VehicleSearchMapping[]
-  maintenanceSchedules   MaintenanceSchedule[]
-  jobQueues              JobQueue[]
-  emailSyncState         EmailSyncState?
+  usageOverages          UsageOverage[]
   userEmailSyncStates    UserEmailSyncState[]
-  integrationCredentials IntegrationCredential[]
-  invoices               Invoice[]
-  paymentMethods         PaymentMethod[]
-  invitations            Invitation[]
-  ingestionJobs          IngestionJob[]
+  users                  User[]
+  vehicleSearchMappings  VehicleSearchMapping[]
+  vehicles               Vehicle[]
 
   @@index([slug])
   @@index([stripeCustomerId])
@@ -73,66 +79,63 @@ model Organization {
 }
 
 model User {
-  id                            String                  @id @default(cuid())
-  email                         String                  @unique
-  name                          String?
-  role                          UserRole                @default(USER)
-  phone                         String?
-  avatar                        String?
-  bio                           String?
-  isActive                      Boolean                 @default(true)
-  password                      String?
-  mustChangePassword            Boolean                 @default(false)
-  emailVerified                 DateTime?
-  isEmailVerified               Boolean                 @default(false)
-  twoFactorEnabled              Boolean                 @default(false)
-  twoFactorSecret               String?
-  organizationId                String
-
-  // Email verification
-  emailVerificationToken        String?                 @unique
-  emailVerificationExpiry       DateTime?
-
-  // Onboarding tracking
-  onboardingStatus              OnboardingStatus        @default(NOT_STARTED)
-  onboardingStep                Int                     @default(0)
-  onboardingCompletedAt         DateTime?
-  onboardingSkippedAt           DateTime?
-  notifications                 Json?
-  theme                         String                  @default("light")
-  timezone                      String                  @default("UTC")
-  language                      String                  @default("en")
-  emailNotifications            Boolean                 @default(true)
-  pushNotifications             Boolean                 @default(true)
-  maintenanceAlerts             Boolean                 @default(true)
-  costAlerts                    Boolean                 @default(true)
-  weeklyReports                 Boolean                 @default(true)
-  createdAt                     DateTime                @default(now())
-  updatedAt                     DateTime                @updatedAt
-  lastLoginAt                   DateTime?
-  accounts                      Account[]
-  chatConversations             ChatConversation[]
-  emailThreadsCreated           EmailThread[]             @relation("EmailThreadCreatedBy")
-  emailThreadsOwned             EmailThread[]             @relation("EmailThreadOwner")
-  orders                        Order[]
-  resetToken                    PasswordReset?
-  quoteRequestsCreated          QuoteRequest[]            @relation("QuoteRequestCreatedBy")
-  quoteRequestsApproved         QuoteRequest[]            @relation("QuoteRequestApprovedBy")
-  quoteRequestManagerTakeover   QuoteRequest[]            @relation("QuoteRequestManagerTakeover")
+  id                              String                    @id @default(cuid())
+  email                           String                    @unique
+  name                            String?
+  role                            UserRole                  @default(USER)
+  phone                           String?
+  avatar                          String?
+  bio                             String?
+  isActive                        Boolean                   @default(true)
+  password                        String?
+  emailVerified                   DateTime?
+  isEmailVerified                 Boolean                   @default(false)
+  twoFactorEnabled                Boolean                   @default(false)
+  twoFactorSecret                 String?
+  organizationId                  String
+  notifications                   Json?
+  theme                           String                    @default("light")
+  timezone                        String                    @default("UTC")
+  language                        String                    @default("en")
+  emailNotifications              Boolean                   @default(true)
+  pushNotifications               Boolean                   @default(true)
+  maintenanceAlerts               Boolean                   @default(true)
+  costAlerts                      Boolean                   @default(true)
+  weeklyReports                   Boolean                   @default(true)
+  createdAt                       DateTime                  @default(now())
+  updatedAt                       DateTime                  @updatedAt
+  lastLoginAt                     DateTime?
+  emailVerificationExpiry         DateTime?
+  emailVerificationToken          String?                   @unique
+  mustChangePassword              Boolean                   @default(false)
+  onboardingCompletedAt           DateTime?
+  onboardingSkippedAt             DateTime?
+  onboardingStatus                OnboardingStatus          @default(NOT_STARTED)
+  onboardingStep                  Int                       @default(0)
+  accounts                        Account[]
+  chatConversations               ChatConversation[]
+  emailThreadsCreated             EmailThread[]             @relation("EmailThreadCreatedBy")
+  emailThreadsOwned               EmailThread[]             @relation("EmailThreadOwner")
+  ingestionJobs                   IngestionJob[]
+  integrationCredentialsCreated   IntegrationCredential[]   @relation("IntegrationCredentialCreator")
+  invitationsSent                 Invitation[]              @relation("InvitationCreatedBy")
+  invitationReceived              Invitation?               @relation("InvitationRecipient")
+  jobQueues                       JobQueue[]
+  reviewedMaintenanceSchedules    MaintenanceSchedule[]     @relation("MaintenanceScheduleReviewer")
+  orders                          Order[]
+  resetToken                      PasswordReset?
   quoteRequestEmailThreadTakeover QuoteRequestEmailThread[]
-  userEmailSyncState            UserEmailSyncState?
-  sessions                      Session[]
-  organization                  Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  vehicles                       Vehicle[]
-  jobQueues                      JobQueue[]
-  integrationCredentialsCreated  IntegrationCredential[]  @relation("IntegrationCredentialCreator")
-  verifiedVehicleMappings        VehicleSearchMapping[]   @relation("VehicleSearchMappingVerifier")
-  reviewedMaintenanceSchedules   MaintenanceSchedule[]    @relation("MaintenanceScheduleReviewer")
-  emailIntegration               UserEmailIntegration?
-  configuredEmailIntegrations    UserEmailIntegration[]   @relation("EmailIntegrationConfiguredBy")
-  invitationsSent                Invitation[]             @relation("InvitationCreatedBy")
-  invitationReceived             Invitation?              @relation("InvitationRecipient")
-  ingestionJobs                  IngestionJob[]
+  quoteRequestsApproved           QuoteRequest[]            @relation("QuoteRequestApprovedBy")
+  quoteRequestsCreated            QuoteRequest[]            @relation("QuoteRequestCreatedBy")
+  quoteRequestManagerTakeover     QuoteRequest[]            @relation("QuoteRequestManagerTakeover")
+  sessions                        Session[]
+  supplierCalls                   SupplierCall[]
+  configuredEmailIntegrations     UserEmailIntegration[]    @relation("EmailIntegrationConfiguredBy")
+  emailIntegration                UserEmailIntegration?
+  userEmailSyncState              UserEmailSyncState?
+  organization                    Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  verifiedVehicleMappings         VehicleSearchMapping[]    @relation("VehicleSearchMappingVerifier")
+  vehicles                        Vehicle[]
 
   @@index([email])
   @@index([organizationId, email])
@@ -194,16 +197,15 @@ model Invitation {
   token             String           @unique
   invitedBy         String
   message           String?
-  temporaryPassword String?          // Hashed temporary password
+  temporaryPassword String?
   status            InvitationStatus @default(PENDING)
   expiresAt         DateTime
   acceptedAt        DateTime?
   createdAt         DateTime         @default(now())
-
-  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  inviter        User             @relation("InvitationCreatedBy", fields: [invitedBy], references: [id])
-  recipient      User?            @relation("InvitationRecipient", fields: [recipientId], references: [id])
-  recipientId    String?          @unique
+  recipientId       String?          @unique
+  inviter           User             @relation("InvitationCreatedBy", fields: [invitedBy], references: [id])
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  recipient         User?            @relation("InvitationRecipient", fields: [recipientId], references: [id])
 
   @@unique([organizationId, email])
   @@index([token])
@@ -221,19 +223,19 @@ model VerificationToken {
 }
 
 model Vehicle {
-  id                       String           @id @default(cuid())
+  id                       String                    @id @default(cuid())
   vehicleId                String
   serialNumber             String
   make                     String
   model                    String
   year                     Int
   type                     VehicleType
-  industryCategory         IndustryCategory @default(CONSTRUCTION)
-  status                   VehicleStatus    @default(ACTIVE)
+  industryCategory         IndustryCategory          @default(CONSTRUCTION)
+  status                   VehicleStatus             @default(ACTIVE)
   organizationId           String
   currentLocation          String?
-  operatingHours           Int              @default(0)
-  healthScore              Int              @default(100)
+  operatingHours           Int                       @default(0)
+  healthScore              Int                       @default(100)
   lastServiceDate          DateTime?
   nextServiceDate          DateTime?
   serviceInterval          Int?
@@ -242,24 +244,19 @@ model Vehicle {
   maintenancePdfUrl        String?
   maintenancePdfFileName   String?
   maintenancePdfUploadedAt DateTime?
-
-  // Search configuration status
-  searchConfigStatus VehicleSearchConfigStatus @default(PENDING_ADMIN_REVIEW)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  ownerId   String
-
-  // Relations
-  pickLists           ChatPickList[]
-  orders              Order[]
-  quoteRequests       QuoteRequest[]
-  alerts              VehicleAlert[]
-  chatConversations   ChatConversation[]
-  searchMapping       VehicleSearchMapping?
-  maintenanceSchedule MaintenanceSchedule?
-  organization        Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  owner               User                  @relation(fields: [ownerId], references: [id])
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  ownerId                  String
+  searchConfigStatus       VehicleSearchConfigStatus @default(PENDING_ADMIN_REVIEW)
+  chatConversations        ChatConversation[]
+  pickLists                ChatPickList[]
+  maintenanceSchedule      MaintenanceSchedule?
+  orders                   Order[]
+  quoteRequests            QuoteRequest[]
+  alerts                   VehicleAlert[]
+  searchMapping            VehicleSearchMapping?
+  organization             Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner                    User                      @relation(fields: [ownerId], references: [id])
 
   @@unique([organizationId, vehicleId])
   @@unique([organizationId, serialNumber])
@@ -285,104 +282,60 @@ model VehicleAlert {
   @@map("vehicle_alerts")
 }
 
-// Admin-managed search mappings for accurate nomenclature across data sources
 model VehicleSearchMapping {
-  id             String @id @default(cuid())
-  vehicleId      String @unique
-  organizationId String
-
-  // ========================================
-  // PINECONE NOMENCLATURE
-  // ========================================
-  pineconeNamespace    String? // e.g., "john-deere-excavator"
-  pineconeMachineModel String? // e.g., "160GLC Excavator"
-  pineconeManufacturer String? // e.g., "John Deere"
-  pineconeYear         Int? // Exact year or null for all years
-
-  // ========================================
-  // NEO4J NOMENCLATURE
-  // ========================================
-  // Node: Model
-  neo4jModelName String? // e.g., "160GLC Excavator"
-
-  // Node: Manufacturer
-  neo4jManufacturer String? // e.g., "John Deere"
-
-  // Node: SerialNumberRange (optional - for precise matching)
-  neo4jSerialRange String? // e.g., "1FF160GXCMG000001-1FF160GXCMG999999"
-
-  // Node: TechnicalDomain (optional - for domain-specific searches)
-  neo4jTechnicalDomains String[] // e.g., ["Hydraulics", "Engine"]
-
-  // Node: Category (optional - for filtering by category)
-  neo4jCategories String[] // e.g., ["Filters", "Belts"]
-
-  // Relationship constraints
-  neo4jNamespace String? // If Neo4j uses namespace property
-
-  // ========================================
-  // POSTGRESQL NOMENCLATURE
-  // ========================================
-  postgresCategory    String? // e.g., "Heavy Equipment Parts"
-  postgresSubcategory String? // e.g., "Excavator Components"
-  postgresMake        String? // Standardized make name
-  postgresModel       String? // Standardized model name
-
-  // ========================================
-  // VERIFICATION METADATA
-  // ========================================
-  verifiedAt DateTime?
-  verifiedBy String? // User ID of admin who verified
-
-  // Test query results (optional - for validation)
-  lastTestQuery   String? // e.g., "oil filter"
-  lastTestResults Json? // Sample results to verify mappings work
-
-  // Audit trail
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  vehicle      Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  organization Organization @relation(fields: [organizationId], references: [id])
-  verifier     User?        @relation("VehicleSearchMappingVerifier", fields: [verifiedBy], references: [id])
+  id                    String       @id @default(cuid())
+  vehicleId             String       @unique
+  organizationId        String
+  pineconeNamespace     String?
+  pineconeMachineModel  String?
+  pineconeManufacturer  String?
+  pineconeYear          Int?
+  neo4jModelName        String?
+  neo4jManufacturer     String?
+  neo4jSerialRange      String?
+  neo4jTechnicalDomains String[]
+  neo4jCategories       String[]
+  neo4jNamespace        String?
+  postgresCategory      String?
+  postgresSubcategory   String?
+  postgresMake          String?
+  postgresModel         String?
+  verifiedAt            DateTime?
+  verifiedBy            String?
+  lastTestQuery         String?
+  lastTestResults       Json?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  organization          Organization @relation(fields: [organizationId], references: [id])
+  vehicle               Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  verifier              User?        @relation("VehicleSearchMappingVerifier", fields: [verifiedBy], references: [id])
 
   @@index([organizationId])
   @@index([verifiedBy])
   @@map("vehicle_search_mappings")
 }
 
-// Parsed maintenance schedule from OEM PDF
 model MaintenanceSchedule {
-  id             String @id @default(cuid())
-  vehicleId      String @unique
-  organizationId String
-
-  // PDF source
-  pdfS3Key    String
-  pdfFileName String
-
-  // Parsing status (automatic)
+  id                   String                   @id @default(cuid())
+  vehicleId            String                   @unique
+  organizationId       String
+  pdfS3Key             String
+  pdfFileName          String
   parsingStatus        MaintenanceParsingStatus @default(PENDING)
   parsedAt             DateTime?
   parsingError         String?
-  oem                  String? // Detected: "John Deere", "CAT", etc.
-  extractionConfidence Int? // 0-100 confidence score
-
-  // Admin review status (manual)
-  approvalStatus ScheduleApprovalStatus @default(PENDING_REVIEW)
-  reviewedBy     String? // Admin user ID
-  reviewedAt     DateTime?
-  reviewNotes    String? // Admin can add notes/corrections
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  vehicle      Vehicle               @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  reviewer     User?                 @relation("MaintenanceScheduleReviewer", fields: [reviewedBy], references: [id])
-  intervals    MaintenanceInterval[]
+  oem                  String?
+  extractionConfidence Int?
+  approvalStatus       ScheduleApprovalStatus   @default(PENDING_REVIEW)
+  reviewedBy           String?
+  reviewedAt           DateTime?
+  reviewNotes          String?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  intervals            MaintenanceInterval[]
+  organization         Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reviewer             User?                    @relation("MaintenanceScheduleReviewer", fields: [reviewedBy], references: [id])
+  vehicle              Vehicle                  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
   @@index([approvalStatus])
@@ -390,44 +343,34 @@ model MaintenanceSchedule {
   @@map("maintenance_schedules")
 }
 
-// Individual maintenance interval from parsed PDF
 model MaintenanceInterval {
-  id                    String @id @default(cuid())
+  id                    String                    @id @default(cuid())
   maintenanceScheduleId String
-
-  intervalHours      Int // 250, 500, 1000, etc.
-  intervalType       IntervalType @default(HOURS)
-  serviceName        String // "Engine Oil & Filter Change"
-  serviceDescription String?
-  category           String? // "Lubrication", "Filters", "Hydraulics"
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  maintenanceSchedule MaintenanceSchedule       @relation(fields: [maintenanceScheduleId], references: [id], onDelete: Cascade)
-  requiredParts       MaintenanceIntervalPart[]
+  intervalHours         Int
+  intervalType          IntervalType              @default(HOURS)
+  serviceName           String
+  serviceDescription    String?
+  category              String?
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+  requiredParts         MaintenanceIntervalPart[]
+  maintenanceSchedule   MaintenanceSchedule       @relation(fields: [maintenanceScheduleId], references: [id], onDelete: Cascade)
 
   @@index([maintenanceScheduleId])
   @@index([intervalHours])
   @@map("maintenance_intervals")
 }
 
-// Parts required for a maintenance interval
 model MaintenanceIntervalPart {
-  id                    String @id @default(cuid())
+  id                    String              @id @default(cuid())
   maintenanceIntervalId String
-
-  partNumber      String // OEM part number from PDF
-  partDescription String?
-  quantity        Int     @default(1)
-  matchedPartId   String? // Link to Parts table if matched
-
-  createdAt DateTime @default(now())
-
-  // Relations
-  maintenanceInterval MaintenanceInterval @relation(fields: [maintenanceIntervalId], references: [id], onDelete: Cascade)
-  matchedPart         Part?               @relation(fields: [matchedPartId], references: [id])
+  partNumber            String
+  partDescription       String?
+  quantity              Int                 @default(1)
+  matchedPartId         String?
+  createdAt             DateTime            @default(now())
+  maintenanceInterval   MaintenanceInterval @relation(fields: [maintenanceIntervalId], references: [id], onDelete: Cascade)
+  matchedPart           Part?               @relation(fields: [matchedPartId], references: [id])
 
   @@index([maintenanceIntervalId])
   @@index([partNumber])
@@ -435,36 +378,36 @@ model MaintenanceIntervalPart {
 }
 
 model Part {
-  id                 String             @id @default(cuid())
-  partNumber         String
-  description        String
-  category           String?
-  subcategory        String?
-  organizationId     String
-  price              Decimal            @db.Decimal(10, 2)
-  cost               Decimal?           @db.Decimal(10, 2)
-  stockQuantity      Int                @default(0)
-  minStockLevel      Int                @default(0)
-  maxStockLevel      Int?
-  weight             Decimal?           @db.Decimal(8, 2)
-  dimensions         Json?
-  location           String?
-  compatibility      Json?
-  specifications     Json?
-  isActive           Boolean            @default(true)
-  isObsolete         Boolean            @default(false)
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
-  supersededBy       String?
-  supersedes         String?
-  supersessionDate   DateTime?
-  supersessionNotes  String?
-  supplierPartNumber String?
+  id                       String                    @id @default(cuid())
+  partNumber               String
+  description              String
+  category                 String?
+  subcategory              String?
+  organizationId           String
+  price                    Decimal                   @db.Decimal(10, 2)
+  cost                     Decimal?                  @db.Decimal(10, 2)
+  stockQuantity            Int                       @default(0)
+  minStockLevel            Int                       @default(0)
+  maxStockLevel            Int?
+  weight                   Decimal?                  @db.Decimal(8, 2)
+  dimensions               Json?
+  location                 String?
+  compatibility            Json?
+  specifications           Json?
+  isActive                 Boolean                   @default(true)
+  isObsolete               Boolean                   @default(false)
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  supersededBy             String?
+  supersedes               String?
+  supersessionDate         DateTime?
+  supersessionNotes        String?
+  supplierPartNumber       String?
+  maintenanceIntervalParts MaintenanceIntervalPart[]
   orderItems               OrderItem[]
   suppliers                PartSupplier[]
   organization             Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   quoteItems               QuoteRequestItem[]
-  maintenanceIntervalParts MaintenanceIntervalPart[]
 
   @@unique([organizationId, partNumber])
   @@index([organizationId])
@@ -516,16 +459,28 @@ model Supplier {
   specialties              Json?
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
+  callWindowEnd            String?
+  callWindowStart          String?
+  doNotCall                Boolean                   @default(false)
+  preferredContactMethod   ContactMethod             @default(EMAIL)
+  timezone                 String?
+  bounceCount              Int                       @default(0)
+  bounceReason             String?
+  emailDeliveryStatus      EmailDeliveryStatus       @default(VALID)
+  lastBounceAt             DateTime?
+  lastEmailVerifiedAt      DateTime?
   auxiliaryEmails          AuxiliaryEmail[]
+  auxiliaryPhones          AuxiliaryPhone[]
   editedEmails             EditedEmail[]
   emailThreads             EmailThread[]
   orders                   Order[]
   parts                    PartSupplier[]
   quoteRequestEmailThreads QuoteRequestEmailThread[]
   quoteRequestItems        QuoteRequestItem[]
-  supplierQuoteItems       SupplierQuoteItem[]
   selectedQuoteRequests    QuoteRequest[]            @relation("SelectedQuoteSupplier")
   quoteRequests            QuoteRequest[]            @relation("PrimaryQuoteSupplier")
+  supplierCalls            SupplierCall[]
+  supplierQuoteItems       SupplierQuoteItem[]
   organization             Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, supplierId])
@@ -565,8 +520,8 @@ model Order {
   shippingCarrier    String?
   completedAt        DateTime?
   completedBy        String?
-  orderItems         OrderItem[]
   orderAnalytics     OrderAnalytics?
+  orderItems         OrderItem[]
   createdBy          User              @relation(fields: [createdById], references: [id])
   emailThread        EmailThread?      @relation(fields: [emailThreadId], references: [id])
   organization       Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -585,11 +540,6 @@ model OrderItem {
   id                 String             @id @default(cuid())
   orderId            String
   partId             String?
-  partNumber         String
-  supplierPartNumber String?
-  isAlternative      Boolean            @default(false)
-  alternativeReason  String?
-  originalPartNumber String?
   quantity           Int
   unitPrice          Decimal            @db.Decimal(10, 2)
   totalPrice         Decimal            @db.Decimal(10, 2)
@@ -604,6 +554,11 @@ model OrderItem {
   expectedDelivery   DateTime?
   actualDelivery     DateTime?
   supplierNotes      String?
+  partNumber         String
+  alternativeReason  String?
+  isAlternative      Boolean            @default(false)
+  originalPartNumber String?
+  supplierPartNumber String?
   order              Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
   part               Part?              @relation(fields: [partId], references: [id])
 
@@ -631,24 +586,24 @@ model CostSavingsRecord {
 }
 
 model OrderAnalytics {
-  id                    String       @id @default(cuid())
-  orderId               String       @unique
-  organizationId        String
-  completedAt           DateTime
-  totalLeadTimeDays     Int
-  expectedVsActualDays  Int
-  onTimeDelivery        Boolean
-  itemsFulfilled        Int
-  itemsOrdered          Int
-  fulfillmentRate       Decimal      @db.Decimal(5, 2)
-  actualSavings         Decimal      @db.Decimal(10, 2)
-  manualCost            Decimal      @db.Decimal(10, 2)
-  platformCost          Decimal      @db.Decimal(10, 2)
-  savingsPercent        Decimal      @db.Decimal(5, 2)
-  supplierIdentifier    String?
-  createdAt             DateTime     @default(now())
-  updatedAt             DateTime     @updatedAt
-  order                 Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id                   String   @id @default(cuid())
+  orderId              String   @unique
+  organizationId       String
+  completedAt          DateTime
+  totalLeadTimeDays    Int
+  expectedVsActualDays Int
+  onTimeDelivery       Boolean
+  itemsFulfilled       Int
+  itemsOrdered         Int
+  fulfillmentRate      Decimal  @db.Decimal(5, 2)
+  actualSavings        Decimal  @db.Decimal(10, 2)
+  manualCost           Decimal  @db.Decimal(10, 2)
+  platformCost         Decimal  @db.Decimal(10, 2)
+  savingsPercent       Decimal  @db.Decimal(5, 2)
+  supplierIdentifier   String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  order                Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
   @@index([organizationId, completedAt])
@@ -657,20 +612,20 @@ model OrderAnalytics {
 }
 
 model SupplierPerformance {
-  id                 String       @id @default(cuid())
+  id                 String   @id @default(cuid())
   supplierIdentifier String
   organizationId     String
   month              Int
   year               Int
-  ordersDelivered    Int          @default(0)
-  totalLeadTimeDays  Int          @default(0)
-  onTimeDeliveries   Int          @default(0)
-  avgLeadTimeDays    Decimal?     @db.Decimal(8, 2)
-  onTimeRate         Decimal?     @db.Decimal(5, 2)
-  totalSavings       Decimal      @default(0) @db.Decimal(10, 2)
-  avgSavings         Decimal?     @db.Decimal(10, 2)
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime     @updatedAt
+  ordersDelivered    Int      @default(0)
+  totalLeadTimeDays  Int      @default(0)
+  onTimeDeliveries   Int      @default(0)
+  avgLeadTimeDays    Decimal? @db.Decimal(8, 2)
+  onTimeRate         Decimal? @db.Decimal(5, 2)
+  totalSavings       Decimal  @default(0) @db.Decimal(10, 2)
+  avgSavings         Decimal? @db.Decimal(10, 2)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   @@unique([organizationId, supplierIdentifier, month, year])
   @@index([organizationId])
@@ -702,16 +657,16 @@ model ChatConversation {
   title          String?
   organizationId String
   userId         String
-  vehicleId      String?
   context        ConversationContext @default(PARTS_SEARCH)
   isActive       Boolean             @default(true)
   lastMessageAt  DateTime            @default(now())
   messageCount   Int                 @default(0)
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
+  vehicleId      String?
   organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user           User                @relation(fields: [userId], references: [id])
-  vehicle        Vehicle?            @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  vehicle        Vehicle?            @relation(fields: [vehicleId], references: [id])
   messages       ChatMessage[]
   pickLists      ChatPickList[]
 
@@ -732,11 +687,11 @@ model ChatMessage {
   processingTime Int?
   context        Json?
   actions        Json?
-  metadata       Json?
   isEdited       Boolean            @default(false)
   isDeleted      Boolean            @default(false)
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
+  metadata       Json?
   conversation   ChatConversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   pickListItems  ChatPickListItem[]
 
@@ -769,14 +724,14 @@ model ChatPickListItem {
   quantity       Int          @default(1)
   estimatedPrice Decimal?     @db.Decimal(10, 2)
   messageId      String?
-  notes          String?
   addedFromChat  Boolean      @default(true)
   isOrdered      Boolean      @default(false)
   orderId        String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
+  notes          String?
+  message        ChatMessage? @relation(fields: [messageId], references: [id])
   pickList       ChatPickList @relation(fields: [pickListId], references: [id], onDelete: Cascade)
-  message        ChatMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
 
   @@index([pickListId, isOrdered])
   @@map("chat_pick_list_items")
@@ -855,13 +810,13 @@ model EmailThread {
   supplierId               String?
   quoteRequestId           String?
   createdById              String
-  ownerUserId              String?
   createdAt                DateTime                 @default(now())
   updatedAt                DateTime                 @updatedAt
+  ownerUserId              String?
   messages                 EmailMessage[]
   createdBy                User                     @relation("EmailThreadCreatedBy", fields: [createdById], references: [id])
-  ownerUser                User?                    @relation("EmailThreadOwner", fields: [ownerUserId], references: [id])
   organization             Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ownerUser                User?                    @relation("EmailThreadOwner", fields: [ownerUserId], references: [id])
   quoteRequest             QuoteRequest?            @relation(fields: [quoteRequestId], references: [id])
   supplier                 Supplier?                @relation(fields: [supplierId], references: [id])
   order                    Order?
@@ -875,28 +830,28 @@ model EmailThread {
 }
 
 model EmailMessage {
-  id                 String            @id @default(cuid())
-  threadId           String
-  direction          EmailDirection
-  from               String
-  to                 String
-  cc                 String[]          @default([])
-  bcc                String[]          @default([])
-  subject            String
-  body               String
-  bodyHtml           String?
-  externalMessageId  String?
-  sentAt             DateTime?
-  receivedAt         DateTime?
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
-  expectedResponseBy DateTime?
-  followUpSentAt     DateTime?
-  inReplyTo          String?
-  followUpReason     String?
-  metadata           Json?
-  attachments        EmailAttachment[]
-  thread             EmailThread       @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  id                  String              @id @default(cuid())
+  threadId            String
+  direction           EmailDirection
+  from                String
+  to                  String
+  cc                  String[]            @default([])
+  bcc                 String[]            @default([])
+  subject             String
+  body                String
+  bodyHtml            String?
+  externalMessageId   String?
+  sentAt              DateTime?
+  receivedAt          DateTime?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  expectedResponseBy  DateTime?
+  followUpSentAt      DateTime?
+  inReplyTo           String?
+  followUpReason      String?
+  metadata            Json?
+  attachments         EmailAttachment[]
+  thread              EmailThread         @relation(fields: [threadId], references: [id], onDelete: Cascade)
   extractedQuoteItems SupplierQuoteItem[]
 
   @@index([threadId])
@@ -934,14 +889,6 @@ model QuoteRequest {
   responseDate               DateTime?
   totalAmount                Decimal?                  @db.Decimal(10, 2)
   createdById                String
-  // Approval fields
-  requiresApproval           Boolean                   @default(false)
-  approvedById               String?
-  approvedAt                 DateTime?
-  approvalNotes              String?
-  // Manager takeover fields
-  managerTakeoverAt          DateTime?
-  managerTakeoverId          String?
   createdAt                  DateTime                  @default(now())
   updatedAt                  DateTime                  @updatedAt
   vehicleId                  String?
@@ -949,18 +896,30 @@ model QuoteRequest {
   pickListId                 String?
   additionalSupplierIds      String?
   selectedSupplierId         String?
+  approvalNotes              String?
+  approvedAt                 DateTime?
+  approvedById               String?
+  requiresApproval           Boolean                   @default(false)
+  managerTakeoverAt          DateTime?
+  managerTakeoverId          String?
+  callSuppliersFirst         Boolean                   @default(false)
+  supplierCallPreferences    Json?
+  convertingBy               String?
+  convertingStartedAt        DateTime?
+  isConverting               Boolean                   @default(false)
   editedEmails               EditedEmail[]
   emailThread                EmailThread[]
   emailThreads               QuoteRequestEmailThread[]
   items                      QuoteRequestItem[]
-  createdBy                  User                      @relation("QuoteRequestCreatedBy", fields: [createdById], references: [id])
   approvedBy                 User?                     @relation("QuoteRequestApprovedBy", fields: [approvedById], references: [id])
+  createdBy                  User                      @relation("QuoteRequestCreatedBy", fields: [createdById], references: [id])
   managerTakeover            User?                     @relation("QuoteRequestManagerTakeover", fields: [managerTakeoverId], references: [id])
   organization               Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   pickList                   ChatPickList?             @relation(fields: [pickListId], references: [id])
   selectedSupplier           Supplier?                 @relation("SelectedQuoteSupplier", fields: [selectedSupplierId], references: [id])
   supplier                   Supplier?                 @relation("PrimaryQuoteSupplier", fields: [supplierId], references: [id])
   vehicle                    Vehicle?                  @relation(fields: [vehicleId], references: [id])
+  supplierCalls              SupplierCall[]
 
   @@unique([organizationId, quoteNumber])
   @@index([organizationId])
@@ -970,32 +929,32 @@ model QuoteRequest {
 }
 
 model QuoteRequestItem {
-  id                         String           @id @default(cuid())
+  id                         String              @id @default(cuid())
   quoteRequestId             String
   partId                     String?
   partNumber                 String
   description                String
   quantity                   Int
-  unitPrice                  Decimal?         @db.Decimal(10, 2)
-  totalPrice                 Decimal?         @db.Decimal(10, 2)
+  unitPrice                  Decimal?            @db.Decimal(10, 2)
+  totalPrice                 Decimal?            @db.Decimal(10, 2)
   supplierPartNumber         String?
   leadTime                   Int?
-  isAlternative              Boolean          @default(false)
+  isAlternative              Boolean             @default(false)
   notes                      String?
-  createdAt                  DateTime         @default(now())
-  updatedAt                  DateTime         @updatedAt
-  availability               ItemAvailability @default(UNKNOWN)
+  createdAt                  DateTime            @default(now())
+  updatedAt                  DateTime            @updatedAt
+  availability               ItemAvailability    @default(UNKNOWN)
   estimatedDeliveryDays      Int?
   suggestedFulfillmentMethod String?
   alternativeReason          String?
-  isSuperseded               Boolean          @default(false)
+  isSuperseded               Boolean             @default(false)
   originalPartNumber         String?
   supersessionNotes          String?
   supplierNotes              String?
   supplierId                 String?
-  part                       Part?            @relation(fields: [partId], references: [id])
-  quoteRequest               QuoteRequest     @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
-  supplier                   Supplier?        @relation(fields: [supplierId], references: [id])
+  part                       Part?               @relation(fields: [partId], references: [id])
+  quoteRequest               QuoteRequest        @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
+  supplier                   Supplier?           @relation(fields: [supplierId], references: [id])
   supplierQuotes             SupplierQuoteItem[]
 
   @@index([quoteRequestId])
@@ -1004,28 +963,25 @@ model QuoteRequestItem {
   @@map("quote_request_items")
 }
 
-// Stores per-supplier pricing for each quote request item
-// Enables multi-supplier price comparison at the item level
 model SupplierQuoteItem {
-  id                    String           @id @default(cuid())
-  quoteRequestItemId    String
-  supplierId            String
-  unitPrice             Decimal          @db.Decimal(10, 2)
-  totalPrice            Decimal          @db.Decimal(10, 2)
-  currency              String           @default("USD")
-  availability          ItemAvailability @default(UNKNOWN)
-  leadTimeDays          Int?
-  supplierPartNumber    String?
-  notes                 String?
-  validUntil            DateTime?
-  isSelected            Boolean          @default(false)
-  extractedFromEmailId  String?
-  createdAt             DateTime         @default(now())
-  updatedAt             DateTime         @updatedAt
-
-  quoteRequestItem      QuoteRequestItem @relation(fields: [quoteRequestItemId], references: [id], onDelete: Cascade)
-  supplier              Supplier         @relation(fields: [supplierId], references: [id])
-  extractedFromEmail    EmailMessage?    @relation(fields: [extractedFromEmailId], references: [id])
+  id                   String           @id @default(cuid())
+  quoteRequestItemId   String
+  supplierId           String
+  unitPrice            Decimal          @db.Decimal(10, 2)
+  totalPrice           Decimal          @db.Decimal(10, 2)
+  currency             String           @default("USD")
+  availability         ItemAvailability @default(UNKNOWN)
+  leadTimeDays         Int?
+  supplierPartNumber   String?
+  notes                String?
+  validUntil           DateTime?
+  isSelected           Boolean          @default(false)
+  extractedFromEmailId String?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  extractedFromEmail   EmailMessage?    @relation(fields: [extractedFromEmailId], references: [id])
+  quoteRequestItem     QuoteRequestItem @relation(fields: [quoteRequestItemId], references: [id], onDelete: Cascade)
+  supplier             Supplier         @relation(fields: [supplierId], references: [id])
 
   @@unique([quoteRequestItemId, supplierId])
   @@index([quoteRequestItemId])
@@ -1034,27 +990,27 @@ model SupplierQuoteItem {
 }
 
 model QuoteRequestEmailThread {
-  id                String            @id @default(cuid())
-  quoteRequestId    String
-  emailThreadId     String            @unique
-  supplierId        String
-  isPrimary         Boolean           @default(false)
-  status            QuoteThreadStatus @default(SENT)
-  responseDate      DateTime?
-  quotedAmount      Decimal?          @db.Decimal(10, 2)
-  threadRole        ThreadRole        @default(TECHNICIAN)
-  parentThreadId    String?
-  visibleToCreator  Boolean           @default(true)
-  takeoverAt        DateTime?
-  takeoverById      String?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  emailThread       EmailThread       @relation(fields: [emailThreadId], references: [id])
-  quoteRequest      QuoteRequest      @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
-  supplier          Supplier          @relation(fields: [supplierId], references: [id])
-  parentThread      QuoteRequestEmailThread? @relation("ThreadHierarchy", fields: [parentThreadId], references: [id])
-  childThreads      QuoteRequestEmailThread[] @relation("ThreadHierarchy")
-  takeoverBy        User?             @relation(fields: [takeoverById], references: [id])
+  id               String                    @id @default(cuid())
+  quoteRequestId   String
+  emailThreadId    String                    @unique
+  supplierId       String
+  isPrimary        Boolean                   @default(false)
+  status           QuoteThreadStatus         @default(SENT)
+  responseDate     DateTime?
+  quotedAmount     Decimal?                  @db.Decimal(10, 2)
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+  threadRole       ThreadRole                @default(TECHNICIAN)
+  parentThreadId   String?
+  visibleToCreator Boolean                   @default(true)
+  takeoverAt       DateTime?
+  takeoverById     String?
+  emailThread      EmailThread               @relation(fields: [emailThreadId], references: [id])
+  parentThread     QuoteRequestEmailThread?  @relation("ThreadHierarchy", fields: [parentThreadId], references: [id])
+  childThreads     QuoteRequestEmailThread[] @relation("ThreadHierarchy")
+  quoteRequest     QuoteRequest              @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
+  supplier         Supplier                  @relation(fields: [supplierId], references: [id])
+  takeoverBy       User?                     @relation(fields: [takeoverById], references: [id])
 
   @@unique([quoteRequestId, supplierId, threadRole])
   @@index([quoteRequestId])
@@ -1096,9 +1052,263 @@ model AuxiliaryEmail {
   @@map("auxiliary_emails")
 }
 
+model AuxiliaryPhone {
+  id         String   @id @default(cuid())
+  phone      String
+  label      String?
+  isPrimary  Boolean  @default(false)
+  supplierId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([supplierId])
+  @@map("auxiliary_phones")
+}
+
+model SupplierCall {
+  id               String        @id @default(cuid())
+  quoteRequestId   String?
+  supplierId       String
+  callDirection    CallDirection
+  callType         CallType      @default(QUOTE_REQUEST)
+  callerId         String
+  phoneNumber      String
+  startedAt        DateTime      @default(now())
+  answeredAt       DateTime?
+  endedAt          DateTime?
+  duration         Int?
+  status           CallStatus    @default(INITIATED)
+  vapiCallId       String?       @unique
+  recordingUrl     String?
+  graphStateId     String?
+  conversationLog  Json?
+  outcome          CallOutcome?
+  notes            String?
+  nextAction       String?
+  retryCount       Int           @default(0)
+  maxRetries       Int           @default(3)
+  nextRetryAt      DateTime?
+  extractedQuotes  Json?
+  threadRole       ThreadRole    @default(TECHNICIAN)
+  visibleToCreator Boolean       @default(true)
+  organizationId   String
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  caller           User          @relation(fields: [callerId], references: [id])
+  organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quoteRequest     QuoteRequest? @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
+  supplier         Supplier      @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([quoteRequestId])
+  @@index([supplierId])
+  @@index([status])
+  @@index([nextRetryAt])
+  @@index([organizationId])
+  @@map("supplier_calls")
+}
+
+model JobQueue {
+  id             String       @id @default(cuid())
+  jobId          String       @unique
+  queueName      String
+  jobType        String
+  status         JobStatus    @default(PENDING)
+  organizationId String
+  userId         String?
+  data           Json?
+  result         Json?
+  error          String?
+  attempts       Int          @default(0)
+  maxAttempts    Int          @default(3)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  startedAt      DateTime?
+  completedAt    DateTime?
+  failedAt       DateTime?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User?        @relation(fields: [userId], references: [id])
+
+  @@index([organizationId, status])
+  @@index([queueName, status])
+  @@map("job_queue")
+}
+
+model EmailSyncState {
+  id             String       @id @default(cuid())
+  organizationId String       @unique
+  lastSyncAt     DateTime
+  lastEmailId    String?
+  syncStatus     SyncStatus   @default(ACTIVE)
+  errorCount     Int          @default(0)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("email_sync_state")
+}
+
+model UserEmailSyncState {
+  id             String       @id @default(cuid())
+  userId         String       @unique
+  organizationId String
+  lastSyncAt     DateTime
+  lastEmailId    String?
+  syncStatus     SyncStatus   @default(ACTIVE)
+  errorCount     Int          @default(0)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("user_email_sync_state")
+}
+
+model IntegrationCredential {
+  id              String          @id @default(cuid())
+  organizationId  String
+  integrationType IntegrationType
+  name            String
+  isActive        Boolean         @default(true)
+  credentials     String
+  config          Json?
+  lastUsedAt      DateTime?
+  lastTestedAt    DateTime?
+  testStatus      TestStatus?
+  errorMessage    String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  createdBy       String
+  creator         User            @relation("IntegrationCredentialCreator", fields: [createdBy], references: [id])
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, integrationType])
+  @@index([organizationId, isActive])
+  @@map("integration_credentials")
+}
+
+model UserEmailIntegration {
+  id               String            @id @default(cuid())
+  userId           String            @unique
+  providerType     EmailProviderType
+  isActive         Boolean           @default(true)
+  emailAddress     String
+  credentials      String
+  accessToken      String?
+  refreshToken     String?
+  tokenExpiresAt   DateTime?
+  lastUsedAt       DateTime?
+  lastTestedAt     DateTime?
+  testStatus       TestStatus?
+  errorMessage     String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  configuredBy     String
+  configuredByUser User              @relation("EmailIntegrationConfiguredBy", fields: [configuredBy], references: [id])
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_email_integrations")
+}
+
+model Invoice {
+  id               String        @id @default(cuid())
+  organizationId   String
+  stripeInvoiceId  String        @unique
+  number           String?
+  status           InvoiceStatus @default(DRAFT)
+  amountDue        Decimal       @db.Decimal(10, 2)
+  amountPaid       Decimal       @db.Decimal(10, 2)
+  currency         String        @default("usd")
+  periodStart      DateTime
+  periodEnd        DateTime
+  dueDate          DateTime?
+  paidAt           DateTime?
+  hostedInvoiceUrl String?
+  invoicePdfUrl    String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([stripeInvoiceId])
+  @@map("invoices")
+}
+
+model PaymentMethod {
+  id                    String       @id @default(cuid())
+  organizationId        String
+  stripePaymentMethodId String       @unique
+  type                  String
+  isDefault             Boolean      @default(false)
+  cardBrand             String?
+  cardLast4             String?
+  cardExpMonth          Int?
+  cardExpYear           Int?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("payment_methods")
+}
+
+model UsageOverage {
+  id                  String        @id @default(cuid())
+  organizationId      String
+  billingPeriodStart  DateTime
+  billingPeriodEnd    DateTime
+  includedCalls       Int
+  totalCalls          Int
+  overageCalls        Int
+  overageRate         Decimal       @db.Decimal(10, 2)
+  overageAmount       Decimal       @db.Decimal(10, 2)
+  stripeInvoiceId     String?
+  stripeInvoiceItemId String?
+  billedAt            DateTime?
+  status              OverageStatus @default(PENDING)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  organization        Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, billingPeriodStart])
+  @@index([organizationId, billingPeriodStart])
+  @@index([status])
+  @@map("usage_overages")
+}
+
+model IngestionJob {
+  id               String               @id @default(cuid())
+  organizationId   String
+  userId           String
+  s3Key            String
+  fileName         String
+  fileType         String
+  fileSize         Int
+  status           IngestionJobStatus   @default(PENDING)
+  startedAt        DateTime?
+  completedAt      DateTime?
+  totalRecords     Int                  @default(0)
+  processedRecords Int                  @default(0)
+  successRecords   Int                  @default(0)
+  failedRecords    Int                  @default(0)
+  postgresStatus   IngestionPhaseStatus @default(PENDING)
+  pineconeStatus   IngestionPhaseStatus @default(PENDING)
+  neo4jStatus      IngestionPhaseStatus @default(PENDING)
+  errors           Json?
+  warnings         Json?
+  summary          Json?
+  options          Json?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  organization     Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user             User                 @relation(fields: [userId], references: [id])
+
+  @@index([organizationId, status])
+  @@index([status, createdAt])
+  @@map("ingestion_jobs")
+}
+
 enum SubscriptionTier {
-  BASIC
-  PROFESSIONAL
+  STARTER
+  GROWTH
   ENTERPRISE
 }
 
@@ -1136,10 +1346,10 @@ enum VehicleStatus {
 }
 
 enum VehicleSearchConfigStatus {
-  PENDING_ADMIN_REVIEW // User created vehicle, waiting for admin
-  SEARCH_READY // Admin verified, vehicle can be used for search
-  NEEDS_UPDATE // Data sources changed, needs re-verification
-  INACTIVE // Disabled by admin
+  PENDING_ADMIN_REVIEW
+  SEARCH_READY
+  NEEDS_UPDATE
+  INACTIVE
 }
 
 enum IndustryCategory {
@@ -1242,7 +1452,6 @@ enum ActivityType {
   QUOTE_RECEIVED
   QUOTE_APPROVED
   QUOTE_REJECTED
-  // Billing events
   SUBSCRIPTION_CREATED
   SUBSCRIPTION_CANCELLED
   PAYMENT_SUCCEEDED
@@ -1360,7 +1569,6 @@ enum IntervalType {
   MILES
 }
 
-// Maintenance PDF parsing status (automatic)
 enum MaintenanceParsingStatus {
   PENDING
   PROCESSING
@@ -1368,12 +1576,11 @@ enum MaintenanceParsingStatus {
   FAILED
 }
 
-// Admin approval status for maintenance schedules (manual)
 enum ScheduleApprovalStatus {
-  PENDING_REVIEW // Parsed, awaiting admin review
-  APPROVED // Admin approved, recommendations active
-  REJECTED // Admin rejected, needs re-upload
-  NEEDS_CORRECTION // Admin flagged issues, editable
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  NEEDS_CORRECTION
 }
 
 enum ImportJobStatus {
@@ -1393,105 +1600,14 @@ enum NotificationType {
   ORDER_DELIVERED
 }
 
-// Job Queue tracking
-model JobQueue {
-  id             String    @id @default(cuid())
-  jobId          String    @unique
-  queueName      String
-  jobType        String
-  status         JobStatus @default(PENDING)
-  organizationId String
-  userId         String?
-  data           Json?
-  result         Json?
-  error          String?
-  attempts       Int       @default(0)
-  maxAttempts    Int       @default(3)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  startedAt      DateTime?
-  completedAt    DateTime?
-  failedAt       DateTime?
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User?        @relation(fields: [userId], references: [id])
-
-  @@index([organizationId, status])
-  @@index([queueName, status])
-  @@map("job_queue")
-}
-
-// Email sync state per organization
-model EmailSyncState {
-  id             String     @id @default(cuid())
-  organizationId String     @unique
-  lastSyncAt     DateTime
-  lastEmailId    String?
-  syncStatus     SyncStatus @default(ACTIVE)
-  errorCount     Int        @default(0)
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@map("email_sync_state")
-}
-
-model UserEmailSyncState {
-  id             String     @id @default(cuid())
-  userId         String     @unique
-  organizationId String
-  lastSyncAt     DateTime
-  lastEmailId    String?
-  syncStatus     SyncStatus @default(ACTIVE)
-  errorCount     Int        @default(0)
-
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@index([organizationId])
-  @@map("user_email_sync_state")
-}
-
-// SaaS Multi-tenant Integration Credentials
-model IntegrationCredential {
-  id              String          @id @default(cuid())
-  organizationId  String
-  integrationType IntegrationType
-  name            String // User-friendly name
-  isActive        Boolean         @default(true)
-
-  // Encrypted credentials (JSON for flexibility)
-  credentials String @db.Text // Encrypted JSON
-
-  // Configuration
-  config Json? // Extra config per integration type
-
-  // Metadata
-  lastUsedAt   DateTime?
-  lastTestedAt DateTime?
-  testStatus   TestStatus?
-  errorMessage String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  createdBy String
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  creator      User         @relation("IntegrationCredentialCreator", fields: [createdBy], references: [id])
-
-  @@unique([organizationId, integrationType])
-  @@index([organizationId, isActive])
-  @@map("integration_credentials")
-}
-
-// Integration types enum
 enum IntegrationType {
-  OPENROUTER // LLM provider
-  GMAIL // Email via Gmail API
-  PINECONE // Vector search
-  NEO4J // Graph database
-  REDIS // Optional: per-org Redis instance
-  SMTP // Alternative email provider
-  MISTRAL // Mistral AI for PDF OCR extraction
+  OPENROUTER
+  GMAIL
+  PINECONE
+  NEO4J
+  REDIS
+  SMTP
+  MISTRAL
 }
 
 enum TestStatus {
@@ -1500,53 +1616,10 @@ enum TestStatus {
   PENDING
 }
 
-// User-level email provider types
 enum EmailProviderType {
-  GMAIL_OAUTH     // Gmail via OAuth
-  MICROSOFT_OAUTH // Microsoft 365/Outlook via OAuth
-  SMTP            // Custom SMTP server
-}
-
-// Per-user email integration for sending/receiving supplier communications
-model UserEmailIntegration {
-  id              String            @id @default(cuid())
-  userId          String            @unique
-  providerType    EmailProviderType
-  isActive        Boolean           @default(true)
-
-  // Email address used for sending (can be different from login email)
-  emailAddress    String
-
-  // Encrypted credentials (JSON for flexibility)
-  // For OAuth: { accessToken, refreshToken, expiresAt }
-  // For SMTP: { host, port, username, password, encryption }
-  credentials     String            @db.Text
-
-  // OAuth specific fields
-  accessToken     String?           @db.Text
-  refreshToken    String?           @db.Text
-  tokenExpiresAt  DateTime?
-
-  // SMTP specific fields stored in credentials JSON
-  // smtpHost, smtpPort, smtpUsername, smtpPassword, smtpEncryption
-
-  // Metadata
-  lastUsedAt      DateTime?
-  lastTestedAt    DateTime?
-  testStatus      TestStatus?
-  errorMessage    String?
-
-  // Audit
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  configuredBy    String            // Admin who set this up
-
-  // Relations
-  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  configuredByUser User             @relation("EmailIntegrationConfiguredBy", fields: [configuredBy], references: [id])
-
-  @@index([userId])
-  @@map("user_email_integrations")
+  GMAIL_OAUTH
+  MICROSOFT_OAUTH
+  SMTP
 }
 
 enum JobStatus {
@@ -1578,105 +1651,12 @@ enum InvitationStatus {
   REVOKED
 }
 
-// Stripe Invoice tracking
-model Invoice {
-  id               String        @id @default(cuid())
-  organizationId   String
-  stripeInvoiceId  String        @unique
-  number           String?
-  status           InvoiceStatus @default(DRAFT)
-  amountDue        Decimal       @db.Decimal(10, 2)
-  amountPaid       Decimal       @db.Decimal(10, 2)
-  currency         String        @default("usd")
-  periodStart      DateTime
-  periodEnd        DateTime
-  dueDate          DateTime?
-  paidAt           DateTime?
-  hostedInvoiceUrl String?
-  invoicePdfUrl    String?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@index([organizationId])
-  @@index([stripeInvoiceId])
-  @@map("invoices")
-}
-
 enum InvoiceStatus {
   DRAFT
   OPEN
   PAID
   VOID
   UNCOLLECTIBLE
-}
-
-// Stripe PaymentMethod tracking
-model PaymentMethod {
-  id                    String       @id @default(cuid())
-  organizationId        String
-  stripePaymentMethodId String       @unique
-  type                  String
-  isDefault             Boolean      @default(false)
-  cardBrand             String?
-  cardLast4             String?
-  cardExpMonth          Int?
-  cardExpYear           Int?
-  createdAt             DateTime     @default(now())
-  updatedAt             DateTime     @updatedAt
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@index([organizationId])
-  @@map("payment_methods")
-}
-
-// Parts Data Ingestion Pipeline
-model IngestionJob {
-  id               String               @id @default(cuid())
-  organizationId   String
-  userId           String
-
-  // File info
-  s3Key            String
-  fileName         String
-  fileType         String               // "csv" or "json"
-  fileSize         Int                  // bytes
-
-  // Processing status
-  status           IngestionJobStatus   @default(PENDING)
-  startedAt        DateTime?
-  completedAt      DateTime?
-
-  // Progress tracking
-  totalRecords     Int                  @default(0)
-  processedRecords Int                  @default(0)
-  successRecords   Int                  @default(0)
-  failedRecords    Int                  @default(0)
-
-  // Phase progress
-  postgresStatus   IngestionPhaseStatus @default(PENDING)
-  pineconeStatus   IngestionPhaseStatus @default(PENDING)
-  neo4jStatus      IngestionPhaseStatus @default(PENDING)
-
-  // Results
-  errors           Json?                // Array of { row, field, message }
-  warnings         Json?                // Array of { row, field, message }
-  summary          Json?                // Final summary stats
-
-  // Options used for this job
-  options          Json?
-
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
-
-  organization     Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user             User                 @relation(fields: [userId], references: [id])
-
-  @@index([organizationId, status])
-  @@index([status, createdAt])
-  @@map("ingestion_jobs")
 }
 
 enum IngestionJobStatus {
@@ -1694,4 +1674,67 @@ enum IngestionPhaseStatus {
   COMPLETED
   FAILED
   SKIPPED
+}
+
+enum ContactMethod {
+  EMAIL
+  PHONE
+  SMS
+  BOTH
+}
+
+enum CallDirection {
+  OUTBOUND
+  INBOUND
+}
+
+enum CallType {
+  QUOTE_REQUEST
+  FOLLOW_UP
+  NEGOTIATION
+  CONFIRMATION
+  GENERAL
+}
+
+enum CallStatus {
+  INITIATED
+  RINGING
+  ANSWERED
+  IN_PROGRESS
+  VOICEMAIL
+  NO_ANSWER
+  BUSY
+  COMPLETED
+  FAILED
+  CANCELLED
+  HUMAN_ESCALATED
+}
+
+enum CallOutcome {
+  QUOTE_RECEIVED
+  PARTIAL_QUOTE
+  CALLBACK_REQUESTED
+  TRANSFER_NEEDED
+  TOO_COMPLEX
+  NOT_INTERESTED
+  WRONG_NUMBER
+  VOICEMAIL_LEFT
+  NO_ANSWER
+}
+
+enum EmailDeliveryStatus {
+  VALID
+  SOFT_BOUNCE
+  HARD_BOUNCE
+  SPAM_COMPLAINT
+  INVALID
+  UNSUBSCRIBED
+}
+
+enum OverageStatus {
+  PENDING
+  INVOICED
+  PAID
+  FORGIVEN
+  FAILED
 }

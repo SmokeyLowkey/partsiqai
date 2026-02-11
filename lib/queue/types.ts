@@ -130,3 +130,102 @@ export const AnalyticsCollectionJobSchema = z.object({
 });
 
 export type AnalyticsCollectionJobData = z.infer<typeof AnalyticsCollectionJobSchema>;
+
+// VOIP Call Initiation Job
+export const VoipCallInitiationJobSchema = z.object({
+  quoteRequestId: z.string(),
+  supplierId: z.string(),
+  supplierName: z.string(),
+  supplierPhone: z.string(),
+  context: z.object({
+    parts: z.array(z.object({
+      partNumber: z.string(),
+      description: z.string(),
+      quantity: z.number(),
+      notes: z.string().optional(),
+    })),
+    vehicleInfo: z.object({
+      make: z.string().optional(),
+      model: z.string().optional(),
+      year: z.number().optional(),
+      serialNumber: z.string().optional(),
+    }).optional(),
+    priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
+    dueDate: z.string().optional(),
+    notes: z.string().optional(),
+  }),
+  metadata: z.object({
+    userId: z.string(),
+    organizationId: z.string(),
+    preferredMethod: z.enum(['call', 'email', 'both']),
+  }),
+});
+
+export type VoipCallInitiationJobData = z.infer<typeof VoipCallInitiationJobSchema>;
+
+// VOIP Fallback Job (email fallback when call fails)
+export const VoipFallbackJobSchema = z.object({
+  quoteRequestId: z.string(),
+  supplierId: z.string(),
+  supplierName: z.string(),
+  supplierEmail: z.string(),
+  callId: z.string().optional(), // The failed call ID
+  failureReason: z.string(),
+  context: z.object({
+    parts: z.array(z.object({
+      partNumber: z.string(),
+      description: z.string(),
+      quantity: z.number(),
+      notes: z.string().optional(),
+    })),
+    vehicleInfo: z.object({
+      make: z.string().optional(),
+      model: z.string().optional(),
+      year: z.number().optional(),
+      serialNumber: z.string().optional(),
+    }).optional(),
+    priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
+    dueDate: z.string().optional(),
+    notes: z.string().optional(),
+  }),
+  metadata: z.object({
+    userId: z.string(),
+    organizationId: z.string(),
+  }),
+});
+
+export type VoipFallbackJobData = z.infer<typeof VoipFallbackJobSchema>;
+
+// VOIP Call Retry Job
+export const VoipCallRetryJobSchema = z.object({
+  quoteRequestId: z.string(),
+  supplierId: z.string(),
+  supplierName: z.string(),
+  supplierPhone: z.string(),
+  previousCallId: z.string(),
+  retryAttempt: z.number(),
+  maxRetries: z.number().default(3),
+  context: z.object({
+    parts: z.array(z.object({
+      partNumber: z.string(),
+      description: z.string(),
+      quantity: z.number(),
+      notes: z.string().optional(),
+    })),
+    vehicleInfo: z.object({
+      make: z.string().optional(),
+      model: z.string().optional(),
+      year: z.number().optional(),
+      serialNumber: z.string().optional(),
+    }).optional(),
+    priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
+    dueDate: z.string().optional(),
+    notes: z.string().optional(),
+  }),
+  metadata: z.object({
+    userId: z.string(),
+    organizationId: z.string(),
+  }),
+});
+
+export type VoipCallRetryJobData = z.infer<typeof VoipCallRetryJobSchema>;

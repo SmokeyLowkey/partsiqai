@@ -124,6 +124,32 @@ export async function POST(req: NextRequest) {
 
     const data = validationResult.data;
 
+    // Check vehicle limit for organization
+    const organization = await prisma.organization.findUnique({
+      where: { id: session.user.organizationId },
+      select: { maxVehicles: true },
+    });
+
+    if (!organization) {
+      return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+    }
+
+    const vehicleCount = await prisma.vehicle.count({
+      where: { organizationId: session.user.organizationId },
+    });
+
+    if (vehicleCount >= organization.maxVehicles) {
+      return NextResponse.json(
+        {
+          error: 'Vehicle limit reached',
+          message: `Your current plan allows ${organization.maxVehicles} vehicles. Please upgrade your plan to add more vehicles.`,
+          limit: organization.maxVehicles,
+          current: vehicleCount,
+        },
+        { status: 403 }
+      );
+    }
+
     // Check if vehicle ID already exists for this organization
     const existingVehicle = await prisma.vehicle.findFirst({
       where: {

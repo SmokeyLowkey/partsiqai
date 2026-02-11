@@ -1,5 +1,5 @@
 -- CreateEnum
-CREATE TYPE "SubscriptionTier" AS ENUM ('BASIC', 'PROFESSIONAL', 'ENTERPRISE');
+CREATE TYPE "SubscriptionTier" AS ENUM ('STARTER', 'GROWTH', 'ENTERPRISE');
 
 -- CreateEnum
 CREATE TYPE "SubscriptionStatus" AS ENUM ('ACTIVE', 'SUSPENDED', 'CANCELLED', 'TRIAL');
@@ -91,7 +91,7 @@ CREATE TABLE "organizations" (
     "name" TEXT NOT NULL,
     "slug" TEXT NOT NULL,
     "domain" TEXT,
-    "subscriptionTier" "SubscriptionTier" NOT NULL DEFAULT 'BASIC',
+    "subscriptionTier" "SubscriptionTier" NOT NULL DEFAULT 'STARTER',
     "subscriptionStatus" "SubscriptionStatus" NOT NULL DEFAULT 'ACTIVE',
     "billingEmail" TEXT,
     "maxUsers" INTEGER NOT NULL DEFAULT 10,

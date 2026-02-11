@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,7 +14,37 @@ import { Send, Inbox, Eye, Mail, Clock, RefreshCw, Paperclip, Download, FileText
 import { QuoteRequestEmailThreadWithDetails } from '@/types/quote-request';
 import { FollowUpDialog } from './FollowUpDialog';
 import { ReplyDialog } from './ReplyDialog';
+import { CallLogEntry } from './CallLogEntry';
 import { QuoteStatus, UserRole } from '@prisma/client';
+
+type SupplierCallWithRelations = {
+  id: string;
+  quoteRequestId: string;
+  supplierId: string;
+  phoneNumber: string;
+  status: 'INITIATED' | 'RINGING' | 'ANSWERED' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'NO_ANSWER';
+  callDirection: 'INBOUND' | 'OUTBOUND';
+  callType: string;
+  outcome: 'SUCCESS' | 'PARTIAL' | 'NO_QUOTE' | 'VOICEMAIL' | 'DECLINED' | 'ERROR' | null;
+  duration: number | null;
+  conversationLog: any;
+  extractedQuotes: any;
+  recordingUrl: string | null;
+  vapiCallId: string | null;
+  createdAt: Date;
+  endedAt: Date | null;
+  supplier: {
+    id: string;
+    name: string;
+    phone: string | null;
+    email: string | null;
+  };
+  caller: {
+    id: string;
+    name: string | null;
+    email: string | null;
+  } | null;
+};
 
 interface CommunicationHistoryProps {
   emailThreads: QuoteRequestEmailThreadWithDetails[];
@@ -44,6 +74,28 @@ export function CommunicationHistory({
     message: typeof emailThreads[0]['emailThread']['messages'][0];
   } | null>(null);
   const [downloadingAttachment, setDownloadingAttachment] = useState<string | null>(null);
+  const [calls, setCalls] = useState<SupplierCallWithRelations[]>([]);
+  const [loadingCalls, setLoadingCalls] = useState(true);
+
+  // Fetch calls when component mounts or quoteRequestId changes
+  useEffect(() => {
+    const fetchCalls = async () => {
+      try {
+        setLoadingCalls(true);
+        const response = await fetch(`/api/quote-requests/${quoteRequestId}/calls`);
+        if (response.ok) {
+          const data = await response.json();
+          setCalls(data.calls || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch calls:', error);
+      } finally {
+        setLoadingCalls(false);
+      }
+    };
+
+    fetchCalls();
+  }, [quoteRequestId]);
 
   const handleDownloadAttachment = async (attachmentId: string, filename: string) => {
     try {
@@ -78,6 +130,11 @@ export function CommunicationHistory({
   const filteredThreads = selectedSupplierId
     ? emailThreads.filter((thread) => thread.supplierId === selectedSupplierId)
     : emailThreads;
+
+  // Filter calls by selected supplier if provided
+  const filteredCalls = selectedSupplierId
+    ? calls.filter((call) => call.supplierId === selectedSupplierId)
+    : calls;
 
   // Group threads by role
   const technicianThreads = filteredThreads.filter((thread) => thread.threadRole === 'TECHNICIAN');
@@ -146,7 +203,13 @@ export function CommunicationHistory({
     }
   };
 
-  if (technicianThreads.length === 0 && visibleManagerThreads.length === 0 && hiddenManagerThreads.length === 0) {
+  if (
+    technicianThreads.length === 0 && 
+    visibleManagerThreads.length === 0 && 
+    hiddenManagerThreads.length === 0 && 
+    filteredCalls.length === 0 &&
+    !loadingCalls
+  ) {
     return (
       <div className="space-y-2">
         <h4 className="font-medium text-sm">Communication History</h4>
@@ -386,6 +449,38 @@ export function CommunicationHistory({
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Call History Section */}
+        {filteredCalls.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <h4 className="font-medium text-sm">Phone Call History</h4>
+              <Badge variant="outline" className="bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
+                {filteredCalls.length} call{filteredCalls.length !== 1 ? 's' : ''}
+              </Badge>
+            </div>
+            <div className="space-y-4">
+              {filteredCalls.map((call) => (
+                <CallLogEntry
+                  key={call.id}
+                  callId={call.id}
+                  supplierName={call.supplier.name}
+                  phoneNumber={call.phoneNumber}
+                  status={call.status}
+                  direction={call.callDirection}
+                  outcome={call.outcome}
+                  duration={call.duration}
+                  conversationLog={call.conversationLog}
+                  extractedQuotes={call.extractedQuotes}
+                  recordingUrl={call.recordingUrl}
+                  vapiCallId={call.vapiCallId}
+                  createdAt={call.createdAt}
+                  endedAt={call.endedAt}
+                />
+              ))}
             </div>
           </div>
         )}

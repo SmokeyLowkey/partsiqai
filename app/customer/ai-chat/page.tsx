@@ -945,13 +945,15 @@ export default function AIChatPage() {
                   <div className="flex-1">
                     <p className="font-semibold">{rec.title}</p>
                     <p className="text-muted-foreground text-xs mb-1">{rec.description}</p>
-                    <div className="flex flex-wrap gap-1">
-                      {rec.partNumbers.map((pn, i) => (
-                        <Badge key={i} variant="outline" className="text-xs">
-                          {pn}
-                        </Badge>
-                      ))}
-                    </div>
+                    {rec.partNumbers && rec.partNumbers.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {rec.partNumbers.map((pn, i) => (
+                          <Badge key={i} variant="outline" className="text-xs">
+                            {pn}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

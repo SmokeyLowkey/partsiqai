@@ -136,7 +136,7 @@ export async function POST(request: Request) {
         name,
         slug,
         domain,
-        subscriptionTier: subscriptionTier || "BASIC",
+        subscriptionTier: subscriptionTier || "STARTER",
         subscriptionStatus: subscriptionStatus || "TRIAL",
         maxUsers: maxUsers || 5,
         maxVehicles: maxVehicles || 10,

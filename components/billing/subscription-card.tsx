@@ -39,14 +39,14 @@ interface SubscriptionCardProps {
 }
 
 const tierPricing: Record<string, number> = {
-  BASIC: 99,
-  PROFESSIONAL: 299,
+  STARTER: 99,
+  GROWTH: 299,
   ENTERPRISE: 799,
 }
 
 const tierColors: Record<string, string> = {
-  BASIC: "bg-blue-100 text-blue-800",
-  PROFESSIONAL: "bg-purple-100 text-purple-800",
+  STARTER: "bg-blue-100 text-blue-800",
+  GROWTH: "bg-purple-100 text-purple-800",
   ENTERPRISE: "bg-amber-100 text-amber-800",
 }
 

@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { tier, successUrl, cancelUrl } = body
 
-    if (!tier || !["BASIC", "PROFESSIONAL", "ENTERPRISE"].includes(tier)) {
+    if (!tier || !["STARTER", "GROWTH", "ENTERPRISE"].includes(tier)) {
       return NextResponse.json(
         { error: "Invalid subscription tier" },
         { status: 400 }
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const priceId = getPriceIdForTier(tier as "BASIC" | "PROFESSIONAL" | "ENTERPRISE")
+    const priceId = getPriceIdForTier(tier as "STARTER" | "GROWTH" | "ENTERPRISE")
 
     // Create or get Stripe customer
     let stripeCustomerId = organization.stripeCustomerId

@@ -3,6 +3,7 @@ import { headers } from "next/headers"
 import Stripe from "stripe"
 import { stripe, getTierForPriceId, mapStripeStatusToAppStatus } from "@/lib/stripe"
 import { prisma } from "@/lib/prisma"
+import { addOverageToInvoice, markOveragePaid, markOverageFailed } from "@/lib/billing/overage-billing"
 
 // Disable body parsing - we need raw body for webhook verification
 export const dynamic = "force-dynamic"
@@ -31,12 +32,12 @@ async function handleSubscriptionChange(subscription: any) {
 
   // Determine tier limits
   const tierLimits = {
-    BASIC: { maxUsers: 10, maxVehicles: 50 },
-    PROFESSIONAL: { maxUsers: 50, maxVehicles: 200 },
-    ENTERPRISE: { maxUsers: 9999, maxVehicles: 9999 },
+    STARTER: { maxUsers: 10, maxVehicles: 10, maxAICalls: 25 },
+    GROWTH: { maxUsers: 30, maxVehicles: 9999, maxAICalls: 100 },
+    ENTERPRISE: { maxUsers: 9999, maxVehicles: 9999, maxAICalls: 9999 },
   }
 
-  const limits = tier ? tierLimits[tier] : tierLimits.BASIC
+  const limits = tier ? tierLimits[tier] : tierLimits.STARTER
 
   // Safely handle dates - they might be undefined for trial subscriptions
   const startDate = subscription.current_period_start
@@ -61,6 +62,12 @@ async function handleSubscriptionChange(subscription: any) {
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       maxUsers: limits.maxUsers,
       maxVehicles: limits.maxVehicles,
+      maxAICalls: limits.maxAICalls,
+      // Reset AI calls on subscription change if tier changed
+      ...(tier && tier !== organization.subscriptionTier && {
+        aiCallsUsedThisMonth: 0,
+        aiCallsResetDate: new Date(),
+      }),
     },
   })
 
@@ -116,6 +123,33 @@ async function handleSubscriptionDeleted(subscription: any) {
       },
     },
   })
+}
+
+// Handle invoice created - add overage charges
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleInvoiceCreated(invoice: any) {
+  const customerId = invoice.customer as string
+  const organization = await getOrganizationByCustomerId(customerId)
+
+  if (!organization) {
+    console.error(`No organization found for customer: ${customerId}`)
+    return
+  }
+
+  // Only process subscription invoices (not standalone invoices)
+  if (!invoice.subscription) {
+    console.log(`Invoice ${invoice.id} is not a subscription invoice, skipping overage check`)
+    return
+  }
+
+  // Add any pending overage charges to this invoice
+  try {
+    await addOverageToInvoice(organization.id, invoice.id)
+    console.log(`Overage charges added to invoice ${invoice.id} for organization ${organization.id}`)
+  } catch (error) {
+    console.error(`Failed to add overage charges to invoice ${invoice.id}:`, error)
+    // Don't fail the webhook - log and continue
+  }
 }
 
 // Handle invoice paid
@@ -188,6 +222,15 @@ async function handleInvoicePaid(invoice: any) {
       },
     },
   })
+
+  // Mark any overage charges as paid
+  try {
+    await markOveragePaid(invoice.id);
+    console.log(`Marked overage charges as paid for invoice ${invoice.id}`)
+  } catch (error) {
+    console.error(`Failed to mark overage as paid for invoice ${invoice.id}:`, error)
+    // Don't fail the webhook - log and continue
+  }
 }
 
 // Handle invoice payment failed
@@ -243,6 +286,15 @@ async function handlePaymentFailed(invoice: any) {
       },
     },
   })
+
+  // Mark any overage charges as failed
+  try {
+    await markOverageFailed(invoice.id);
+    console.log(`Marked overage charges as failed for invoice ${invoice.id}`)
+  } catch (error) {
+    console.error(`Failed to mark overage as failed for invoice ${invoice.id}:`, error)
+    // Don't fail the webhook - log and continue
+  }
 }
 
 // Handle trial ending soon
@@ -310,6 +362,10 @@ export async function POST(request: Request) {
 
       case "customer.subscription.deleted":
         await handleSubscriptionDeleted(event.data.object)
+        break
+
+      case "invoice.created":
+        await handleInvoiceCreated(event.data.object)
         break
 
       case "invoice.paid":

@@ -14,39 +14,43 @@ interface Plan {
   features: string[]
   maxUsers: number
   maxVehicles: number
+  maxAICalls: number
   popular?: boolean
 }
 
 const plans: Plan[] = [
   {
-    id: "BASIC",
-    name: "Basic",
-    price: 99,
-    description: "Perfect for small fleets",
+    id: "STARTER",
+    name: "Starter",
+    price: 199,
+    description: "For small teams (5-10 people)",
     maxUsers: 10,
-    maxVehicles: 50,
+    maxVehicles: 10,
+    maxAICalls: 25,
     features: [
       "Up to 10 users",
-      "Up to 50 vehicles",
-      "AI-powered parts search",
-      "Basic reporting",
+      "Up to 10 vehicles",
+      "25 AI-powered calls/month",
+      "Email automation included",
+      "Basic analytics",
       "Email support",
     ],
   },
   {
-    id: "PROFESSIONAL",
-    name: "Professional",
-    price: 299,
-    description: "For growing operations",
-    maxUsers: 50,
-    maxVehicles: 200,
+    id: "GROWTH",
+    name: "Growth",
+    price: 449,
+    description: "For scaling teams (10-30 people)",
+    maxUsers: 30,
+    maxVehicles: 9999,
+    maxAICalls: 100,
     popular: true,
     features: [
-      "Up to 50 users",
-      "Up to 200 vehicles",
-      "AI-powered parts search",
+      "Up to 30 users",
+      "Unlimited vehicles",
+      "100 AI calls/month",
+      "Multi-user accounts",
       "Advanced analytics",
-      "Supplier integrations",
       "Priority support",
       "Custom workflows",
     ],
@@ -54,20 +58,20 @@ const plans: Plan[] = [
   {
     id: "ENTERPRISE",
     name: "Enterprise",
-    price: 799,
+    price: 1299,
     description: "For large organizations",
     maxUsers: 9999,
     maxVehicles: 9999,
+    maxAICalls: 9999,
     features: [
       "Unlimited users",
       "Unlimited vehicles",
-      "AI-powered parts search",
-      "Advanced analytics",
-      "Supplier integrations",
+      "Unlimited calls",
+      "Custom call scripts",
+      "ERP integrations",
+      "White-glove onboarding",
       "Dedicated support",
-      "Custom integrations",
       "SLA guarantee",
-      "On-premise option",
     ],
   },
 ]

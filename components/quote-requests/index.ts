@@ -6,6 +6,8 @@ export { SupplierPriceComparisonTable } from './SupplierPriceComparisonTable';
 export { CommunicationHistory } from './CommunicationHistory';
 export { SupplierSelect } from './SupplierSelect';
 export { SendQuoteDialog } from './SendQuoteDialog';
+export { SupplierMethodSelector } from './SupplierMethodSelector';
+export { CallLogEntry } from './CallLogEntry';
 export { FollowUpDialog } from './FollowUpDialog';
 export { ReplyDialog } from './ReplyDialog';
 export { EditQuoteDialog } from './EditQuoteDialog';

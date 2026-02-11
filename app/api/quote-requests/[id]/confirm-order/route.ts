@@ -3,8 +3,10 @@ import { getServerSession, canConvertToOrder } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getEmailClientForUser } from '@/lib/services/email/email-client-factory';
 import { generateOrderNumber } from '@/lib/utils/order-number';
+import { checkIdempotency, cacheResponse, getIdempotencyKey } from '@/lib/middleware/idempotency';
 
 // POST /api/quote-requests/[id]/confirm-order - Actually create order and send email
+// EDGE CASE #1: Protected by idempotency to prevent duplicate orders from double-clicking
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -21,6 +23,21 @@ export async function POST(
         { error: 'You do not have permission to convert quotes to orders.' },
         { status: 403 }
       );
+    }
+
+    // EDGE CASE #1: Check for duplicate request via idempotency key
+    const idempotencyKey = getIdempotencyKey(req);
+    if (idempotencyKey) {
+      const cachedResponse = await checkIdempotency(
+        idempotencyKey,
+        session.user.id,
+        req.nextUrl.pathname
+      );
+      if (cachedResponse) {
+        return NextResponse.json(cachedResponse, {
+          headers: { 'X-Idempotency-Replay': 'true' }
+        });
+      }
     }
 
     const { id } = await params;
@@ -46,6 +63,53 @@ export async function POST(
 
     const organizationId = session.user.organizationId;
     const userId = session.user.id;
+
+    // EDGE CASE #18: Validate conversion lock before proceeding
+    const lockCheck = await prisma.quoteRequest.findUnique({
+      where: { id, organizationId },
+      select: {
+        isConverting: true,
+        convertingBy: true,
+        convertingStartedAt: true,
+        status: true,
+      },
+    });
+
+    if (!lockCheck) {
+      return NextResponse.json({ error: 'Quote request not found' }, { status: 404 });
+    }
+
+    // Check if already converted
+    if (lockCheck.status === 'CONVERTED_TO_ORDER') {
+      return NextResponse.json({
+        error: 'This quote has already been converted to an order',
+        alreadyConverted: true,
+      }, { status: 409 });
+    }
+
+    // Validate conversion lock
+    if (!lockCheck.isConverting || lockCheck.convertingBy !== userId) {
+      return NextResponse.json({
+        error: 'Invalid conversion lock. Please restart the conversion process.',
+        lockStatus: {
+          isConverting: lockCheck.isConverting,
+          convertingBy: lockCheck.convertingBy,
+          currentUser: userId,
+        },
+      }, { status: 409 });
+    }
+
+    // Check lock freshness (5 minute threshold)
+    const LOCK_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+    if (lockCheck.convertingStartedAt) {
+      const lockAge = Date.now() - new Date(lockCheck.convertingStartedAt).getTime();
+      if (lockAge > LOCK_TIMEOUT) {
+        return NextResponse.json({
+          error: 'Conversion lock has expired. Please restart the conversion process.',
+          lockAge: Math.round(lockAge / 1000) + ' seconds',
+        }, { status: 409 });
+      }
+    }
 
     // Fetch quote with all necessary relations
     const quoteRequest = await prisma.quoteRequest.findUnique({
@@ -177,8 +241,9 @@ export async function POST(
 
     // Build internal notes
     let finalInternalNotes = internalNotes || '';
+    
     if (expiredItems.length > 0) {
-      finalInternalNotes += `\n\n⚠️ Converted with expired pricing (acknowledged by user). ${expiredItems.length} item(s) had expired quotes.`;
+      finalInternalNotes += `\n⚠️ Converted with expired pricing (acknowledged by user). ${expiredItems.length} item(s) had expired quotes.`;
     }
     
     // Track rejected alternatives
@@ -270,12 +335,16 @@ export async function POST(
         },
       });
 
-      // Update quote request status
+      // Update quote request status and release conversion lock
       await tx.quoteRequest.update({
         where: { id: quoteRequest.id },
         data: {
           status: 'CONVERTED_TO_ORDER',
           selectedSupplierId: supplierId,
+          // EDGE CASE #18: Release conversion lock
+          isConverting: false,
+          convertingBy: null,
+          convertingStartedAt: null,
         },
       });
 
@@ -382,7 +451,7 @@ export async function POST(
     } catch (emailError: any) {
       console.error('Error sending order confirmation email:', emailError);
       // Order is created, but email failed - don't rollback
-      return NextResponse.json({
+      const response = {
         success: true,
         warning: 'Order created but email failed to send',
         order: {
@@ -392,10 +461,17 @@ export async function POST(
           total: order.total,
           itemCount: order.orderItems.length,
         },
-      });
+      };
+      
+      // EDGE CASE #1: Cache for idempotency
+      if (idempotencyKey) {
+        await cacheResponse(idempotencyKey, userId, req.nextUrl.pathname, response);
+      }
+      
+      return NextResponse.json(response);
     }
 
-    return NextResponse.json({
+    const response = {
       success: true,
       order: {
         id: order.id,
@@ -404,9 +480,34 @@ export async function POST(
         total: order.total,
         itemCount: order.orderItems.length,
       },
-    });
+    };
+    
+    // EDGE CASE #1: Cache successful response for idempotency
+    if (idempotencyKey) {
+      await cacheResponse(idempotencyKey, userId, req.nextUrl.pathname, response);
+    }
+
+    return NextResponse.json(response);
   } catch (error: any) {
     console.error('Error confirming order:', error);
+    
+    // EDGE CASE #18: Release conversion lock on error
+    try {
+      const session = await getServerSession();
+      if (session?.user?.organizationId) {
+        await prisma.quoteRequest.update({
+          where: { id: await params.then(p => p.id), organizationId: session.user.organizationId },
+          data: {
+            isConverting: false,
+            convertingBy: null,
+            convertingStartedAt: null,
+          },
+        });
+      }
+    } catch (lockError) {
+      console.error('Error releasing conversion lock:', lockError);
+    }
+    
     return NextResponse.json(
       { error: 'Failed to confirm order' },
       { status: 500 }

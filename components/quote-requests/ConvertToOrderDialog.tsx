@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { v4 as uuidv4 } from 'uuid';
 import {
   Dialog,
   DialogContent,
@@ -74,6 +75,7 @@ export function ConvertToOrderDialog({
   const [emailBody, setEmailBody] = useState('');
   const [generatingEmail, setGeneratingEmail] = useState(false);
   const [sendingOrder, setSendingOrder] = useState(false);
+  const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
   
   // Track part selection: 'ALTERNATIVE' = accept supplier's part, 'ORIGINAL' = request original part
   const [itemSelections, setItemSelections] = useState<Record<string, 'ALTERNATIVE' | 'ORIGINAL'>>({});
@@ -111,6 +113,8 @@ export function ConvertToOrderDialog({
       setEmailBody('');
       setError(null);
       setShowSuccess(false);
+      // Generate new idempotency key for this conversion session
+      setIdempotencyKey(uuidv4());
     }
     
     const initialChecked: Record<string, boolean> = {};
@@ -217,9 +221,14 @@ export function ConvertToOrderDialog({
     setError(null);
 
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (idempotencyKey) {
+        headers['Idempotency-Key'] = idempotencyKey;
+      }
+      
       const response = await fetch(`/api/quote-requests/${quoteRequestId}/confirm-order`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           supplierId: supplier.id,
           fulfillmentMethod,

@@ -205,7 +205,7 @@ export async function POST(request: Request) {
         data: {
           name: companyName,
           slug,
-          subscriptionTier: "BASIC",
+          subscriptionTier: "STARTER",
           subscriptionStatus: "TRIAL",
           trialEndsAt,
           maxUsers: 10,

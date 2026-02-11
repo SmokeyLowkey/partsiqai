@@ -372,7 +372,7 @@ function AdminBillingPageContent() {
 
         <TabsContent value="plans">
           <PlanSelector
-            currentPlan={subscription?.subscriptionTier || "BASIC"}
+            currentPlan={subscription?.subscriptionTier || "STARTER"}
             onSelectPlan={handleSelectPlan}
             isLoading={actionLoading}
           />
@@ -418,7 +418,7 @@ function AdminBillingPageContent() {
             </DialogDescription>
           </DialogHeader>
           <PlanSelector
-            currentPlan={subscription?.subscriptionTier || "BASIC"}
+            currentPlan={subscription?.subscriptionTier || "STARTER"}
             onSelectPlan={handleSelectPlan}
             isLoading={actionLoading}
           />

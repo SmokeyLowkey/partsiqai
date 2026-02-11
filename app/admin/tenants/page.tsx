@@ -88,7 +88,7 @@ export default function TenantsPage() {
   const [formData, setFormData] = useState({
     name: "",
     domain: "",
-    subscriptionTier: "BASIC",
+    subscriptionTier: "STARTER",
     subscriptionStatus: "TRIAL",
     maxUsers: 5,
     maxVehicles: 10,
@@ -259,7 +259,7 @@ export default function TenantsPage() {
     setFormData({
       name: "",
       domain: "",
-      subscriptionTier: "BASIC",
+      subscriptionTier: "STARTER",
       subscriptionStatus: "TRIAL",
       maxUsers: 5,
       maxVehicles: 10,
@@ -271,9 +271,9 @@ export default function TenantsPage() {
     switch (tier) {
       case "ENTERPRISE":
         return "bg-purple-500";
-      case "PROFESSIONAL":
+      case "GROWTH":
         return "bg-blue-500";
-      default:
+      case "STARTER":
         return "bg-gray-500";
     }
   };
@@ -339,8 +339,8 @@ export default function TenantsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Tiers</SelectItem>
-                  <SelectItem value="BASIC">Basic</SelectItem>
-                  <SelectItem value="PROFESSIONAL">Professional</SelectItem>
+                  <SelectItem value="STARTER">Starter</SelectItem>
+                  <SelectItem value="GROWTH">Growth</SelectItem>
                   <SelectItem value="ENTERPRISE">Enterprise</SelectItem>
                 </SelectContent>
               </Select>
@@ -518,8 +518,8 @@ export default function TenantsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="BASIC">Basic</SelectItem>
-                  <SelectItem value="PROFESSIONAL">Professional</SelectItem>
+                  <SelectItem value="STARTER">Starter</SelectItem>
+                  <SelectItem value="GROWTH">Growth</SelectItem>
                   <SelectItem value="ENTERPRISE">Enterprise</SelectItem>
                 </SelectContent>
               </Select>
@@ -639,8 +639,8 @@ export default function TenantsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="BASIC">Basic</SelectItem>
-                  <SelectItem value="PROFESSIONAL">Professional</SelectItem>
+                  <SelectItem value="STARTER">Starter</SelectItem>
+                  <SelectItem value="GROWTH">Growth</SelectItem>
                   <SelectItem value="ENTERPRISE">Enterprise</SelectItem>
                 </SelectContent>
               </Select>

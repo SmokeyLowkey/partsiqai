@@ -7,6 +7,7 @@ import { EmailMonitorJobData } from '@/lib/queue/types';
 import { getEmailClientForUser, EmailClient } from '@/lib/services/email/email-client-factory';
 import { EmailData } from '@/lib/services/email/gmail-client';
 import { EmailParser } from '@/lib/services/email/email-parser';
+import { BounceDetector, BounceType } from '@/lib/services/email/bounce-detector';
 import { prisma } from '@/lib/prisma';
 import { quoteExtractionQueue } from '@/lib/queue/queues';
 import { workerLogger } from '@/lib/logger';
@@ -126,6 +127,77 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
           // Parse email to extract data
           const parsedEmail = parseEmailData(email, emailParser);
 
+          // EDGE CASE #3: Check if this is a bounce message
+          const isBounce = BounceDetector.isBounceMessage(
+            parsedEmail.from,
+            parsedEmail.subject,
+            parsedEmail.body
+          );
+
+          if (isBounce) {
+            const bounceAnalysis = BounceDetector.analyzeBounce(
+              parsedEmail.subject,
+              parsedEmail.body
+            );
+
+            if (bounceAnalysis.isBounce && bounceAnalysis.originalRecipient) {
+              // Find supplier by the bounced email address
+              const affectedSupplier = await prisma.supplier.findFirst({
+                where: {
+                  organizationId,
+                  OR: [
+                    { email: bounceAnalysis.originalRecipient },
+                    {
+                      auxiliaryEmails: {
+                        some: {
+                          email: bounceAnalysis.originalRecipient,
+                        },
+                      },
+                    },
+                  ],
+                },
+              });
+
+              if (affectedSupplier) {
+                // Map bounce type to EmailDeliveryStatus enum
+                let deliveryStatus: 'SOFT_BOUNCE' | 'HARD_BOUNCE' | 'SPAM_COMPLAINT' | 'INVALID' = 'HARD_BOUNCE';
+                
+                if (bounceAnalysis.bounceType === BounceType.SOFT_BOUNCE) {
+                  deliveryStatus = 'SOFT_BOUNCE';
+                } else if (bounceAnalysis.bounceType === BounceType.SPAM_COMPLAINT) {
+                  deliveryStatus = 'SPAM_COMPLAINT';
+                } else if (bounceAnalysis.bounceType === BounceType.INVALID) {
+                  deliveryStatus = 'INVALID';
+                } else {
+                  deliveryStatus = 'HARD_BOUNCE';
+                }
+
+                // Update supplier bounce tracking
+                await prisma.supplier.update({
+                  where: { id: affectedSupplier.id },
+                  data: {
+                    emailDeliveryStatus: deliveryStatus,
+                    lastBounceAt: new Date(),
+                    bounceCount: { increment: 1 },
+                    bounceReason: bounceAnalysis.reason?.substring(0, 500), // Limit length
+                  },
+                });
+
+                workerLogger.warn({
+                  supplierId: affectedSupplier.id,
+                  supplierName: affectedSupplier.name,
+                  supplierEmail: bounceAnalysis.originalRecipient,
+                  bounceType: bounceAnalysis.bounceType,
+                  reason: bounceAnalysis.reason,
+                }, 'Email bounce detected - updated supplier deliverability status');
+              }
+            }
+
+            // Skip further processing of bounce messages - they're not real supplier responses
+            skippedCount++;
+            continue;
+          }
+
           // Match supplier by exact email (primary or auxiliary)
           let supplier = await prisma.supplier.findFirst({
             where: {
@@ -182,6 +254,35 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
             );
             skippedCount++;
             continue;
+          }
+
+          // EDGE CASE #3: Reset bounce status on successful email delivery
+          // If supplier had bounce issues but we just received an email from them,
+          // their email is working again - reset the status
+          if (supplier.emailDeliveryStatus !== 'VALID') {
+            await prisma.supplier.update({
+              where: { id: supplier.id },
+              data: {
+                emailDeliveryStatus: 'VALID',
+                lastEmailVerifiedAt: new Date(),
+                bounceCount: 0, // Reset counter
+                bounceReason: null, // Clear previous bounce reason
+              },
+            });
+
+            workerLogger.info({
+              supplierId: supplier.id,
+              supplierName: supplier.name,
+              previousStatus: supplier.emailDeliveryStatus,
+            }, 'Email deliverability restored - received email from previously bounced supplier');
+          } else {
+            // Update last verified timestamp for healthy suppliers too
+            await prisma.supplier.update({
+              where: { id: supplier.id },
+              data: {
+                lastEmailVerifiedAt: new Date(),
+              },
+            });
           }
 
           // Create or find email thread by external thread ID

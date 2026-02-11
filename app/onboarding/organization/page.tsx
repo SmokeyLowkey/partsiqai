@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -55,9 +56,8 @@ export default function OrganizationPage() {
       // Force session refresh so the JWT picks up the new onboardingStatus
       await update()
 
-      // Full page reload to dashboard — the JWT callback will refresh
-      // mutable fields from DB, so middleware will see COMPLETED status
-      window.location.href = getDashboardPath()
+      // Redirect to login page
+      window.location.href = "/login"
     } catch (err: any) {
       setError(err.message)
       toast.error(err.message)

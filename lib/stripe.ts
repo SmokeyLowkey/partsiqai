@@ -20,8 +20,8 @@ if (process.env.NODE_ENV !== "production") globalThis.stripeGlobal = stripe
 
 // Price ID helpers
 export const STRIPE_PRICES = {
-  BASIC: process.env.STRIPE_PRICE_BASIC!,
-  PROFESSIONAL: process.env.STRIPE_PRICE_PROFESSIONAL!,
+  STARTER: process.env.STRIPE_PRICE_STARTER!,
+  GROWTH: process.env.STRIPE_PRICE_GROWTH!,
   ENTERPRISE: process.env.STRIPE_PRICE_ENTERPRISE!,
 } as const
 

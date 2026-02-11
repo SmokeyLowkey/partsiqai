@@ -24,8 +24,16 @@ import { followUpWorker } from './follow-up-worker';
 import { maintenancePdfWorker } from './maintenance-pdf-worker';
 import { partsIngestionWorker } from './parts-ingestion-worker';
 import { analyticsCollectionWorker } from './analytics-collection-worker';
+import { startVoipCallInitiationWorker } from './voip-call-initiation-worker';
+import { startVoipFallbackWorker } from './voip-fallback-worker';
+import { startVoipCallRetryWorker } from './voip-call-retry-worker';
 
 workerLogger.info('Starting PartsIQ Workers');
+
+// Start VOIP workers
+const voipCallInitiationWorker = startVoipCallInitiationWorker();
+const voipFallbackWorker = startVoipFallbackWorker();
+const voipCallRetryWorker = startVoipCallRetryWorker();
 
 // Email monitoring is handled by Vercel cron (/api/cron/email-monitor) every 5 minutes.
 // No duplicate scheduler needed here — this avoids excessive Redis commands.
@@ -39,6 +47,9 @@ const workers = [
   { name: 'Maintenance PDF', worker: maintenancePdfWorker },
   { name: 'Parts Ingestion', worker: partsIngestionWorker },
   { name: 'Analytics Collection', worker: analyticsCollectionWorker },
+  { name: 'VOIP Call Initiation', worker: voipCallInitiationWorker },
+  { name: 'VOIP Fallback', worker: voipFallbackWorker },
+  { name: 'VOIP Call Retry', worker: voipCallRetryWorker },
 ];
 
 // Graceful shutdown handler

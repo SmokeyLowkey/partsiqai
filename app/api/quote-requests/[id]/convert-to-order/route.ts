@@ -35,6 +35,61 @@ export async function POST(
     const organizationId = session.user.organizationId;
     const userId = session.user.id;
 
+    // EDGE CASE #18: Check for concurrent conversion attempts
+    // Set conversion lock to prevent race conditions
+    const STALE_LOCK_THRESHOLD = 5 * 60 * 1000; // 5 minutes
+    
+    const existingQuote = await prisma.quoteRequest.findUnique({
+      where: { id, organizationId },
+      select: {
+        isConverting: true,
+        convertingBy: true,
+        convertingStartedAt: true,
+        status: true,
+      },
+    });
+
+    if (existingQuote) {
+      // Check if already converted
+      if (existingQuote.status === 'CONVERTED_TO_ORDER') {
+        return NextResponse.json({
+          error: 'This quote has already been converted to an order',
+          status: existingQuote.status,
+        }, { status: 409 });
+      }
+
+      // Check for active conversion lock
+      if (existingQuote.isConverting && existingQuote.convertingBy) {
+        const lockAge = existingQuote.convertingStartedAt 
+          ? Date.now() - new Date(existingQuote.convertingStartedAt).getTime()
+          : Infinity;
+
+        // If lock is fresh and by another user
+        if (lockAge < STALE_LOCK_THRESHOLD && existingQuote.convertingBy !== userId) {
+          return NextResponse.json({
+            error: 'Another user is currently converting this quote to an order',
+            convertingBy: existingQuote.convertingBy,
+            startedAt: existingQuote.convertingStartedAt,
+          }, { status: 409 });
+        }
+
+        // If lock is stale, we'll clear it below
+        if (lockAge >= STALE_LOCK_THRESHOLD) {
+          console.log(`[Convert] Clearing stale conversion lock (${Math.round(lockAge / 1000)}s old)`);
+        }
+      }
+    }
+
+    // Set conversion lock
+    await prisma.quoteRequest.update({
+      where: { id, organizationId },
+      data: {
+        isConverting: true,
+        convertingBy: userId,
+        convertingStartedAt: new Date(),
+      },
+    });
+
     // Fetch quote with all necessary relations
     const quoteRequest = await prisma.quoteRequest.findUnique({
       where: {
