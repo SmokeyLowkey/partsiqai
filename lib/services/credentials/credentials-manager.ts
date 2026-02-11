@@ -7,6 +7,109 @@ import { google } from 'googleapis';
 import OpenAI from 'openai';
 
 export class CredentialsManager {
+  /**
+   * Get credentials with platform key fallback
+   * Checks usePlatformKeys flag - if true, returns platform-wide keys from SystemSettings
+   * If false or platform keys not available, returns organization-specific keys
+   */
+  async getCredentialsWithFallback<T>(organizationId: string, type: IntegrationType): Promise<T | null> {
+    // Get organization to check usePlatformKeys flag
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: {
+        usePlatformKeys: true,
+        pineconeHost: true,
+      },
+    });
+
+    if (!organization) {
+      throw new Error('Organization not found');
+    }
+
+    // If using platform keys, try to get from SystemSettings
+    if (organization.usePlatformKeys) {
+      const platformCreds = await this.getPlatformCredentials<T>(type, organization);
+      if (platformCreds) {
+        return platformCreds;
+      }
+      // If platform creds not available, fall through to org-specific creds
+    }
+
+    // Fall back to organization-specific credentials
+    return await this.getCredentials<T>(organizationId, type);
+  }
+
+  /**
+   * Get platform-wide credentials from SystemSettings
+   */
+  private async getPlatformCredentials<T>(type: IntegrationType, organization?: { pineconeHost?: string | null }): Promise<T | null> {
+    let settingKeys: string[] = [];
+
+    switch (type) {
+      case 'OPENROUTER':
+        settingKeys = ['OPENROUTER_API_KEY', 'OPENROUTER_DEFAULT_MODEL'];
+        break;
+      case 'PINECONE':
+        settingKeys = ['PINECONE_API_KEY', 'PINECONE_HOST'];
+        break;
+      case 'NEO4J':
+        settingKeys = ['NEO4J_URI', 'NEO4J_USERNAME', 'NEO4J_PASSWORD', 'NEO4J_DATABASE'];
+        break;
+      case 'MISTRAL':
+        settingKeys = ['MISTRAL_API_KEY'];
+        break;
+      default:
+        return null; // No platform credentials for this type
+    }
+
+    const settings = await prisma.systemSetting.findMany({
+      where: {
+        key: { in: settingKeys },
+      },
+    });
+
+    if (settings.length === 0) {
+      return null;
+    }
+
+    // Build credentials object based on type
+    const credentials: any = {};
+    
+    switch (type) {
+      case 'OPENROUTER':
+        credentials.apiKey = settings.find(s => s.key === 'OPENROUTER_API_KEY')?.value;
+        credentials.defaultModel = settings.find(s => s.key === 'OPENROUTER_DEFAULT_MODEL')?.value || 'anthropic/claude-3.5-sonnet';
+        break;
+      
+      case 'PINECONE':
+        credentials.apiKey = settings.find(s => s.key === 'PINECONE_API_KEY')?.value;
+        // Use organization-specific host if provided, otherwise use platform default
+        credentials.host =  organization?.pineconeHost || settings.find(s => s.key === 'PINECONE_HOST')?.value;
+        break;
+      
+      case 'NEO4J':
+        credentials.uri = settings.find(s => s.key === 'NEO4J_URI')?.value;
+        credentials.username = settings.find(s => s.key === 'NEO4J_USERNAME')?.value || 'neo4j';
+        credentials.password = settings.find(s => s.key === 'NEO4J_PASSWORD')?.value;
+        credentials.database = settings.find(s => s.key === 'NEO4J_DATABASE')?.value || 'neo4j';
+        break;
+      
+      case 'MISTRAL':
+        credentials.apiKey = settings.find(s => s.key === 'MISTRAL_API_KEY')?.value;
+        break;
+    }
+
+    // Verify we have the minimum required fields
+    if (!credentials.apiKey && type !== 'NEO4J') {
+      return null;
+    }
+    if (type === 'NEO4J' && (!credentials.uri || !credentials.password)) {
+      return null;
+    }
+
+    return credentials as T;
+  }
+
   async getCredentials<T>(organizationId: string, type: IntegrationType): Promise<T | null> {
     const credential = await prisma.integrationCredential.findUnique({
       where: {

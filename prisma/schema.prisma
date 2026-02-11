@@ -28,6 +28,7 @@ model Organization {
   vapiApiKey             String?
   openrouterApiKey       String?
   elevenLabsApiKey       String?
+  pineconeHost           String?
   settings               Json?
   logo                   String?
   primaryColor           String?                 @default("#2563eb")

@@ -60,7 +60,7 @@ export class PineconeSearchAgent {
   }
 
   static async fromOrganization(organizationId: string): Promise<PineconeSearchAgent> {
-    const credentials = await credentialsManager.getCredentials<{
+    const credentials = await credentialsManager.getCredentialsWithFallback<{
       apiKey: string;
       host: string;
     }>(organizationId, 'PINECONE');

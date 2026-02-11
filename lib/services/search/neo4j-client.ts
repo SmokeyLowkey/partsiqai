@@ -13,7 +13,7 @@ export class Neo4jSearchAgent {
   }
 
   static async fromOrganization(organizationId: string): Promise<Neo4jSearchAgent> {
-    const credentials = await credentialsManager.getCredentials<{
+    const credentials = await credentialsManager.getCredentialsWithFallback<{
       uri: string;
       username: string;
       password: string;

@@ -30,7 +30,7 @@ export class OpenRouterClient {
    * Create OpenRouterClient from organization's stored credentials
    */
   static async fromOrganization(organizationId: string): Promise<OpenRouterClient> {
-    const credentials = await credentialsManager.getCredentials<{
+    const credentials = await credentialsManager.getCredentialsWithFallback<{
       apiKey: string;
       defaultModel?: string;
     }>(organizationId, 'OPENROUTER');

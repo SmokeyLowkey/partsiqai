@@ -25,7 +25,7 @@ export class Neo4jSchemaDiscovery {
   }
 
   static async fromOrganization(organizationId: string): Promise<Neo4jSchemaDiscovery | null> {
-    const credentials = await credentialsManager.getCredentials<{
+    const credentials = await credentialsManager.getCredentialsWithFallback<{
       uri: string;
       username: string;
       password: string;
