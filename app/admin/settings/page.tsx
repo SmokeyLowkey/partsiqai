@@ -60,6 +60,7 @@ import {
   XCircle,
   AlertCircle,
   FileSearch,
+  Trash2,
 } from "lucide-react";
 
 type SystemSetting = {
@@ -187,6 +188,11 @@ export default function SettingsPage() {
     apiKey: "",
   });
   const [savingPlatformIntegration, setSavingPlatformIntegration] = useState<string | null>(null);
+
+  // Organization Pinecone mapping state (Master Admin only)
+  const [organizations, setOrganizations] = useState<Array<{id: string; name: string; pineconeHost: string | null}>>([]);
+  const [pineconeHostMappings, setPineconeHostMappings] = useState<Record<string, string>>({});
+  const [savingPineconeMappings, setSavingPineconeMappings] = useState(false);
   const [testingPlatformIntegration, setTestingPlatformIntegration] = useState<string | null>(null);
 
   useEffect(() => {
@@ -252,6 +258,26 @@ export default function SettingsPage() {
         });
       }  } catch (error) {
       console.error("Error fetching Vapi platform settings:", error);
+    }
+  };
+
+  const fetchOrganizations = async () => {
+    try {
+      const response = await fetch("/api/admin/organizations");
+      if (response.ok) {
+        const data = await response.json();
+        setOrganizations(data.organizations || []);
+        // Initialize mappings from existing data
+        const mappings: Record<string, string> = {};
+        (data.organizations || []).forEach((org: any) => {
+          if (org.pineconeHost) {
+            mappings[org.id] = org.pineconeHost;
+          }
+        });
+        setPineconeHostMappings(mappings);
+      }
+    } catch (error) {
+      console.error("Error fetching organizations:", error);
     }
   };
 
@@ -707,6 +733,61 @@ export default function SettingsPage() {
 
   const toggleShowApiKey = (key: string) => {
     setShowApiKeys((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleUpdatePineconeMapping = (orgId: string, host: string) => {
+    setPineconeHostMappings((prev) => ({
+      ...prev,
+      [orgId]: host,
+    }));
+  };
+
+  const handleRemovePineconeMapping = (orgId: string) => {
+    setPineconeHostMappings((prev) => {
+      const updated = { ...prev };
+      delete updated[orgId];
+      return updated;
+    });
+  };
+
+  const handleSavePineconeMappings = async () => {
+    try {
+      setSavingPineconeMappings(true);
+      
+      // Update each organization with their pineconeHost
+      const promises = organizations.map(async (org) => {
+        const newHost = pineconeHostMappings[org.id] || null;
+        // Only update if changed
+        if (newHost !== org.pineconeHost) {
+          const response = await fetch(`/api/admin/organizations/${org.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pineconeHost: newHost }),
+          });
+          if (!response.ok) {
+            throw new Error(`Failed to update ${org.name}`);
+          }
+        }
+      });
+      
+      await Promise.all(promises);
+      
+      toast({
+        title: "Success",
+        description: "Pinecone index mappings saved successfully",
+      });
+      
+      // Refresh organizations
+      fetchOrganizations();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setSavingPineconeMappings(false);
+    }
   };
 
   const getIntegrationStatus = (type: string) => {
@@ -1668,6 +1749,97 @@ export default function SettingsPage() {
                 Save
               </Button>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Separator />
+
+      {/* Organization Pinecone Index Mapping */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Database className="h-5 w-5" />
+            Organization Pinecone Index Mapping
+          </CardTitle>
+          <CardDescription>
+            Assign dedicated Pinecone indexes to specific organizations for complete data isolation. Leave blank to use the platform's default index with namespace isolation.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-lg border">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="text-left p-3 font-medium">Organization</th>
+                    <th className="text-left p-3 font-medium">Organization ID</th>
+                    <th className="text-left p-3 font-medium">Pinecone Index Host URL</th>
+                    <th className="text-right p-3 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {organizations.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="p-8 text-center text-muted-foreground">
+                        No organizations found
+                      </td>
+                    </tr>
+                  ) : (
+                    organizations.map((org) => (
+                      <tr key={org.id} className="hover:bg-muted/30">
+                        <td className="p-3 font-medium">{org.name}</td>
+                        <td className="p-3 text-sm text-muted-foreground font-mono">{org.id}</td>
+                        <td className="p-3">
+                          <Input
+                            value={pineconeHostMappings[org.id] || ""}
+                            onChange={(e) => handleUpdatePineconeMapping(org.id, e.target.value)}
+                            placeholder="https://org-xyz.svc.environment.pinecone.io"
+                            className="max-w-md"
+                          />
+                        </td>
+                        <td className="p-3 text-right">
+                          {pineconeHostMappings[org.id] && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemovePineconeMapping(org.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-4">
+            <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 flex-1 mr-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5" />
+                <div>
+                  <h4 className="font-medium text-amber-800 dark:text-amber-200 text-sm">Index Naming Convention</h4>
+                  <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                    Recommended: <code className="px-1 py-0.5 bg-amber-100 dark:bg-amber-900 rounded">org-[organization_id]</code> (e.g., org-{organizations[0]?.id.slice(0, 10)}...)
+                  </p>
+                </div>
+              </div>
+            </div>
+            <Button
+              onClick={handleSavePineconeMappings}
+              disabled={savingPineconeMappings}
+            >
+              {savingPineconeMappings ? (
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4 mr-2" />
+              )}
+              Save All Mappings
+            </Button>
           </div>
         </CardContent>
       </Card>
