@@ -39,6 +39,20 @@ export async function POST(request: Request) {
 
     const priceId = getPriceIdForTier(tier as "STARTER" | "GROWTH" | "ENTERPRISE")
 
+    if (!priceId) {
+      console.error(`Stripe price ID not found for tier: ${tier}`, {
+        STRIPE_PRICE_STARTER: process.env.STRIPE_PRICE_STARTER ? 'SET' : 'MISSING',
+        STRIPE_PRICE_GROWTH: process.env.STRIPE_PRICE_GROWTH ? 'SET' : 'MISSING',
+        STRIPE_PRICE_ENTERPRISE: process.env.STRIPE_PRICE_ENTERPRISE ? 'SET' : 'MISSING',
+      })
+      return NextResponse.json(
+        { error: `Stripe price ID not configured for ${tier} tier. Please set STRIPE_PRICE_${tier} environment variable.` },
+        { status: 500 }
+      )
+    }
+
+    console.log(`Creating checkout session for tier: ${tier}, priceId: ${priceId}`)
+
     // Create or get Stripe customer
     let stripeCustomerId = organization.stripeCustomerId
 
