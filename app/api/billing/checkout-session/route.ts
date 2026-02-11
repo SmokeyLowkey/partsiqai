@@ -51,6 +51,23 @@ export async function POST(request: Request) {
       )
     }
 
+    // Validate that it's a price ID, not a product ID
+    if (priceId.startsWith('prod_')) {
+      console.error(`Invalid Stripe ID for tier ${tier}: ${priceId}. This is a Product ID, not a Price ID.`)
+      return NextResponse.json(
+        { error: `Invalid Stripe configuration: STRIPE_PRICE_${tier} must be a Price ID (starts with 'price_'), not a Product ID (starts with 'prod_'). Please check your Stripe dashboard for the correct Price ID.` },
+        { status: 500 }
+      )
+    }
+
+    if (!priceId.startsWith('price_')) {
+      console.error(`Invalid Stripe ID for tier ${tier}: ${priceId}. Price IDs must start with 'price_'.`)
+      return NextResponse.json(
+        { error: `Invalid Stripe configuration: STRIPE_PRICE_${tier} must start with 'price_'. Current value: ${priceId}` },
+        { status: 500 }
+      )
+    }
+
     console.log(`Creating checkout session for tier: ${tier}, priceId: ${priceId}`)
 
     // Create or get Stripe customer

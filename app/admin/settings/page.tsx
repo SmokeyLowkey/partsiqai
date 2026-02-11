@@ -119,6 +119,7 @@ export default function SettingsPage() {
     requireTwoFactor: false,
     allowedEmailDomains: "",
   });
+  const [usePlatformKeys, setUsePlatformKeys] = useState(true);
 
   // System settings state (Master Admin only)
   const [systemSettings, setSystemSettings] = useState<SystemSetting[]>([]);
@@ -158,7 +159,7 @@ export default function SettingsPage() {
     apiKey: "",
   });
 
-  // Platform-wide Vapi configuration state (Master Admin only)
+  // Platform-wide API configuration state (Master Admin only)
   const [vapiPlatformConfig, setVapiPlatformConfig] = useState({
     apiKey: "",
     phoneNumberId: "",
@@ -166,13 +167,35 @@ export default function SettingsPage() {
   const [savingVapi, setSavingVapi] = useState(false);
   const [testingVapi, setTestingVapi] = useState(false);
 
+  // Platform-wide integration states for master admin
+  const [platformOpenRouterConfig, setPlatformOpenRouterConfig] = useState({
+    apiKey: "",
+    defaultModel: "anthropic/claude-3.5-sonnet",
+  });
+  const [platformPineconeConfig, setPlatformPineconeConfig] = useState({
+    apiKey: "",
+    host: "",
+  });
+  const [platformNeo4jConfig, setPlatformNeo4jConfig] = useState({
+    uri: "",
+    username: "neo4j",
+    password: "",
+    database: "neo4j",
+  });
+  const [platformMistralConfig, setPlatformMistralConfig] = useState({
+    apiKey: "",
+  });
+  const [savingPlatformIntegration, setSavingPlatformIntegration] = useState<string | null>(null);
+  const [testingPlatformIntegration, setTestingPlatformIntegration] = useState<string | null>(null);
+
   useEffect(() => {
     if (status === "authenticated" && isAdmin) {
       fetchOrgSettings();
-      fetchIntegrations();
       if (isMasterAdmin) {
         fetchSystemSettings();
-        fetchVapiPlatformSettings();
+        fetchPlatformIntegrations();
+      } else {
+        fetchIntegrations();
       }
     }
   }, [status, isAdmin, isMasterAdmin]);
@@ -190,6 +213,7 @@ export default function SettingsPage() {
           requireTwoFactor: data.organization.requireTwoFactor || false,
           allowedEmailDomains: (data.organization.allowedEmailDomains || []).join(", "),
         });
+        setUsePlatformKeys(data.organization.usePlatformKeys ?? true);
       }
     } catch (error) {
       console.error("Error fetching org settings:", error);
@@ -224,9 +248,62 @@ export default function SettingsPage() {
           apiKey: vapiApiKey?.value || "",
           phoneNumberId: vapiPhoneId?.value || "",
         });
+      }  } catch (error) {
+      console.error("Error fetching Vapi platform settings:", error);
+    }
+  };
+
+  const fetchPlatformIntegrations = async () => {
+    try {
+      const response = await fetch("/api/admin/settings");
+      if (response.ok) {
+        const data = await response.json();
+        const settings = data.settings || [];
+        
+        // Vapi
+        const vapiApiKey = settings.find((s: SystemSetting) => s.key === "VAPI_PLATFORM_API_KEY");
+        const vapiPhoneId = settings.find((s: SystemSetting) => s.key === "VAPI_PLATFORM_PHONE_NUMBER_ID");
+        setVapiPlatformConfig({
+          apiKey: vapiApiKey?.value || "",
+          phoneNumberId: vapiPhoneId?.value || "",
+        });
+
+        // OpenRouter
+        const openRouterKey = settings.find((s: SystemSetting) => s.key === "OPENROUTER_API_KEY");
+        const openRouterModel = settings.find((s: SystemSetting) => s.key === "OPENROUTER_DEFAULT_MODEL");
+        setPlatformOpenRouterConfig({
+          apiKey: openRouterKey?.value || "",
+          defaultModel: openRouterModel?.value || "anthropic/claude-3.5-sonnet",
+        });
+
+        // Pinecone
+        const pineconeKey = settings.find((s: SystemSetting) => s.key === "PINECONE_API_KEY");
+        const pineconeHost = settings.find((s: SystemSetting) => s.key === "PINECONE_HOST");
+        setPlatformPineconeConfig({
+          apiKey: pineconeKey?.value || "",
+          host: pineconeHost?.value || "",
+        });
+
+        // Neo4j
+        const neo4jUri = settings.find((s: SystemSetting) => s.key === "NEO4J_URI");
+        const neo4jUser = settings.find((s: SystemSetting) => s.key === "NEO4J_USERNAME");
+        const neo4jPass = settings.find((s: SystemSetting) => s.key === "NEO4J_PASSWORD");
+        const neo4jDb = settings.find((s: SystemSetting) => s.key === "NEO4J_DATABASE");
+        setPlatformNeo4jConfig({
+          uri: neo4jUri?.value || "",
+          username: neo4jUser?.value || "neo4j",
+          password: neo4jPass?.value || "",
+          database: neo4jDb?.value || "neo4j",
+        });
+
+        // Mistral
+        const mistralKey = settings.find((s: SystemSetting) => s.key === "MISTRAL_API_KEY");
+        setPlatformMistralConfig({
+          apiKey: mistralKey?.value || "",
+        });
       }
     } catch (error) {
-      console.error("Error fetching Vapi platform settings:", error);
+      console.error("Error fetching platform integrations:", error);
     }
   };
 
@@ -257,6 +334,7 @@ export default function SettingsPage() {
             .split(",")
             .map((d) => d.trim())
             .filter(Boolean),
+          usePlatformKeys: usePlatformKeys,
         }),
       });
 
@@ -477,6 +555,150 @@ export default function SettingsPage() {
       });
     } finally {
       setTestingVapi(false);
+    }
+  };
+
+  // Platform integration handlers
+  const handleSavePlatformIntegration = async (type: string) => {
+    try {
+      setSavingPlatformIntegration(type);
+
+      switch (type) {
+        case "OPENROUTER":
+          if (platformOpenRouterConfig.apiKey) {
+            await fetch("/api/admin/settings", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                key: "OPENROUTER_API_KEY",
+                value: platformOpenRouterConfig.apiKey,
+                category: "API",
+                description: "Platform-wide OpenRouter API Key for LLM access",
+              }),
+            });
+          }
+          if (platformOpenRouterConfig.defaultModel) {
+            await fetch("/api/admin/settings", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                key: "OPENROUTER_DEFAULT_MODEL",
+                value: platformOpenRouterConfig.defaultModel,
+                category: "API",
+                description: "Default LLM model for OpenRouter",
+              }),
+            });
+          }
+          break;
+
+        case "PINECONE":
+          if (platformPineconeConfig.apiKey) {
+            await fetch("/api/admin/settings", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                key: "PINECONE_API_KEY",
+                value: platformPineconeConfig.apiKey,
+                category: "API",
+                description: "Platform-wide Pinecone API Key for vector database",
+              }),
+            });
+          }
+          if (platformPineconeConfig.host) {
+            await fetch("/api/admin/settings", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                key: "PINECONE_HOST",
+                value: platformPineconeConfig.host,
+                category: "API",
+                description: "Pinecone host URL",
+              }),
+            });
+          }
+          break;
+
+        case "NEO4J":
+          if (platformNeo4jConfig.uri) {
+            await fetch("/api/admin/settings", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                key: "NEO4J_URI",
+                value: platformNeo4jConfig.uri,
+                category: "API",
+                description: "Platform-wide Neo4j connection URI",
+              }),
+            });
+          }
+          if (platformNeo4jConfig.username) {
+            await fetch("/api/admin/settings", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                key: "NEO4J_USERNAME",
+                value: platformNeo4jConfig.username,
+                category: "API",
+                description: "Neo4j username",
+              }),
+            });
+          }
+          if (platformNeo4jConfig.password) {
+            await fetch("/api/admin/settings", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                key: "NEO4J_PASSWORD",
+                value: platformNeo4jConfig.password,
+                category: "API",
+                description: "Neo4j password",
+              }),
+            });
+          }
+          if (platformNeo4jConfig.database) {
+            await fetch("/api/admin/settings", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                key: "NEO4J_DATABASE",
+                value: platformNeo4jConfig.database,
+                category: "API",
+                description: "Neo4j database name",
+              }),
+            });
+          }
+          break;
+
+        case "MISTRAL":
+          if (platformMistralConfig.apiKey) {
+            await fetch("/api/admin/settings", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                key: "MISTRAL_API_KEY",
+                value: platformMistralConfig.apiKey,
+                category: "API",
+                description: "Platform-wide Mistral AI API Key for PDF OCR",
+              }),
+            });
+          }
+          break;
+      }
+
+      toast({
+        title: "Success",
+        description: `Platform ${type} settings saved successfully`,
+      });
+
+      fetchPlatformIntegrations();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setSavingPlatformIntegration(null);
     }
   };
 
@@ -737,6 +959,61 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* API Keys Configuration */}
+      {!isMasterAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Shield className="h-5 w-5" />
+              API Keys Configuration (BYOK)
+            </CardTitle>
+            <CardDescription>
+              Choose whether to use platform-wide API keys or bring your own keys
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>Use Platform API Keys</Label>
+                <p className="text-sm text-muted-foreground">
+                  When enabled, your organization will use the platform's shared API keys. When disabled, you can configure your own API keys in the Integrations tab.
+                </p>
+              </div>
+              <Switch
+                checked={usePlatformKeys}
+                onCheckedChange={setUsePlatformKeys}
+              />
+            </div>
+            {usePlatformKeys && (
+              <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800">
+                <div className="flex items-start gap-3">
+                  <CheckCircle className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+                  <div>
+                    <h4 className="font-medium text-blue-800 dark:text-blue-200">Using Platform Keys</h4>
+                    <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                      Your organization is using the platform's API keys. No additional configuration required.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+            {!usePlatformKeys && (
+              <div className="p-4 rounded-lg bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-orange-600 dark:text-orange-400 mt-0.5" />
+                  <div>
+                    <h4 className="font-medium text-orange-800 dark:text-orange-200">BYOK Enabled</h4>
+                    <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">
+                      You need to configure your own API keys in the Integrations tab. Save these settings first, then navigate to the Integrations tab to add your keys.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Save Button */}
       <div className="flex justify-end">
@@ -1197,6 +1474,316 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      <Separator />
+
+      {/* Platform-wide OpenRouter Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Brain className="h-5 w-5" />
+            Platform LLM Configuration (OpenRouter)
+          </CardTitle>
+          <CardDescription>
+            Configure platform-wide OpenRouter settings for AI-powered search and chat across all organizations.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-100 dark:bg-purple-900 rounded-lg">
+                <Brain className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+              </div>
+              <div>
+                <h3 className="font-medium">OpenRouter API</h3>
+                <p className="text-sm text-muted-foreground">
+                  LLM access for intelligent part search and customer support
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-12">
+              <div className="space-y-2">
+                <Label>API Key</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type={showApiKeys["platform_openrouter"] ? "text" : "password"}
+                    value={platformOpenRouterConfig.apiKey}
+                    onChange={(e) => setPlatformOpenRouterConfig({ ...platformOpenRouterConfig, apiKey: e.target.value })}
+                    placeholder="sk-or-xxxxxxxx"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => toggleShowApiKey("platform_openrouter")}
+                  >
+                    {showApiKeys["platform_openrouter"] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Default Model</Label>
+                <Select
+                  value={platformOpenRouterConfig.defaultModel}
+                  onValueChange={(value) => setPlatformOpenRouterConfig({ ...platformOpenRouterConfig, defaultModel: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</SelectItem>
+                    <SelectItem value="anthropic/claude-3-opus">Claude 3 Opus</SelectItem>
+                    <SelectItem value="openai/gpt-4-turbo">GPT-4 Turbo</SelectItem>
+                    <SelectItem value="openai/gpt-4o">GPT-4o</SelectItem>
+                    <SelectItem value="google/gemini-pro">Gemini Pro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pl-12">
+              <Button
+                onClick={() => handleSavePlatformIntegration("OPENROUTER")}
+                disabled={savingPlatformIntegration === "OPENROUTER" || !platformOpenRouterConfig.apiKey}
+              >
+                {savingPlatformIntegration === "OPENROUTER" ? (
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4 mr-2" />
+                )}
+                Save
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Separator />
+
+      {/* Platform-wide Pinecone Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Zap className="h-5 w-5" />
+            Platform Vector Database (Pinecone)
+          </CardTitle>
+          <CardDescription>
+            Configure platform-wide Pinecone for semantic part search across all organizations.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-green-100 dark:bg-green-900 rounded-lg">
+                <Zap className="h-5 w-5 text-green-600 dark:text-green-400" />
+              </div>
+              <div>
+                <h3 className="font-medium">Pinecone Vector Store</h3>
+                <p className="text-sm text-muted-foreground">
+                  Semantic search for parts across your catalog
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-12">
+              <div className="space-y-2">
+                <Label>API Key</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type={showApiKeys["platform_pinecone"] ? "text" : "password"}
+                    value={platformPineconeConfig.apiKey}
+                    onChange={(e) => setPlatformPineconeConfig({ ...platformPineconeConfig, apiKey: e.target.value })}
+                    placeholder="pcsk_xxxxxxxx"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => toggleShowApiKey("platform_pinecone")}
+                  >
+                    {showApiKeys["platform_pinecone"] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Host URL</Label>
+                <Input
+                  value={platformPineconeConfig.host}
+                  onChange={(e) => setPlatformPineconeConfig({ ...platformPineconeConfig, host: e.target.value })}
+                  placeholder="https://your-index.svc.environment.pinecone.io"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 pl-12">
+              <Button
+                onClick={() => handleSavePlatformIntegration("PINECONE")}
+                disabled={savingPlatformIntegration === "PINECONE" || !platformPineconeConfig.apiKey || !platformPineconeConfig.host}
+              >
+                {savingPlatformIntegration === "PINECONE" ? (
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4 mr-2" />
+                )}
+                Save
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Separator />
+
+      {/* Platform-wide Neo4j Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Database className="h-5 w-5" />
+            Platform Graph Database (Neo4j)
+          </CardTitle>
+          <CardDescription>
+            Configure platform-wide Neo4j for part compatibility and relationship mapping.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-lg">
+                <Database className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <h3 className="font-medium">Neo4j Graph Database</h3>
+                <p className="text-sm text-muted-foreground">
+                  Part compatibility and cross-reference search
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-12">
+              <div className="space-y-2">
+                <Label>Connection URI</Label>
+                <Input
+                  value={platformNeo4jConfig.uri}
+                  onChange={(e) => setPlatformNeo4jConfig({ ...platformNeo4jConfig, uri: e.target.value })}
+                  placeholder="neo4j+s://xxx.databases.neo4j.io"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Username</Label>
+                <Input
+                  value={platformNeo4jConfig.username}
+                  onChange={(e) => setPlatformNeo4jConfig({ ...platformNeo4jConfig, username: e.target.value })}
+                  placeholder="neo4j"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Password</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type={showApiKeys["platform_neo4j"] ? "text" : "password"}
+                    value={platformNeo4jConfig.password}
+                    onChange={(e) => setPlatformNeo4jConfig({ ...platformNeo4jConfig, password: e.target.value })}
+                    placeholder="Enter password"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => toggleShowApiKey("platform_neo4j")}
+                  >
+                    {showApiKeys["platform_neo4j"] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Database</Label>
+                <Input
+                  value={platformNeo4jConfig.database}
+                  onChange={(e) => setPlatformNeo4jConfig({ ...platformNeo4jConfig, database: e.target.value })}
+                  placeholder="neo4j"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 pl-12">
+              <Button
+                onClick={() => handleSavePlatformIntegration("NEO4J")}
+                disabled={savingPlatformIntegration === "NEO4J" || !platformNeo4jConfig.uri || !platformNeo4jConfig.password}
+              >
+                {savingPlatformIntegration === "NEO4J" ? (
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4 mr-2" />
+                )}
+                Save
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Separator />
+
+      {/* Platform-wide Mistral Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileSearch className="h-5 w-5" />
+            Platform PDF Processing (Mistral AI)
+          </CardTitle>
+          <CardDescription>
+            Configure platform-wide Mistral AI for PDF OCR and maintenance manual extraction.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-orange-100 dark:bg-orange-900 rounded-lg">
+                <FileSearch className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+              </div>
+              <div>
+                <h3 className="font-medium">Mistral AI OCR</h3>
+                <p className="text-sm text-muted-foreground">
+                  Extract maintenance schedules from uploaded PDFs
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-12">
+              <div className="space-y-2">
+                <Label>API Key</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type={showApiKeys["platform_mistral"] ? "text" : "password"}
+                    value={platformMistralConfig.apiKey}
+                    onChange={(e) => setPlatformMistralConfig({ ...platformMistralConfig, apiKey: e.target.value })}
+                    placeholder="Enter Mistral API key"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => toggleShowApiKey("platform_mistral")}
+                  >
+                    {showApiKeys["platform_mistral"] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pl-12">
+              <Button
+                onClick={() => handleSavePlatformIntegration("MISTRAL")}
+                disabled={savingPlatformIntegration === "MISTRAL" || !platformMistralConfig.apiKey}
+              >
+                {savingPlatformIntegration === "MISTRAL" ? (
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4 mr-2" />
+                )}
+                Save
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Info Card */}
       <Card className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950">
         <CardContent className="py-4">
@@ -1221,7 +1808,7 @@ export default function SettingsPage() {
           <h1 className="text-3xl font-bold">Settings</h1>
           <p className="text-muted-foreground">
             {isMasterAdmin
-              ? "Manage organization, integrations, and system-wide settings"
+              ? "Manage organization and system-wide settings"
               : "Manage your organization settings and integrations"}
           </p>
           {!isMasterAdmin && (
@@ -1236,10 +1823,12 @@ export default function SettingsPage() {
             <Building2 className="h-4 w-4" />
             Organization
           </TabsTrigger>
-          <TabsTrigger value="integrations" className="gap-2">
-            <Plug className="h-4 w-4" />
-            Integrations
-          </TabsTrigger>
+          {!isMasterAdmin && !usePlatformKeys && (
+            <TabsTrigger value="integrations" className="gap-2">
+              <Plug className="h-4 w-4" />
+              Integrations
+            </TabsTrigger>
+          )}
           {isMasterAdmin && (
             <TabsTrigger value="system" className="gap-2">
               <Globe className="h-4 w-4" />
@@ -1252,9 +1841,11 @@ export default function SettingsPage() {
           <OrganizationSettingsContent />
         </TabsContent>
 
-        <TabsContent value="integrations">
-          <IntegrationsContent />
-        </TabsContent>
+        {!isMasterAdmin && !usePlatformKeys && (
+          <TabsContent value="integrations">
+            <IntegrationsContent />
+          </TabsContent>
+        )}
 
         {isMasterAdmin && (
           <TabsContent value="system">

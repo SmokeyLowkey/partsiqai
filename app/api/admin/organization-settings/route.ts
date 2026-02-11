@@ -33,6 +33,7 @@ export async function GET() {
         maxVehicles: true,
         subscriptionTier: true,
         subscriptionStatus: true,
+        usePlatformKeys: true,
       },
     });
 
@@ -76,6 +77,7 @@ export async function PUT(request: Request) {
       requireTwoFactor,
       allowedEmailDomains,
       settings,
+      usePlatformKeys,
     } = body;
 
     // Build update data - only include fields that were provided
@@ -91,6 +93,7 @@ export async function PUT(request: Request) {
     if (requireTwoFactor !== undefined) updateData.requireTwoFactor = requireTwoFactor;
     if (allowedEmailDomains !== undefined) updateData.allowedEmailDomains = allowedEmailDomains;
     if (settings !== undefined) updateData.settings = settings;
+    if (usePlatformKeys !== undefined) updateData.usePlatformKeys = usePlatformKeys;
 
     const organization = await prisma.organization.update({
       where: { id: currentUser.organizationId },
@@ -107,6 +110,7 @@ export async function PUT(request: Request) {
         requireTwoFactor: true,
         allowedEmailDomains: true,
         settings: true,
+        usePlatformKeys: true,
       },
     });
 
