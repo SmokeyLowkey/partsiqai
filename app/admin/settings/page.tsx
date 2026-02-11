@@ -158,12 +158,21 @@ export default function SettingsPage() {
     apiKey: "",
   });
 
+  // Platform-wide Vapi configuration state (Master Admin only)
+  const [vapiPlatformConfig, setVapiPlatformConfig] = useState({
+    apiKey: "",
+    phoneNumberId: "",
+  });
+  const [savingVapi, setSavingVapi] = useState(false);
+  const [testingVapi, setTestingVapi] = useState(false);
+
   useEffect(() => {
     if (status === "authenticated" && isAdmin) {
       fetchOrgSettings();
       fetchIntegrations();
       if (isMasterAdmin) {
         fetchSystemSettings();
+        fetchVapiPlatformSettings();
       }
     }
   }, [status, isAdmin, isMasterAdmin]);
@@ -198,6 +207,26 @@ export default function SettingsPage() {
       }
     } catch (error) {
       console.error("Error fetching system settings:", error);
+    }
+  };
+
+  const fetchVapiPlatformSettings = async () => {
+    try {
+      const response = await fetch("/api/admin/settings");
+      if (response.ok) {
+        const data = await response.json();
+        const settings = data.settings || [];
+        
+        const vapiApiKey = settings.find((s: SystemSetting) => s.key === "VAPI_PLATFORM_API_KEY");
+        const vapiPhoneId = settings.find((s: SystemSetting) => s.key === "VAPI_PLATFORM_PHONE_NUMBER_ID");
+        
+        setVapiPlatformConfig({
+          apiKey: vapiApiKey?.value || "",
+          phoneNumberId: vapiPhoneId?.value || "",
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching Vapi platform settings:", error);
     }
   };
 
@@ -375,6 +404,79 @@ export default function SettingsPage() {
       });
     } finally {
       setTestingIntegration(null);
+    }
+  };
+
+  const handleSaveVapiPlatform = async () => {
+    try {
+      setSavingVapi(true);
+
+      // Save API Key
+      if (vapiPlatformConfig.apiKey) {
+        await fetch("/api/admin/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            key: "VAPI_PLATFORM_API_KEY",
+            value: vapiPlatformConfig.apiKey,
+            category: "API",
+            description: "Platform-wide Vapi API Key (used when organizations don't provide their own)",
+          }),
+        });
+      }
+
+      // Save Phone Number ID
+      if (vapiPlatformConfig.phoneNumberId) {
+        await fetch("/api/admin/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            key: "VAPI_PLATFORM_PHONE_NUMBER_ID",
+            value: vapiPlatformConfig.phoneNumberId,
+            category: "API",
+            description: "Platform-wide Vapi Phone Number ID (used when organizations don't provide their own)",
+          }),
+        });
+      }
+
+      toast({
+        title: "Success",
+        description: "Platform Vapi settings saved successfully",
+      });
+
+      fetchVapiPlatformSettings();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setSavingVapi(false);
+    }
+  };
+
+  const handleTestVapiPlatform = async () => {
+    try {
+      setTestingVapi(true);
+
+      // Simple validation test
+      if (!vapiPlatformConfig.apiKey || !vapiPlatformConfig.phoneNumberId) {
+        throw new Error("Both API Key and Phone Number ID are required");
+      }
+
+      toast({
+        title: "Validation Successful",
+        description: "Vapi platform settings are configured. Test during actual call initiation.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Validation Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setTestingVapi(false);
     }
   };
 
@@ -996,87 +1098,119 @@ export default function SettingsPage() {
   // System Settings Content (Master Admin only)
   const SystemSettingsContent = () => (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <p className="text-muted-foreground">
-            Configure app-wide system settings that apply to all organizations
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={fetchSystemSettings}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
-          <Button onClick={openCreateDialog}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Setting
-          </Button>
-        </div>
-      </div>
+      {/* Platform-wide Vapi Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Zap className="h-5 w-5" />
+            Platform VoIP Configuration (Vapi)
+          </CardTitle>
+          <CardDescription>
+            Configure platform-wide Vapi settings. Organizations will use these credentials when they haven't provided their own (BYOK disabled).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-lg">
+                <Zap className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <h3 className="font-medium">Vapi.ai Platform Keys</h3>
+                <p className="text-sm text-muted-foreground">
+                  Default API credentials for AI-powered phone calls
+                </p>
+              </div>
+            </div>
 
-      {systemSettings.length === 0 ? (
-        <Card>
-          <CardContent className="text-center py-12 text-muted-foreground">
-            No system settings configured. Click "Add Setting" to create one.
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-6">
-          {Object.entries(groupedSettings).map(([category, categorySettings]) => (
-            <Card key={category}>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  {getCategoryIcon(category)}
-                  {category}
-                </CardTitle>
-                <CardDescription>
-                  {categorySettings.length} setting{categorySettings.length !== 1 ? "s" : ""}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Key</TableHead>
-                      <TableHead>Value</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Last Updated</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {categorySettings.map((setting) => (
-                      <TableRow key={setting.id}>
-                        <TableCell className="font-mono font-medium">
-                          {setting.key}
-                        </TableCell>
-                        <TableCell className="max-w-xs truncate">
-                          {setting.value}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground max-w-md truncate">
-                          {setting.description || "No description"}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {new Date(setting.updatedAt).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openEditDialog(setting)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-12">
+              <div className="space-y-2">
+                <Label>Platform API Key</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type={showApiKeys["vapi"] ? "text" : "password"}
+                    value={vapiPlatformConfig.apiKey}
+                    onChange={(e) => setVapiPlatformConfig({ ...vapiPlatformConfig, apiKey: e.target.value })}
+                    placeholder="231d8537-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => toggleShowApiKey("vapi")}
+                  >
+                    {showApiKeys["vapi"] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  From Vapi.ai dashboard → API Keys
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Platform Phone Number ID</Label>
+                <Input
+                  value={vapiPlatformConfig.phoneNumberId}
+                  onChange={(e) => setVapiPlatformConfig({ ...vapiPlatformConfig, phoneNumberId: e.target.value })}
+                  placeholder="aebd364e-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                />
+                {vapiPlatformConfig.phoneNumberId && (
+                  <p className="text-xs text-muted-foreground">
+                    🎯 Active phone number configured
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-2 pl-12">
+              <Button
+                onClick={handleSaveVapiPlatform}
+                disabled={savingVapi || (!vapiPlatformConfig.apiKey && !vapiPlatformConfig.phoneNumberId)}
+              >
+                {savingVapi ? (
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4 mr-2" />
+                )}
+                Save Platform Keys
+              </Button>
+              {vapiPlatformConfig.apiKey && vapiPlatformConfig.phoneNumberId && (
+                <Button
+                  variant="outline"
+                  onClick={handleTestVapiPlatform}
+                  disabled={testingVapi}
+                >
+                  {testingVapi ? (
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  ) : null}
+                  Validate Configuration
+                </Button>
+              )}
+            </div>
+
+            <div className="pl-12 mt-4 p-4 bg-muted/50 rounded-lg border border-dashed">
+              <div className="flex gap-2 text-sm">
+                <div className="text-muted-foreground">
+                  <strong>Note:</strong> Organizations with BYOK (Bring Your Own Keys) enabled will use their own Vapi credentials instead of these platform keys. This ensures organizations maintain control over their API usage and billing.
+                </div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Info Card */}
+      <Card className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950">
+        <CardContent className="py-4">
+          <div className="flex items-start gap-3">
+            <Globe className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+            <div>
+              <h3 className="font-medium text-blue-800 dark:text-blue-200">App-Wide Configuration</h3>
+              <p className="text-sm text-blue-700 dark:text-blue-300">
+                These settings apply to all organizations in the platform. Organizations with BYOK enabled will use their own credentials instead.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 

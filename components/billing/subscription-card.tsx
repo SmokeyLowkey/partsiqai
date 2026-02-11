@@ -39,9 +39,9 @@ interface SubscriptionCardProps {
 }
 
 const tierPricing: Record<string, number> = {
-  STARTER: 99,
-  GROWTH: 299,
-  ENTERPRISE: 799,
+  STARTER: 199,
+  GROWTH: 449,
+  ENTERPRISE: 1299,
 }
 
 const tierColors: Record<string, string> = {

@@ -1,6 +1,6 @@
 # ============================================
 # PartsIQ Workers - Dockerfile
-# Runs 6 BullMQ workers as a background service
+# Runs 10 BullMQ workers as a background service
 # Deploy to Render.com as a Background Worker
 # Uses node:20-slim (Debian) for OpenSSL compatibility with Prisma
 # ============================================
@@ -35,7 +35,7 @@ RUN groupadd --system --gid 1001 workers && \
 COPY --from=builder /app/node_modules ./node_modules
 
 # Copy only what the workers need:
-# - workers/     -> worker entry point + 6 worker files
+# - workers/     -> worker entry point + 10 worker files (including VoIP workers)
 # - lib/         -> shared services (queue, prisma, logger, email, llm, storage, search, document)
 # - prisma/      -> schema for Prisma client
 # - tsconfig.json -> needed by tsx for path alias resolution (@/*)
