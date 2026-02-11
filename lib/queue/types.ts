@@ -153,6 +153,7 @@ export const VoipCallInitiationJobSchema = z.object({
     priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
     dueDate: z.string().optional(),
     notes: z.string().optional(),
+    voiceAgentContext: z.string().optional(), // User-provided custom instructions for AI agent
   }),
   metadata: z.object({
     userId: z.string(),
@@ -187,6 +188,7 @@ export const VoipFallbackJobSchema = z.object({
     priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
     dueDate: z.string().optional(),
     notes: z.string().optional(),
+    voiceAgentContext: z.string().optional(), // User-provided custom instructions for AI agent
   }),
   metadata: z.object({
     userId: z.string(),
@@ -221,6 +223,7 @@ export const VoipCallRetryJobSchema = z.object({
     priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
     dueDate: z.string().optional(),
     notes: z.string().optional(),
+    voiceAgentContext: z.string().optional(), // User-provided custom instructions for AI agent
   }),
   metadata: z.object({
     userId: z.string(),

@@ -904,6 +904,7 @@ model QuoteRequest {
   managerTakeoverId          String?
   callSuppliersFirst         Boolean                   @default(false)
   supplierCallPreferences    Json?
+  voiceAgentContext          String?
   convertingBy               String?
   convertingStartedAt        DateTime?
   isConverting               Boolean                   @default(false)

@@ -111,6 +111,9 @@ You have access to the following context:
 - Due Date: {dueDate}
 - Special Notes: {notes}
 
+# User-Provided Instructions
+{userInstructions}
+
 # Response Format
 Structure your responses to be natural but concise:
 - Use conversational language
@@ -158,6 +161,7 @@ export function generateCallSystemPrompt(context: {
   priority?: 'low' | 'medium' | 'high' | 'urgent';
   dueDate?: string;
   notes?: string;
+  voiceAgentContext?: string;
   callbackNumber?: string;
   email?: string;
 }): string {
@@ -180,6 +184,11 @@ export function generateCallSystemPrompt(context: {
       })
     : 'Not specified';
 
+  // Format user-provided instructions prominently
+  const userInstructions = context.voiceAgentContext
+    ? `**IMPORTANT: The user has provided these custom instructions for this call:**\n\n"${context.voiceAgentContext}"\n\n**You MUST follow these instructions carefully and adjust your approach accordingly.**`
+    : 'No additional instructions provided.';
+
   return VOIP_AGENT_SYSTEM_PROMPT
     .replace(/{organizationName}/g, context.organizationName)
     .replace(/{quoteRequestId}/g, context.quoteRequestId)
@@ -190,6 +199,7 @@ export function generateCallSystemPrompt(context: {
     .replace(/{priority}/g, priorityText)
     .replace(/{dueDate}/g, dueDateText)
     .replace(/{notes}/g, context.notes || 'None')
+    .replace(/{userInstructions}/g, userInstructions)
     .replace(/{callbackNumber}/g, context.callbackNumber || 'Not provided')
     .replace(/{email}/g, context.email || 'Not provided');
 }

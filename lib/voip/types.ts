@@ -18,6 +18,9 @@ export interface CallState {
     budgetMax?: number;
   }>;
   
+  // User-provided custom context for AI agent
+  voiceAgentContext?: string;
+  
   // Conversation tracking
   currentNode: string;
   conversationHistory: Array<{

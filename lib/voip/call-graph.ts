@@ -418,6 +418,7 @@ export function initializeCallState(params: {
     quantity: number;
     budgetMax?: number;
   }>;
+  voiceAgentContext?: string;
 }): CallState {
   return {
     ...params,
