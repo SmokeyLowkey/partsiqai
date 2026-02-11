@@ -79,7 +79,6 @@ export async function PUT(request: Request) {
       allowedEmailDomains,
       settings,
       usePlatformKeys,
-      pineconeHost,
     } = body;
 
     // Build update data - only include fields that were provided
@@ -96,7 +95,6 @@ export async function PUT(request: Request) {
     if (allowedEmailDomains !== undefined) updateData.allowedEmailDomains = allowedEmailDomains;
     if (settings !== undefined) updateData.settings = settings;
     if (usePlatformKeys !== undefined) updateData.usePlatformKeys = usePlatformKeys;
-    if (pineconeHost !== undefined) updateData.pineconeHost = pineconeHost;
 
     const organization = await prisma.organization.update({
       where: { id: currentUser.organizationId },

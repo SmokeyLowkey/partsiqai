@@ -121,7 +121,6 @@ export default function SettingsPage() {
     allowedEmailDomains: "",
   });
   const [usePlatformKeys, setUsePlatformKeys] = useState(true);
-  const [orgPineconeHost, setOrgPineconeHost] = useState("");
 
   // System settings state (Master Admin only)
   const [systemSettings, setSystemSettings] = useState<SystemSetting[]>([]);
@@ -201,6 +200,7 @@ export default function SettingsPage() {
       if (isMasterAdmin) {
         fetchSystemSettings();
         fetchPlatformIntegrations();
+        fetchOrganizations();
       } else {
         fetchIntegrations();
       }
@@ -221,7 +221,6 @@ export default function SettingsPage() {
           allowedEmailDomains: (data.organization.allowedEmailDomains || []).join(", "),
         });
         setUsePlatformKeys(data.organization.usePlatformKeys ?? true);
-        setOrgPineconeHost(data.organization.pineconeHost || "");
       }
     } catch (error) {
       console.error("Error fetching org settings:", error);
@@ -363,7 +362,6 @@ export default function SettingsPage() {
             .map((d) => d.trim())
             .filter(Boolean),
           usePlatformKeys: usePlatformKeys,
-          pineconeHost: orgPineconeHost,
         }),
       });
 
@@ -1070,53 +1068,14 @@ export default function SettingsPage() {
               />
             </div>
             {usePlatformKeys && (
-              <div className="space-y-4">
-                <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800">
-                  <div className="flex items-start gap-3">
-                    <CheckCircle className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
-                    <div>
-                      <h4 className="font-medium text-blue-800 dark:text-blue-200">Using Platform Keys</h4>
-                      <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
-                        This organization is using the platform's API keys configured in the System Settings tab. Configure organization-specific resources below to isolate data.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <Separator />
-
-                <div className="space-y-4">
+              <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800">
+                <div className="flex items-start gap-3">
+                  <CheckCircle className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
                   <div>
-                    <h4 className="font-medium mb-2 flex items-center gap-2">
-                      <Zap className="h-4 w-4 text-green-600 dark:text-green-400" />
-                      Pinecone Vector Database
-                    </h4>
-                    <div className="pl-6 space-y-2">
-                      <Label>Organization Pinecone Host (Optional)</Label>
-                      <Input
-                        value={orgPineconeHost}
-                        onChange={(e) => setOrgPineconeHost(e.target.value)}
-                        placeholder="https://org-xyz.svc.environment.pinecone.io"
-                      />
-                      <p className="text-sm text-muted-foreground">
-                        Leave blank to use the platform's default Pinecone index. Specify a separate index URL to isolate this organization's vector data.
-                      </p>
-                    </div>
-                  </div>
-
-                  <Separator />
-
-                  <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800">
-                    <div className="flex items-start gap-3">
-                      <Database className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5" />
-                      <div>
-                        <h4 className="font-medium text-amber-800 dark:text-amber-200">Data Isolation During Ingestion</h4>
-                        <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                          <strong>Pinecone:</strong> Namespace is automatically assigned during the data ingestion workflow to isolate vectors.<br />
-                          <strong>Neo4j:</strong> All nodes are tagged with <code className="px-1 py-0.5 bg-amber-100 dark:bg-amber-900 rounded">organizationId</code> property to isolate graph data.
-                        </p>
-                      </div>
-                    </div>
+                    <h4 className="font-medium text-blue-800 dark:text-blue-200">Using Platform Keys</h4>
+                    <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                      This organization is using the platform's API keys configured in the System Settings tab. Use the System Settings → Organization Pinecone Index Mapping to assign dedicated indexes to organizations.
+                    </p>
                   </div>
                 </div>
               </div>
