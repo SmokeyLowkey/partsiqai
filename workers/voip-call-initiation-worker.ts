@@ -247,14 +247,6 @@ async function processVoipCallInitiation(job: Job<VoipCallInitiationJobData>) {
             voiceId: 'andrew',
           },
         },
-        serverUrl: `${appUrl}/api/voip/webhooks`,
-        serverMessages: [
-          'transcript',
-          'status-update', 
-          'end-of-call-report',
-          'speech-update',
-          'function-call'
-        ],
         metadata: {
           quoteRequestId,
           supplierId,
