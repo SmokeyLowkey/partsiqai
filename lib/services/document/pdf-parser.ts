@@ -1,5 +1,6 @@
 import { Mistral } from '@mistralai/mistralai';
 import { getSignedPdfUrl } from '../storage/s3-client';
+import { credentialsManager } from '../credentials/credentials-manager';
 
 export interface ParsedPdfResult {
   text: string;
@@ -17,16 +18,23 @@ export interface ParsedPdfResult {
 
 /**
  * Parse PDF using Mistral OCR with document URL
+ * @param organizationId - Organization ID for credential retrieval
  * @param s3Key - S3 key for the PDF file
  */
-export async function parsePdfFromS3(s3Key: string): Promise<ParsedPdfResult> {
+export async function parsePdfFromS3(organizationId: string, s3Key: string): Promise<ParsedPdfResult> {
   try {
-    if (!process.env.MISTRAL_API_KEY) {
-      throw new Error('MISTRAL_API_KEY is not configured');
+    // Get Mistral credentials using platform credentials fallback
+    const credentials = await credentialsManager.getCredentialsWithFallback<{ apiKey: string }>(
+      organizationId,
+      'MISTRAL'
+    );
+
+    if (!credentials?.apiKey) {
+      throw new Error('Mistral API credentials not configured');
     }
 
     const mistral = new Mistral({
-      apiKey: process.env.MISTRAL_API_KEY,
+      apiKey: credentials.apiKey,
     });
 
     // Generate presigned URL with 1 hour expiration
@@ -70,15 +78,23 @@ export async function parsePdfFromS3(s3Key: string): Promise<ParsedPdfResult> {
 /**
  * Parse PDF buffer and extract text content using Mistral OCR
  * Note: This uploads to a temp location or uses base64, preferably use parsePdfFromS3 instead
+ * @param organizationId - Organization ID for credential retrieval
+ * @param buffer - PDF file buffer
  */
-export async function parsePdf(buffer: Buffer): Promise<ParsedPdfResult> {
+export async function parsePdf(organizationId: string, buffer: Buffer): Promise<ParsedPdfResult> {
   try {
-    if (!process.env.MISTRAL_API_KEY) {
-      throw new Error('MISTRAL_API_KEY is not configured');
+    // Get Mistral credentials using platform credentials fallback
+    const credentials = await credentialsManager.getCredentialsWithFallback<{ apiKey: string }>(
+      organizationId,
+      'MISTRAL'
+    );
+
+    if (!credentials?.apiKey) {
+      throw new Error('Mistral API credentials not configured');
     }
 
     const mistral = new Mistral({
-      apiKey: process.env.MISTRAL_API_KEY,
+      apiKey: credentials.apiKey,
     });
 
     // Convert buffer to base64 data URL
@@ -122,10 +138,11 @@ export async function parsePdf(buffer: Buffer): Promise<ParsedPdfResult> {
 
 /**
  * Extract text from PDF in S3 and clean it for LLM processing
+ * @param organizationId - Organization ID for credential retrieval
  * @param s3Key - S3 key for the PDF file
  */
-export async function extractPdfTextFromS3(s3Key: string): Promise<string> {
-  const result = await parsePdfFromS3(s3Key);
+export async function extractPdfTextFromS3(organizationId: string, s3Key: string): Promise<string> {
+  const result = await parsePdfFromS3(organizationId, s3Key);
 
   // Clean up the text for better LLM processing
   let cleanedText = result.text
@@ -144,9 +161,11 @@ export async function extractPdfTextFromS3(s3Key: string): Promise<string> {
 
 /**
  * Extract text from PDF buffer and clean it for LLM processing
+ * @param organizationId - Organization ID for credential retrieval
+ * @param buffer - PDF file buffer
  */
-export async function extractPdfText(buffer: Buffer): Promise<string> {
-  const result = await parsePdf(buffer);
+export async function extractPdfText(organizationId: string, buffer: Buffer): Promise<string> {
+  const result = await parsePdf(organizationId, buffer);
 
   // Clean up the text for better LLM processing
   let cleanedText = result.text

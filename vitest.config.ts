@@ -7,6 +7,12 @@ export default defineConfig({
     environment: 'node',
     include: ['**/*.test.ts', '**/*.test.tsx'],
     exclude: ['node_modules', '.next'],
+    // Prevent race conditions in credential tests by ensuring sequential execution    pool: 'forks',
+    poolOptions: {
+      forks: {
+        singleFork: true, // Run all tests in a single worker to prevent parallel execution
+      },
+    },
   },
   resolve: {
     alias: {

@@ -397,7 +397,7 @@ export const quoteExtractionWorker = new Worker<QuoteExtractionJobData>(
             if (attachment.contentType === 'application/pdf') {
               try {
                 // Use Mistral OCR directly with the S3 key
-                extractedText = await extractPdfTextFromS3(s3Key);
+                extractedText = await extractPdfTextFromS3(organizationId, s3Key);
                 attachmentText += `\n\n--- Content from PDF: ${attachment.filename} ---\n${extractedText}`;
                 workerLogger.info({ charCount: extractedText.length }, 'Extracted text from PDF via Mistral OCR');
               } catch (pdfError: any) {

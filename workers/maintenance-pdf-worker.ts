@@ -199,7 +199,7 @@ async function processMaintenancePdf(job: Job<MaintenancePdfJobData>): Promise<v
 
     // Step 1: Extract text from PDF using Mistral OCR
     workerLogger.info({ pdfS3Key }, 'Extracting text from PDF');
-    const pdfText = await extractPdfTextFromS3(pdfS3Key);
+    const pdfText = await extractPdfTextFromS3(organizationId, pdfS3Key);
     workerLogger.info({ charCount: pdfText.length }, 'Extracted text from PDF');
 
     if (!pdfText || pdfText.length < 100) {

@@ -178,7 +178,7 @@ export async function POST(
                 // Use Mistral OCR directly with S3 presigned URL
                 console.log(`Processing PDF from S3 with Mistral OCR: ${attachment.filename}`);
                 try {
-                  const result = await parsePdfFromS3(attachment.path);
+                  const result = await parsePdfFromS3(organizationId, attachment.path);
                   const pdfText = result.text;
                   
                   attachmentText += `\n\n--- PDF: ${attachment.filename} ---\n${pdfText}`;

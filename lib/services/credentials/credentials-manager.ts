@@ -95,11 +95,17 @@ export class CredentialsManager {
       return null;
     }
 
-    // Update last used timestamp
-    await prisma.integrationCredential.update({
-      where: { id: credential.id },
-      data: { lastUsedAt: new Date() },
-    });
+    // Update last used timestamp (safe for parallel test execution)
+    try {
+      await prisma.integrationCredential.update({
+        where: { id: credential.id },
+        data: { lastUsedAt: new Date() },
+      });
+    } catch (error) {
+      // If the record was deleted between find and update (e.g., during parallel tests),
+      // we can safely ignore this error and still return the credentials we found.
+      console.warn(`[CredentialsManager] Failed to update lastUsedAt for credential ${credential.id}:`, error);
+    }
 
     return decryptCredentials<T>(credential.credentials);
   }
