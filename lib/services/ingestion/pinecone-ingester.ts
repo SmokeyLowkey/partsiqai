@@ -31,7 +31,7 @@ export async function ingestToPinecone(
   onProgress: (processed: number) => void,
   logger: Logger
 ): Promise<PhaseResult> {
-  const credentials = await credentialsManager.getCredentials<{
+  const credentials = await credentialsManager.getCredentialsWithFallback<{
     apiKey: string;
     host: string;
   }>(organizationId, 'PINECONE');

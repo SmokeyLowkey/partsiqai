@@ -6,6 +6,9 @@ import neo4j from 'neo4j-driver';
 import { google } from 'googleapis';
 import OpenAI from 'openai';
 
+// Special organization ID for platform-wide credentials
+export const SYSTEM_ORG_ID = 'system-platform-credentials';
+
 export class CredentialsManager {
   /**
    * Get credentials with platform key fallback
@@ -26,88 +29,56 @@ export class CredentialsManager {
       throw new Error('Organization not found');
     }
 
+    console.log(`[CredentialsManager] Getting credentials for ${type}:`, {
+      organizationId,
+      usePlatformKeys: organization.usePlatformKeys,
+    });
+
     // If using platform keys, try to get from SystemSettings
     if (organization.usePlatformKeys) {
+      console.log(`[CredentialsManager] Organization using platform keys, fetching from SystemSettings...`);
       const platformCreds = await this.getPlatformCredentials<T>(type, organization);
       if (platformCreds) {
+        console.log(`[CredentialsManager] Platform credentials found for ${type}`);
         return platformCreds;
       }
+      console.warn(`[CredentialsManager] Platform credentials NOT found for ${type}, falling back to org-specific`);
       // If platform creds not available, fall through to org-specific creds
     }
 
     // Fall back to organization-specific credentials
-    return await this.getCredentials<T>(organizationId, type);
+    console.log(`[CredentialsManager] Fetching org-specific credentials for ${type}`);
+    const orgCreds = await this.getCredentials<T>(organizationId, type);
+    if (!orgCreds) {
+      console.error(`[CredentialsManager] No credentials found for ${type} (neither platform nor org-specific)`);
+    }
+    return orgCreds;
   }
 
   /**
-   * Get platform-wide credentials from SystemSettings
+   * Get platform-wide credentials from IntegrationCredential with SYSTEM_ORG_ID
+   * Non-sensitive config (host URLs, model names) still come from SystemSettings
    */
   private async getPlatformCredentials<T>(type: IntegrationType, organization?: { pineconeHost?: string | null }): Promise<T | null> {
-    let settingKeys: string[] = [];
+    console.log(`[CredentialsManager] Getting platform credentials for ${type}`);
 
-    switch (type) {
-      case 'OPENROUTER':
-        settingKeys = ['OPENROUTER_API_KEY', 'OPENROUTER_DEFAULT_MODEL'];
-        break;
-      case 'PINECONE':
-        settingKeys = ['PINECONE_API_KEY', 'PINECONE_HOST'];
-        break;
-      case 'NEO4J':
-        settingKeys = ['NEO4J_URI', 'NEO4J_USERNAME', 'NEO4J_PASSWORD', 'NEO4J_DATABASE'];
-        break;
-      case 'MISTRAL':
-        settingKeys = ['MISTRAL_API_KEY'];
-        break;
-      default:
-        return null; // No platform credentials for this type
-    }
-
-    const settings = await prisma.systemSetting.findMany({
-      where: {
-        key: { in: settingKeys },
-      },
-    });
-
-    if (settings.length === 0) {
-      return null;
-    }
-
-    // Build credentials object based on type
-    const credentials: any = {};
+    // Get encrypted credentials from IntegrationCredential table (SYSTEM org)
+    const platformCred = await this.getCredentials<any>(SYSTEM_ORG_ID, type);
     
-    switch (type) {
-      case 'OPENROUTER':
-        credentials.apiKey = settings.find(s => s.key === 'OPENROUTER_API_KEY')?.value;
-        credentials.defaultModel = settings.find(s => s.key === 'OPENROUTER_DEFAULT_MODEL')?.value || 'anthropic/claude-3.5-sonnet';
-        break;
-      
-      case 'PINECONE':
-        credentials.apiKey = settings.find(s => s.key === 'PINECONE_API_KEY')?.value;
-        // Use organization-specific host if provided, otherwise use platform default
-        credentials.host =  organization?.pineconeHost || settings.find(s => s.key === 'PINECONE_HOST')?.value;
-        break;
-      
-      case 'NEO4J':
-        credentials.uri = settings.find(s => s.key === 'NEO4J_URI')?.value;
-        credentials.username = settings.find(s => s.key === 'NEO4J_USERNAME')?.value || 'neo4j';
-        credentials.password = settings.find(s => s.key === 'NEO4J_PASSWORD')?.value;
-        credentials.database = settings.find(s => s.key === 'NEO4J_DATABASE')?.value || 'neo4j';
-        break;
-      
-      case 'MISTRAL':
-        credentials.apiKey = settings.find(s => s.key === 'MISTRAL_API_KEY')?.value;
-        break;
-    }
-
-    // Verify we have the minimum required fields
-    if (!credentials.apiKey && type !== 'NEO4J') {
-      return null;
-    }
-    if (type === 'NEO4J' && (!credentials.uri || !credentials.password)) {
+    if (!platformCred) {
+      console.warn(`[CredentialsManager] No platform credentials found for ${type}`);
       return null;
     }
 
-    return credentials as T;
+    console.log(`[CredentialsManager] Found platform credentials for ${type}`);
+
+    // For Pinecone, check if org has a custom host override
+    if (type === 'PINECONE' && organization?.pineconeHost) {
+      platformCred.host = organization.pineconeHost;
+      console.log(`[CredentialsManager] Using org-specific Pinecone host: ${organization.pineconeHost}`);
+    }
+
+    return platformCred as T;
   }
 
   async getCredentials<T>(organizationId: string, type: IntegrationType): Promise<T | null> {
@@ -215,7 +186,17 @@ export class CredentialsManager {
   }
 
   async listCredentials(organizationId: string) {
-    return await prisma.integrationCredential.findMany({
+    // Get organization to check usePlatformKeys flag
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: {
+        usePlatformKeys: true,
+        pineconeHost: true,
+      },
+    });
+
+    // Get org-specific credentials
+    const orgCredentials = await prisma.integrationCredential.findMany({
       where: {
         organizationId,
       },
@@ -232,9 +213,68 @@ export class CredentialsManager {
         updatedAt: true,
       },
     });
+
+    // If not using platform keys, return only org credentials
+    if (!organization?.usePlatformKeys) {
+      return orgCredentials;
+    }
+
+    // If using platform keys, add virtual entries for platform integrations
+    const platformTypes: IntegrationType[] = ['OPENROUTER', 'PINECONE', 'NEO4J', 'MISTRAL'];
+    const platformCredentialsEntries = [];
+
+    for (const type of platformTypes) {
+      // Skip if org already has this integration configured
+      if (orgCredentials.some((c) => c.integrationType === type)) {
+        continue;
+      }
+
+      // Check if platform credentials exist for this type
+      const hasPlatformCreds = await this.getPlatformCredentials(type, organization);
+      if (hasPlatformCreds) {
+        // Add virtual entry for platform credentials
+        platformCredentialsEntries.push({
+          id: `platform-${type.toLowerCase()}`,
+          integrationType: type,
+          name: `Platform ${type} (System-Wide)`,
+          isActive: true,
+          lastUsedAt: null,
+          lastTestedAt: null,
+          testStatus: 'PENDING' as const,
+          errorMessage: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
+    }
+
+    return [...orgCredentials, ...platformCredentialsEntries];
   }
 
   async hasCredentials(organizationId: string, type: IntegrationType): Promise<boolean> {
+    // Check if organization uses platform keys
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: {
+        usePlatformKeys: true,
+        pineconeHost: true,
+      },
+    });
+
+    if (!organization) {
+      return false;
+    }
+
+    // If using platform keys, check SYSTEM org credentials
+    if (organization.usePlatformKeys) {
+      const platformCreds = await this.getCredentials(SYSTEM_ORG_ID, type);
+      if (platformCreds) {
+        return true;
+      }
+      // Fall through to check org-specific credentials
+    }
+
+    // Check org-specific credentials
     const credential = await prisma.integrationCredential.findUnique({
       where: {
         organizationId_integrationType: {

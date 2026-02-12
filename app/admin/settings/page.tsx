@@ -282,51 +282,45 @@ export default function SettingsPage() {
 
   const fetchPlatformIntegrations = async () => {
     try {
-      const response = await fetch("/api/admin/settings");
+      const response = await fetch("/api/admin/platform-credentials");
       if (response.ok) {
         const data = await response.json();
-        const settings = data.settings || [];
+        const creds = data.credentials || {};
         
         // Vapi
-        const vapiApiKey = settings.find((s: SystemSetting) => s.key === "VAPI_PLATFORM_API_KEY");
-        const vapiPhoneId = settings.find((s: SystemSetting) => s.key === "VAPI_PLATFORM_PHONE_NUMBER_ID");
+        const vapiCreds = creds.VAPI || {};
         setVapiPlatformConfig({
-          apiKey: vapiApiKey?.value || "",
-          phoneNumberId: vapiPhoneId?.value || "",
+          apiKey: vapiCreds.apiKey || "",
+          phoneNumberId: vapiCreds.phoneNumberId || "",
         });
 
         // OpenRouter
-        const openRouterKey = settings.find((s: SystemSetting) => s.key === "OPENROUTER_API_KEY");
-        const openRouterModel = settings.find((s: SystemSetting) => s.key === "OPENROUTER_DEFAULT_MODEL");
+        const openRouterCreds = creds.OPENROUTER || {};
         setPlatformOpenRouterConfig({
-          apiKey: openRouterKey?.value || "",
-          defaultModel: openRouterModel?.value || "anthropic/claude-3.5-sonnet",
+          apiKey: openRouterCreds.apiKey || "",
+          defaultModel: openRouterCreds.defaultModel || "anthropic/claude-3.5-sonnet",
         });
 
         // Pinecone
-        const pineconeKey = settings.find((s: SystemSetting) => s.key === "PINECONE_API_KEY");
-        const pineconeHost = settings.find((s: SystemSetting) => s.key === "PINECONE_HOST");
+        const pineconeCreds = creds.PINECONE || {};
         setPlatformPineconeConfig({
-          apiKey: pineconeKey?.value || "",
-          host: pineconeHost?.value || "",
+          apiKey: pineconeCreds.apiKey || "",
+          host: pineconeCreds.host || "",
         });
 
         // Neo4j
-        const neo4jUri = settings.find((s: SystemSetting) => s.key === "NEO4J_URI");
-        const neo4jUser = settings.find((s: SystemSetting) => s.key === "NEO4J_USERNAME");
-        const neo4jPass = settings.find((s: SystemSetting) => s.key === "NEO4J_PASSWORD");
-        const neo4jDb = settings.find((s: SystemSetting) => s.key === "NEO4J_DATABASE");
+        const neo4jCreds = creds.NEO4J || {};
         setPlatformNeo4jConfig({
-          uri: neo4jUri?.value || "",
-          username: neo4jUser?.value || "neo4j",
-          password: neo4jPass?.value || "",
-          database: neo4jDb?.value || "neo4j",
+          uri: neo4jCreds.uri || "",
+          username: neo4jCreds.username || "neo4j",
+          password: neo4jCreds.password || "",
+          database: neo4jCreds.database || "neo4j",
         });
 
         // Mistral
-        const mistralKey = settings.find((s: SystemSetting) => s.key === "MISTRAL_API_KEY");
+        const mistralCreds = creds.MISTRAL || {};
         setPlatformMistralConfig({
-          apiKey: mistralKey?.value || "",
+          apiKey: mistralCreds.apiKey || "",
         });
       }
     } catch (error) {
@@ -516,40 +510,25 @@ export default function SettingsPage() {
     try {
       setSavingVapi(true);
 
-      // Save API Key
-      if (vapiPlatformConfig.apiKey) {
-        await fetch("/api/admin/settings", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            key: "VAPI_PLATFORM_API_KEY",
-            value: vapiPlatformConfig.apiKey,
-            category: "API",
-            description: "Platform-wide Vapi API Key (used when organizations don't provide their own)",
-          }),
-        });
-      }
-
-      // Save Phone Number ID
-      if (vapiPlatformConfig.phoneNumberId) {
-        await fetch("/api/admin/settings", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            key: "VAPI_PLATFORM_PHONE_NUMBER_ID",
-            value: vapiPlatformConfig.phoneNumberId,
-            category: "API",
-            description: "Platform-wide Vapi Phone Number ID (used when organizations don't provide their own)",
-          }),
-        });
-      }
+      // Save encrypted credentials to SYSTEM organization
+      await fetch("/api/admin/platform-credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "VAPI",
+          credentials: {
+            apiKey: vapiPlatformConfig.apiKey,
+            phoneNumberId: vapiPlatformConfig.phoneNumberId,
+          },
+        }),
+      });
 
       toast({
         title: "Success",
-        description: "Platform Vapi settings saved successfully",
+        description: "Platform Vapi settings saved successfully (encrypted)",
       });
 
-      fetchVapiPlatformSettings();
+      fetchPlatformIntegrations();
     } catch (error: any) {
       toast({
         title: "Error",
@@ -590,131 +569,52 @@ export default function SettingsPage() {
     try {
       setSavingPlatformIntegration(type);
 
+      let credentials: any = {};
+
       switch (type) {
         case "OPENROUTER":
-          if (platformOpenRouterConfig.apiKey) {
-            await fetch("/api/admin/settings", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                key: "OPENROUTER_API_KEY",
-                value: platformOpenRouterConfig.apiKey,
-                category: "API",
-                description: "Platform-wide OpenRouter API Key for LLM access",
-              }),
-            });
-          }
-          if (platformOpenRouterConfig.defaultModel) {
-            await fetch("/api/admin/settings", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                key: "OPENROUTER_DEFAULT_MODEL",
-                value: platformOpenRouterConfig.defaultModel,
-                category: "API",
-                description: "Default LLM model for OpenRouter",
-              }),
-            });
-          }
+          credentials = {
+            apiKey: platformOpenRouterConfig.apiKey,
+            defaultModel: platformOpenRouterConfig.defaultModel,
+          };
           break;
 
         case "PINECONE":
-          if (platformPineconeConfig.apiKey) {
-            await fetch("/api/admin/settings", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                key: "PINECONE_API_KEY",
-                value: platformPineconeConfig.apiKey,
-                category: "API",
-                description: "Platform-wide Pinecone API Key for vector database",
-              }),
-            });
-          }
-          if (platformPineconeConfig.host) {
-            await fetch("/api/admin/settings", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                key: "PINECONE_HOST",
-                value: platformPineconeConfig.host,
-                category: "API",
-                description: "Pinecone host URL",
-              }),
-            });
-          }
+          credentials = {
+            apiKey: platformPineconeConfig.apiKey,
+            host: platformPineconeConfig.host,
+          };
           break;
 
         case "NEO4J":
-          if (platformNeo4jConfig.uri) {
-            await fetch("/api/admin/settings", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                key: "NEO4J_URI",
-                value: platformNeo4jConfig.uri,
-                category: "API",
-                description: "Platform-wide Neo4j connection URI",
-              }),
-            });
-          }
-          if (platformNeo4jConfig.username) {
-            await fetch("/api/admin/settings", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                key: "NEO4J_USERNAME",
-                value: platformNeo4jConfig.username,
-                category: "API",
-                description: "Neo4j username",
-              }),
-            });
-          }
-          if (platformNeo4jConfig.password) {
-            await fetch("/api/admin/settings", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                key: "NEO4J_PASSWORD",
-                value: platformNeo4jConfig.password,
-                category: "API",
-                description: "Neo4j password",
-              }),
-            });
-          }
-          if (platformNeo4jConfig.database) {
-            await fetch("/api/admin/settings", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                key: "NEO4J_DATABASE",
-                value: platformNeo4jConfig.database,
-                category: "API",
-                description: "Neo4j database name",
-              }),
-            });
-          }
+          credentials = {
+            uri: platformNeo4jConfig.uri,
+            username: platformNeo4jConfig.username,
+            password: platformNeo4jConfig.password,
+            database: platformNeo4jConfig.database,
+          };
           break;
 
         case "MISTRAL":
-          if (platformMistralConfig.apiKey) {
-            await fetch("/api/admin/settings", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                key: "MISTRAL_API_KEY",
-                value: platformMistralConfig.apiKey,
-                category: "API",
-                description: "Platform-wide Mistral AI API Key for PDF OCR",
-              }),
-            });
-          }
+          credentials = {
+            apiKey: platformMistralConfig.apiKey,
+          };
           break;
       }
 
+      // Save encrypted credentials to SYSTEM organization
+      await fetch("/api/admin/platform-credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type,
+          credentials,
+        }),
+      });
+
       toast({
         title: "Success",
-        description: `Platform ${type} settings saved successfully`,
+        description: `Platform ${type} settings saved successfully (encrypted)`,
       });
 
       fetchPlatformIntegrations();

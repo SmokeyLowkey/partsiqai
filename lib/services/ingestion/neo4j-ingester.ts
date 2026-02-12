@@ -47,7 +47,7 @@ export async function ingestToNeo4j(
   onProgress: (processed: number) => void,
   logger: Logger
 ): Promise<PhaseResult> {
-  const credentials = await credentialsManager.getCredentials<{
+  const credentials = await credentialsManager.getCredentialsWithFallback<{
     uri: string;
     username: string;
     password: string;
