@@ -66,7 +66,7 @@ export class VapiClient {
           },
           voice: {
             provider: '11labs',
-            voiceId: process.env.VAPI_VOICE_ID || 'professional-male',
+            voiceId: process.env.VAPI_VOICE_ID || 'Nbttze9nhGhK1czblc6j',
           },
           // Background messages for voicemail detection
           backgroundDenoising: true,

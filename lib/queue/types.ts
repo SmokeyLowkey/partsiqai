@@ -153,9 +153,8 @@ export const VoipCallInitiationJobSchema = z.object({
     priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
     dueDate: z.string().optional(),
     notes: z.string().optional(),
-    voiceAgentContext: z.string().optional(), // User-provided custom instructions for AI agent
-    customContext: z.string().optional(), // Custom call context for the first message
-    customInstructions: z.string().optional(), // Custom agent instructions for system prompt
+    customContext: z.string().optional(), // Background facts about this call (vehicle, parts details)
+    customInstructions: z.string().optional(), // Behavioral instructions for the AI agent
   }),
   metadata: z.object({
     userId: z.string(),
@@ -190,7 +189,8 @@ export const VoipFallbackJobSchema = z.object({
     priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
     dueDate: z.string().optional(),
     notes: z.string().optional(),
-    voiceAgentContext: z.string().optional(), // User-provided custom instructions for AI agent
+    customContext: z.string().optional(), // Background facts about this call
+    customInstructions: z.string().optional(), // Behavioral instructions
   }),
   metadata: z.object({
     userId: z.string(),
@@ -225,7 +225,8 @@ export const VoipCallRetryJobSchema = z.object({
     priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
     dueDate: z.string().optional(),
     notes: z.string().optional(),
-    voiceAgentContext: z.string().optional(), // User-provided custom instructions for AI agent
+    customContext: z.string().optional(), // Background facts about this call
+    customInstructions: z.string().optional(), // Behavioral instructions
   }),
   metadata: z.object({
     userId: z.string(),

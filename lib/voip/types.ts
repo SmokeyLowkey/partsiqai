@@ -18,8 +18,10 @@ export interface CallState {
     budgetMax?: number;
   }>;
   
-  // User-provided custom context for AI agent
-  voiceAgentContext?: string;
+  // Background facts for the AI (vehicle info, parts details, etc.) - NOT spoken directly
+  customContext?: string;
+  // Behavioral instructions for how the AI should conduct the call
+  customInstructions?: string;
   
   // Conversation tracking
   currentNode: string;

@@ -187,7 +187,8 @@ export function generateCallSystemPrompt(context: {
   priority?: 'low' | 'medium' | 'high' | 'urgent';
   dueDate?: string;
   notes?: string;
-  voiceAgentContext?: string;
+  customContext?: string; // Background facts about the call
+  customInstructions?: string; // Behavioral instructions
   callbackNumber?: string;
   email?: string;
 }): string {
@@ -210,10 +211,20 @@ export function generateCallSystemPrompt(context: {
       })
     : 'Not specified';
 
-  // Format user-provided instructions prominently
-  const userInstructions = context.voiceAgentContext
-    ? `**IMPORTANT: The user has provided these custom instructions for this call:**\n\n"${context.voiceAgentContext}"\n\n**You MUST follow these instructions carefully and adjust your approach accordingly.**`
-    : 'No additional instructions provided.';
+  // Format custom context (background facts)
+  let userInstructions = '';
+  if (context.customContext) {
+    userInstructions += `**CALL INFORMATION - Use these facts naturally in conversation:**\n\n${context.customContext}\n\n`;
+  }
+  
+  // Format custom instructions (behavioral guidance)
+  if (context.customInstructions) {
+    userInstructions += `**SPECIAL INSTRUCTIONS:**\n\n${context.customInstructions}\n\n`;
+  }
+  
+  if (!userInstructions) {
+    userInstructions = 'No additional context or instructions provided.';
+  }
 
   return VOIP_AGENT_SYSTEM_PROMPT
     .replace(/{organizationName}/g, context.organizationName)

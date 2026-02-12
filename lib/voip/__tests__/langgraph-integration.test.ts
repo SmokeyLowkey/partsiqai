@@ -58,12 +58,14 @@ describe('LangGraph Integration - End-to-End', () => {
             budgetMax: 500,
           },
         ],
-        voiceAgentContext: 'This is a custom greeting for the supplier.',
+        customContext: 'Company: ACME, Vehicle: 2022 Tractor',
+        customInstructions: 'Be extra friendly and patient.',
       });
 
       expect(callState.callId).toBe('call_integration_test');
       expect(callState.currentNode).toBe('greeting');
-      expect(callState.voiceAgentContext).toBe('This is a custom greeting for the supplier.');
+      expect(callState.customContext).toBe('Company: ACME, Vehicle: 2022 Tractor');
+      expect(callState.customInstructions).toBe('Be extra friendly and patient.');
       expect(callState.parts).toHaveLength(1);
       expect(callState.conversationHistory).toHaveLength(0);
       expect(callState.status).toBe('in_progress');
@@ -253,14 +255,16 @@ describe('LangGraph Integration - End-to-End', () => {
         maxNegotiationAttempts: 2,
         clarificationAttempts: 0,
         status: 'in_progress' as const,
-        voiceAgentContext: 'Hello, this is Jane from ACME calling about urgent part request QR-001.',
+        customContext: 'Company: ACME, Vehicle: 2022 Tractor',
       };
 
       const result = greetingNode(state);
-      expect(result.conversationHistory[0].text).toBe('Hello, this is Jane from ACME calling about urgent part request QR-001.');
+      // Greeting should always be natural, not speak the context verbatim
+      expect(result.conversationHistory[0].text.toLowerCase()).toContain('parts department');
+      expect(result.conversationHistory[0].text).not.toContain('Company: ACME');
     });
 
-    it('should use default greeting when no custom context provided', async () => {
+    it('should always use natural greeting regardless of custom context', async () => {
       const { greetingNode } = await import('@/lib/voip/call-graph');
 
       const state = {

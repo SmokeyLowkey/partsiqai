@@ -149,7 +149,8 @@ async function handleCallStarted(callId: string, event: any) {
     organizationId: call.organizationId,
     callerId: call.callerId || '',
     parts,
-    voiceAgentContext: customContext || customInstructions,
+    customContext: customContext,
+    customInstructions: customInstructions,
   });
 
   // Save initial state to Redis

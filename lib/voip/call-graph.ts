@@ -24,12 +24,11 @@ import {
 
 /**
  * Greeting Node - Initial message to supplier
+ * Always uses a natural greeting - context is provided separately to LLM
  */
 export function greetingNode(state: CallState): CallState {
-  // Use custom context if provided, otherwise use default natural greeting
-  const greeting = state.voiceAgentContext || 
-    `Hi there! This is calling on behalf of ${state.organizationId}. 
-Could I speak to someone in your parts department?`;
+  // Always use natural greeting - don't speak the context verbatim!
+  const greeting = `Hi, good morning! Could I speak to someone in your parts department?`;
 
   return addMessage(state, 'ai', greeting);
 }
@@ -419,7 +418,8 @@ export function initializeCallState(params: {
     quantity: number;
     budgetMax?: number;
   }>;
-  voiceAgentContext?: string;
+  customContext?: string;
+  customInstructions?: string;
 }): CallState {
   return {
     ...params,

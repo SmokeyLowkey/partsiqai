@@ -179,36 +179,33 @@ export function SendQuoteDialog({
           .join('\n');
       }
 
-      // Generate natural opening context - start with greeting and department check
+      // Build structured context - provide FACTS for the AI to use naturally, NOT a script
       const orgName = qr.organization?.name || 'our company';
-      let context = `Hi, this is calling from ${orgName}. Can I speak to someone in the parts department?`;
-      
-      // Add the detailed request information for after they confirm right department
       const requestNum = qr.requestNumber || qr.id.slice(0, 8);
-      let requestDetails = `\n\nOnce connected to parts department:\nI'm calling about quote request ${requestNum}`;
+      
+      let context = `Company: ${orgName}\n`;
+      context += `Quote Request: #${requestNum}\n`;
       
       if (vehicleContext) {
-        requestDetails += ` for a ${vehicleContext}`;
+        context += `Vehicle: ${vehicleContext}\n`;
       }
       
       if (items.length > 0) {
         const partsCount = items.filter((item: any) => item.partNumber !== 'MISC-COSTS').length;
-        requestDetails += `. We need pricing and availability for ${partsCount} part${partsCount > 1 ? 's' : ''}`;
+        context += `\nParts Needed (${partsCount} part${partsCount > 1 ? 's' : ''}):\n`;
         
         if (partsDetails) {
-          requestDetails += `:\n\n${partsDetails}`;
+          context += partsDetails;
         }
       }
-      
-      context += requestDetails;
       
       // Generate natural, conversational agent instructions
       const instructions = `You are a real person calling on behalf of ${orgName} to get quotes for parts. Be natural, friendly, and conversational.
 
 IMPORTANT - Follow this conversation flow:
-1. FIRST: Greet them naturally and ask if you've reached the parts department or if they can transfer you
+1. FIRST: Greet them naturally ("Hi, this is [your name] calling from ${orgName}") and ask if you've reached the parts department or if they can transfer you
 2. WAIT for their response - they may transfer you or confirm you're speaking to the right person
-3. ONLY AFTER confirming you're with the right department: Explain you're calling about parts for a ${vehicleContext || 'vehicle'}
+3. ONLY AFTER confirming you're with the right department: Explain you're calling about parts for the vehicle listed in the context${vehicleContext ? ` (${vehicleContext})` : ''}
 4. Ask if they can provide pricing and availability over the phone
 5. If yes, go through the parts list conversationally - don't just read it like a robot
 6. Ask for lead times and any minimum order requirements
@@ -469,32 +466,41 @@ Conversation tips:
         {callResults && (
           <Alert
             variant={
-              callResults.every((c) => 'jobId' in c ||'callId' in c) ? 'default' : 'destructive'
+              callResults.every((c) => 'jobId' in c || 'callId' in c)
+                ? 'default'
+                : callResults.some((c) => 'jobId' in c || 'callId' in c)
+                ? 'default' // Partial success
+                : 'destructive' // Total failure
             }
             className={
               callResults.every((c) => 'jobId' in c || 'callId' in c)
                 ? 'border-blue-500 bg-blue-50 dark:bg-blue-950 flex-shrink-0'
-                : 'flex-shrink-0'
+                : callResults.some((c) => 'jobId' in c || 'callId' in c)
+                ? 'border-amber-500 bg-amber-50 dark:bg-amber-950 flex-shrink-0' // Partial success - amber/warning
+                : 'flex-shrink-0' // Total failure - red
             }
           >
             <Phone className="h-4 w-4" />
             <AlertDescription>
               {callResults.filter((c) => 'jobId' in c || 'callId' in c).length > 0 ? (
                 <span>
-                  Queued {callResults.filter((c) => 'jobId' in c || 'callId' in c).length} call(s) for background processing. 
+                  Queued {callResults.filter((c) => 'jobId' in c || 'callId' in c).length} of {callResults.length} call(s) for background processing. 
                   Check the quote request details page for live call status updates.
                 </span>
               ) : (
-                <span>No calls were queued.</span>
+                <span>No calls were queued successfully.</span>
               )}
               {callResults.some((c) => 'error' in c) && (
-                <span className="block mt-1 text-red-500">
-                  Failed:{' '}
+                <div className="mt-2 space-y-1">
                   {callResults
                     .filter((c) => 'error' in c)
-                    .map((c) => c.supplierName)
-                    .join(', ')}
-                </span>
+                    .map((c, idx) => (
+                      <div key={idx} className="text-sm text-amber-600 dark:text-amber-400">
+                        <span className="font-medium">{c.supplierName}:</span>{' '}
+                        {c.error || 'Unknown error'}
+                      </div>
+                    ))}
+                </div>
               )}
             </AlertDescription>
           </Alert>

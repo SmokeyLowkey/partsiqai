@@ -194,18 +194,27 @@ async function processVoipCallInitiation(job: Job<VoipCallInitiationJobData>) {
     );
 
     // Extract custom call settings
-    const customContext = context.customContext;
-    const customInstructions = context.customInstructions;
+    const customContext = context.customContext; // Background facts (vehicle, parts, etc.)
+    const customInstructions = context.customInstructions; // Behavioral guidance
 
-    // Build first message - natural and conversational
-    const defaultFirstMessage = `Hi, good morning! This is calling from ${metadata.organizationId}. Could I speak to someone in your parts department, please?`;
-    const firstMessage = customContext || defaultFirstMessage;
+    // Build first message - always a natural greeting, NEVER the context
+    const firstMessage = `Hi, good morning! Could I speak to someone in your parts department?`;
 
-    // Build system instructions for the AI agent - conversational approach
-    const defaultSystemInstructions = `You are a real person calling suppliers on behalf of ${metadata.organizationId}. Be natural, friendly, and conversational - not robotic.
+    // Build system instructions for the AI agent
+    // Include both the default guidelines AND the custom context/instructions
+    let systemInstructions = `You are a real person calling suppliers to get parts quotes. Be natural, friendly, and conversational.
 
-Start by asking for the parts department. Once connected, explain you need pricing for some parts. Have a natural conversation - use pauses, acknowledge their responses, and don't rush. If they can't help over the phone, ask for their preferred contact method.`;
-    const systemInstructions = customInstructions || defaultSystemInstructions;
+CRITICAL: Always start by asking for the parts department. Once connected, explain what you need naturally.`;
+
+    // Append custom context (facts about this specific call)
+    if (customContext) {
+      systemInstructions += `\n\n## Call Information\nUse this information during your call - reference it naturally, don't read it verbatim:\n\n${customContext}`;
+    }
+
+    // Append custom behavioral instructions
+    if (customInstructions) {
+      systemInstructions += `\n\n## Special Instructions\n${customInstructions}`;
+    }
 
     logger.info(
       { 
@@ -250,7 +259,8 @@ Start by asking for the parts department. Once connected, explain you need prici
       organizationId: metadata.organizationId,
       callerId: metadata.userId,
       parts,
-      voiceAgentContext: customContext || customInstructions,
+      customContext: customContext,
+      customInstructions: customInstructions,
     });
 
     await saveCallState(callLog.id, initialCallState);
