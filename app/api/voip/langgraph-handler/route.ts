@@ -4,79 +4,192 @@ import { processCallTurn } from '@/lib/voip/call-graph';
 import { getLastAIMessage, addMessage } from '@/lib/voip/helpers';
 import { OpenRouterClient } from '@/lib/services/llm/openrouter-client';
 import { workerLogger } from '@/lib/logger';
+import crypto from 'crypto';
 
 const logger = workerLogger.child({ module: 'langgraph-handler' });
 
 /**
  * LangGraph Handler for Vapi Custom LLM Integration
- * 
- * This endpoint receives conversation turns from Vapi and processes them
- * through the LangGraph state machine to generate contextual responses.
- * 
- * Vapi Custom LLM Request Format:
+ *
+ * Vapi sends requests in OpenAI Chat Completions format:
  * {
- *   "message": {
- *     "role": "user",
- *     "content": "supplier's spoken text"
- *   },
- *   "call": {
- *     "id": "vapi-call-id",
- *     "metadata": { ... }
- *   }
+ *   "model": "langgraph-state-machine",
+ *   "messages": [
+ *     { "role": "system", "content": "..." },
+ *     { "role": "assistant", "content": "first message" },
+ *     { "role": "user", "content": "supplier's spoken text" }
+ *   ],
+ *   "stream": true,
+ *   "call": { "id": "vapi-call-id", "metadata": { "callLogId": "..." } }
  * }
+ *
+ * Must return OpenAI-compatible response (JSON or SSE stream).
  */
+
+/** Build an OpenAI-style completion ID */
+function completionId(): string {
+  return `chatcmpl-${crypto.randomUUID()}`;
+}
+
+/** Build a non-streaming OpenAI Chat Completions response */
+function buildChatCompletionResponse(content: string, finishReason: string = 'stop') {
+  return {
+    id: completionId(),
+    object: 'chat.completion',
+    created: Math.floor(Date.now() / 1000),
+    model: 'langgraph-state-machine',
+    choices: [
+      {
+        index: 0,
+        message: {
+          role: 'assistant',
+          content,
+        },
+        finish_reason: finishReason,
+      },
+    ],
+    usage: {
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      total_tokens: 0,
+    },
+  };
+}
+
+/** Build an SSE streaming response for Vapi */
+function buildStreamingResponse(content: string): Response {
+  const id = completionId();
+  const created = Math.floor(Date.now() / 1000);
+
+  // Chunk 1: role + content
+  const chunk1 = {
+    id,
+    object: 'chat.completion.chunk',
+    created,
+    model: 'langgraph-state-machine',
+    choices: [
+      {
+        index: 0,
+        delta: {
+          role: 'assistant',
+          content,
+        },
+        finish_reason: null,
+      },
+    ],
+  };
+
+  // Chunk 2: finish
+  const chunk2 = {
+    id,
+    object: 'chat.completion.chunk',
+    created,
+    model: 'langgraph-state-machine',
+    choices: [
+      {
+        index: 0,
+        delta: {},
+        finish_reason: 'stop',
+      },
+    ],
+  };
+
+  const body = [
+    `data: ${JSON.stringify(chunk1)}\n\n`,
+    `data: ${JSON.stringify(chunk2)}\n\n`,
+    `data: [DONE]\n\n`,
+  ].join('');
+
+  return new Response(body, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  });
+}
+
+/** Extract the last user message from the OpenAI messages array */
+function extractLastUserMessage(messages: any[]): string | null {
+  if (!Array.isArray(messages)) return null;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'user' && messages[i].content) {
+      return messages[i].content;
+    }
+  }
+  return null;
+}
+
 export async function POST(req: NextRequest) {
+  let isStreaming = false;
+
   try {
     // Verify authorization
     const authHeader = req.headers.get('authorization');
     const expectedAuth = `Bearer ${process.env.VOIP_WEBHOOK_SECRET || 'dev-secret'}`;
-    
+
     if (process.env.NODE_ENV === 'production' && authHeader !== expectedAuth) {
       logger.warn({ authHeader }, 'Unauthorized LangGraph handler request');
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const body = await req.json();
-    logger.debug({ body }, 'LangGraph handler request received');
+    isStreaming = body.stream === true;
 
-    const userMessage = body.message?.content || body.text;
-    const callId = body.call?.metadata?.callLogId || body.callId;
+    logger.info(
+      {
+        hasMessages: !!body.messages,
+        messageCount: body.messages?.length,
+        stream: isStreaming,
+        model: body.model,
+        callId: body.call?.id,
+        callLogId: body.call?.metadata?.callLogId,
+      },
+      'LangGraph handler request received'
+    );
+
+    // Parse request — Vapi sends OpenAI format with `messages` array
+    const userMessage = extractLastUserMessage(body.messages);
+    const callId = body.call?.metadata?.callLogId;
 
     if (!userMessage) {
-      logger.error({ body }, 'Missing user message in request');
-      return NextResponse.json(
-        { error: 'Missing message content' },
-        { status: 400 }
+      logger.error(
+        { messages: body.messages?.map((m: any) => ({ role: m.role, len: m.content?.length })) },
+        'No user message found in messages array'
       );
+      const errorContent = "I'm sorry, I didn't catch that. Could you repeat?";
+      if (isStreaming) return buildStreamingResponse(errorContent);
+      return NextResponse.json(buildChatCompletionResponse(errorContent));
     }
 
     if (!callId) {
-      logger.error({ body }, 'Missing callId in request');
-      return NextResponse.json(
-        { error: 'Missing call ID' },
-        { status: 400 }
+      logger.error(
+        { callObject: body.call },
+        'Missing callLogId in call.metadata'
       );
+      // Return a graceful response instead of error — Vapi may not understand error JSON
+      const errorContent = "I apologize, I'm experiencing a technical issue. Could you hold for just a moment?";
+      if (isStreaming) return buildStreamingResponse(errorContent);
+      return NextResponse.json(buildChatCompletionResponse(errorContent));
     }
 
     // Get current call state from Redis
     const state = await getCallState(callId);
-    
+
     if (!state) {
       logger.error({ callId }, 'Call state not found in Redis');
-      return NextResponse.json(
-        { error: 'Call state not found' },
-        { status: 404 }
-      );
+      const errorContent = "I apologize, I'm having a technical issue. Let me have someone call you right back.";
+      if (isStreaming) return buildStreamingResponse(errorContent);
+      return NextResponse.json(buildChatCompletionResponse(errorContent));
     }
 
     logger.info(
-      { 
-        callId, 
-        currentNode: state.currentNode, 
-        messageLength: userMessage.length 
+      {
+        callId,
+        currentNode: state.currentNode,
+        userMessageLength: userMessage.length,
+        userMessagePreview: userMessage.substring(0, 100),
       },
       'Processing supplier response through LangGraph'
     );
@@ -97,53 +210,32 @@ export async function POST(req: NextRequest) {
     const aiResponse = getLastAIMessage(newState);
 
     logger.info(
-      { 
-        callId, 
+      {
+        callId,
         previousNode: state.currentNode,
         newNode: newState.currentNode,
         status: newState.status,
-        responseLength: aiResponse.length
+        responseLength: aiResponse.length,
+        responsePreview: aiResponse.substring(0, 100),
       },
       'LangGraph processing complete'
     );
 
-    // Check if call should end
-    const shouldEndCall = 
-      newState.status === 'completed' || 
-      newState.status === 'escalated' ||
-      newState.status === 'failed' ||
-      newState.currentNode === 'end';
-
-    // Return response in Vapi expected format
-    return NextResponse.json({
-      message: {
-        role: 'assistant',
-        content: aiResponse,
-      },
-      endCall: shouldEndCall,
-      metadata: {
-        currentNode: newState.currentNode,
-        status: newState.status,
-        quotesExtracted: newState.quotes.length,
-        needsEscalation: newState.needsHumanEscalation,
-      },
-    });
+    // Return response in OpenAI Chat Completions format
+    if (isStreaming) {
+      return buildStreamingResponse(aiResponse);
+    }
+    return NextResponse.json(buildChatCompletionResponse(aiResponse));
 
   } catch (error: any) {
     logger.error({ error: error.message, stack: error.stack }, 'LangGraph handler error');
-    
-    // Return a graceful error response to keep call going
-    return NextResponse.json({
-      message: {
-        role: 'assistant',
-        content: "I apologize, I'm having technical difficulties. Let me transfer you to a team member who can help.",
-      },
-      endCall: true,
-      metadata: {
-        error: true,
-        errorMessage: error.message,
-      },
-    }, { status: 200 }); // Return 200 to avoid Vapi retries
+
+    // Return a graceful error in OpenAI format so Vapi can still speak it
+    const fallbackContent = "I apologize, I'm having technical difficulties. Let me transfer you to a team member who can help.";
+    if (isStreaming) {
+      return buildStreamingResponse(fallbackContent);
+    }
+    return NextResponse.json(buildChatCompletionResponse(fallbackContent, 'stop'));
   }
 }
 
