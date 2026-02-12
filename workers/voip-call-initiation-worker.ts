@@ -157,6 +157,31 @@ async function processVoipCallInitiation(job: Job<VoipCallInitiationJobData>) {
       throw new Error('Missing VAPI configuration (VAPI_PRIVATE_KEY or VAPI_PHONE_NUMBER_ID)');
     }
 
+    // Extract custom call settings
+    const customContext = context.customContext;
+    const customInstructions = context.customInstructions;
+
+    // Build first message
+    const defaultFirstMessage = `Hi, this is an automated call from ${metadata.organizationId}. I'm calling regarding quote request ${quoteRequestId.slice(0, 8)}. Am I speaking with someone at ${supplierName}?`;
+    const firstMessage = customContext || defaultFirstMessage;
+
+    // Build system instructions for the AI agent
+    const defaultSystemInstructions = `You are an AI assistant calling suppliers on behalf of ${metadata.organizationId}. Your goal is to request quotes for parts and gather pricing information. Be professional, concise, and friendly.`;
+    const systemInstructions = customInstructions || defaultSystemInstructions;
+
+    logger.info(
+      { 
+        quoteRequestId, 
+        supplierId, 
+        hasCustomContext: !!customContext, 
+        hasCustomInstructions: !!customInstructions 
+      },
+      'Preparing VAPI call with LangGraph integration'
+    );
+
+    // Get app URL for webhook callbacks
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+
     const response = await fetch('https://api.vapi.ai/call/phone', {
       method: 'POST',
       headers: {
@@ -169,12 +194,20 @@ async function processVoipCallInitiation(job: Job<VoipCallInitiationJobData>) {
           number: supplierPhone,
         },
         assistant: {
-          firstMessage: `Hi, this is an automated call from ${metadata.organizationId}. I'm calling regarding quote request ${quoteRequestId.slice(0, 8)}. Am I speaking with someone at ${supplierName}?`,
+          firstMessage: firstMessage,
+          context: systemInstructions, // System-level instructions for the agent
           model: {
-            provider: 'openai',
-            model: 'gpt-4',
-            temperature: 0.7,
-            maxTokens: 500,
+            provider: 'custom-llm',
+            url: `${appUrl}/api/voip/langgraph-handler`,
+            headers: {
+              'Authorization': `Bearer ${process.env.VOIP_WEBHOOK_SECRET || 'dev-secret'}`,
+            },
+            // Fallback model settings in case custom LLM fails
+            fallbackModel: {
+              provider: 'openai',
+              model: 'gpt-4',
+              temperature: 0.7,
+            },
           },
           voice: {
             provider: 'azure',
@@ -187,6 +220,7 @@ async function processVoipCallInitiation(job: Job<VoipCallInitiationJobData>) {
           organizationId: metadata.organizationId,
           callLogId: callLog.id,
           context: JSON.stringify(context),
+          hasCustomSettings: !!(customContext || customInstructions),
         },
       }),
     });

@@ -26,8 +26,10 @@ import {
  * Greeting Node - Initial message to supplier
  */
 export function greetingNode(state: CallState): CallState {
-  const greeting = `Hi, this is the virtual assistant calling on behalf of ${state.supplierName}. 
-We're helping ${state.organizationId}'s maintenance team source parts for heavy equipment. 
+  // Use custom context if provided, otherwise use default greeting
+  const greeting = state.voiceAgentContext || 
+    `Hi, this is the virtual assistant calling on behalf of ${state.organizationId}. 
+We're helping their maintenance team source parts for heavy equipment. 
 Am I speaking with someone who can provide pricing?`;
 
   return addMessage(state, 'ai', greeting);

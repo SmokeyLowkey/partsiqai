@@ -73,6 +73,11 @@ export function SendQuoteDialog({
     callId?: string;
     error?: string;
   }> | null>(null);
+  
+  // Call settings state
+  const [callContext, setCallContext] = useState<string>('');
+  const [agentInstructions, setAgentInstructions] = useState<string>('');
+  const [generatingCallSettings, setGeneratingCallSettings] = useState(false);
 
   useEffect(() => {
     if (open && suppliers.length > 0) {
@@ -93,6 +98,10 @@ export function SendQuoteDialog({
       setSendResults(null);
       setCallResults(null);
       setError(null);
+      
+      // Reset call settings
+      setCallContext('');
+      setAgentInstructions('');
     }
   }, [open, suppliers]);
 
@@ -128,6 +137,40 @@ export function SendQuoteDialog({
     }
   };
 
+  const generateCallSettings = async () => {
+    setGeneratingCallSettings(true);
+    setError(null);
+
+    try {
+      // Generate default call context and agent instructions
+      const response = await fetch(
+        `/api/quote-requests/${quoteRequestId}`,
+        { method: 'GET' }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch quote request details');
+      }
+
+      const data = await response.json();
+      const qr = data.quoteRequest;
+
+      // Generate context about the request
+      const context = `Quote Request ${qr.requestNumber || qr.id} for ${qr.vehicle?.year || ''} ${qr.vehicle?.make || ''} ${qr.vehicle?.model || ''}. Customer needs pricing and availability for ${qr.items?.length || 0} part(s).`;
+      
+      // Generate agent instructions
+      const instructions = `You are calling on behalf of ${qr.organization?.name || 'our company'} to request quotes for parts. Be professional and courteous. Ask for pricing, availability, and lead times. If the supplier cannot provide a quote over the phone, ask for their preferred contact method.`;
+
+      setCallContext(context);
+      setAgentInstructions(instructions);
+    } catch (error: any) {
+      console.error('Error generating call settings:', error);
+      setError('Failed to generate call settings. You can enter them manually.');
+    } finally {
+      setGeneratingCallSettings(false);
+    }
+  };
+
   const updateSupplierEmail = (
     supplierId: string,
     field: 'subject' | 'body' | 'email',
@@ -154,9 +197,15 @@ export function SendQuoteDialog({
 
   const handleMethodContinue = () => {
     setStep('content');
-    // Generate email content when moving to content step
-    if (contactMethod !== 'call') {
+    // Generate appropriate content based on contact method
+    if (contactMethod === 'email') {
       generateEmail();
+    } else if (contactMethod === 'call') {
+      generateCallSettings();
+    } else if (contactMethod === 'both') {
+      // Generate both email and call settings
+      generateEmail();
+      generateCallSettings();
     }
   };
 
@@ -182,7 +231,9 @@ export function SendQuoteDialog({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             supplierIds: suppliersWithPhone.map((s) => s.id),
-            contactMethod: contactMethod, // Pass the actual contact method
+            contactMethod: contactMethod,
+            callContext: callContext || undefined,
+            agentInstructions: agentInstructions || undefined,
           }),
         }
       );
@@ -225,6 +276,12 @@ export function SendQuoteDialog({
   const handleSend = async () => {
     // Handle calling first if needed
     if (contactMethod === 'call' || contactMethod === 'both') {
+      // Validate call settings
+      if (!callContext.trim()) {
+        setError('Call context is required');
+        return;
+      }
+      
       await handleInitiateCalls();
       
       // If call-only, we're done
@@ -233,68 +290,70 @@ export function SendQuoteDialog({
       }
     }
 
-    // Handle email sending
-    // Validate all suppliers have email addresses and content
-    const missingEmails = supplierEmails.filter((se) => !se.email);
-    if (missingEmails.length > 0) {
-      setError(
-        `Missing email addresses for: ${missingEmails.map((se) => se.name).join(', ')}`
+    // Handle email sending (for 'email' or 'both' methods)
+    if (contactMethod === 'email' || contactMethod === 'both') {
+      // Validate all suppliers have email addresses and content
+      const missingEmails = supplierEmails.filter((se) => !se.email);
+      if (missingEmails.length > 0) {
+        setError(
+          `Missing email addresses for: ${missingEmails.map((se) => se.name).join(', ')}`
+        );
+        return;
+      }
+
+      const missingContent = supplierEmails.filter(
+        (se) => !se.subject || !se.body
       );
-      return;
-    }
+      if (missingContent.length > 0) {
+        setError(
+          `Missing email content for: ${missingContent.map((se) => se.name).join(', ')}`
+        );
+        return;
+      }
 
-    const missingContent = supplierEmails.filter(
-      (se) => !se.subject || !se.body
-    );
-    if (missingContent.length > 0) {
-      setError(
-        `Missing email content for: ${missingContent.map((se) => se.name).join(', ')}`
-      );
-      return;
-    }
+      setSending(true);
+      setError(null);
 
-    setSending(true);
-    setError(null);
+      try {
+        const response = await fetch(
+          `/api/quote-requests/${quoteRequestId}/send`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              suppliers: supplierEmails.map((se) => ({
+                id: se.id,
+                email: se.email,
+                subject: se.subject,
+                body: se.body,
+              })),
+            }),
+          }
+        );
 
-    try {
-      const response = await fetch(
-        `/api/quote-requests/${quoteRequestId}/send`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            suppliers: supplierEmails.map((se) => ({
-              id: se.id,
-              email: se.email,
-              subject: se.subject,
-              body: se.body,
-            })),
-          }),
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to send quote request');
         }
-      );
 
-      const data = await response.json();
+        setSendResults(data.results);
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to send quote request');
+        // Check if all were successful
+        const allSuccess = data.results.every((r: any) => r.success);
+        if (allSuccess) {
+          // Close dialog and refresh
+          setTimeout(() => {
+            onOpenChange(false);
+            onSent();
+          }, 2000);
+        }
+      } catch (error: any) {
+        console.error('Error sending quote request:', error);
+        setError(error.message);
+      } finally {
+        setSending(false);
       }
-
-      setSendResults(data.results);
-
-      // Check if all were successful
-      const allSuccess = data.results.every((r: any) => r.success);
-      if (allSuccess) {
-        // Close dialog and refresh
-        setTimeout(() => {
-          onOpenChange(false);
-          onSent();
-        }, 2000);
-      }
-    } catch (error: any) {
-      console.error('Error sending quote request:', error);
-      setError(error.message);
-    } finally {
-      setSending(false);
     }
   };
 
@@ -312,6 +371,16 @@ export function SendQuoteDialog({
                 <Building2 className="h-5 w-5" />
                 Contact Method
               </>
+            ) : contactMethod === 'call' ? (
+              <>
+                <Phone className="h-5 w-5" />
+                Configure Call Settings
+              </>
+            ) : contactMethod === 'both' ? (
+              <>
+                <Send className="h-5 w-5" />
+                Configure Email & Call
+              </>
             ) : (
               <>
                 <Mail className="h-5 w-5" />
@@ -322,6 +391,10 @@ export function SendQuoteDialog({
           <DialogDescription>
             {step === 'method'
               ? 'Choose how to contact suppliers for this quote request'
+              : contactMethod === 'call'
+              ? 'Configure settings for AI agent calls to suppliers'
+              : contactMethod === 'both'
+              ? 'Set up email content and call settings for suppliers'
               : 'Review and customize the quote request email for each supplier'}
           </DialogDescription>
         </DialogHeader>
@@ -419,18 +492,88 @@ export function SendQuoteDialog({
         )}
 
         {/* Email Content Step */}
-        {step === 'content' && generating ? (
+        {step === 'content' && (generating || generatingCallSettings) ? (
           <div className="flex items-center justify-center py-12">
             <div className="text-center space-y-3">
               <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
               <p className="text-sm text-muted-foreground">
                 <Sparkles className="h-4 w-4 inline mr-1" />
-                Generating quote request email...
+                {generating && generatingCallSettings
+                  ? 'Generating email and call settings...'
+                  : generating
+                  ? 'Generating quote request email...'
+                  : 'Generating call settings...'}
               </p>
             </div>
           </div>
         ) : step === 'content' ? (
           <>
+            {/* Call Settings Section (for 'call' or 'both') */}
+            {(contactMethod === 'call' || contactMethod === 'both') && (
+              <div className="space-y-4 mb-6 p-4 border rounded-lg bg-blue-50 dark:bg-blue-950">
+                <div className="flex items-center gap-2 mb-2">
+                  <Phone className="h-5 w-5 text-blue-600" />
+                  <h3 className="font-semibold text-blue-900 dark:text-blue-100">
+                    AI Call Agent Settings
+                  </h3>
+                </div>
+
+                {/* Call Context */}
+                <div className="space-y-2">
+                  <Label htmlFor="call-context">Call Context</Label>
+                  <Textarea
+                    id="call-context"
+                    value={callContext}
+                    onChange={(e) => setCallContext(e.target.value)}
+                    placeholder="Brief context about this quote request for the AI agent..."
+                    className="min-h-[80px] bg-white dark:bg-gray-900"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Provide context about the quote request (vehicle, parts needed, urgency, etc.)
+                  </p>
+                </div>
+
+                {/* Agent Instructions */}
+                <div className="space-y-2">
+                  <Label htmlFor="agent-instructions">Agent Instructions</Label>
+                  <Textarea
+                    id="agent-instructions"
+                    value={agentInstructions}
+                    onChange={(e) => setAgentInstructions(e.target.value)}
+                    placeholder="Special instructions for the AI agent during the call..."
+                    className="min-h-[100px] bg-white dark:bg-gray-900"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Customize how the AI agent should conduct the call (tone, specific questions, etc.)
+                  </p>
+                </div>
+
+                {/* Regenerate Call Settings */}
+                <div className="flex justify-start">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={generateCallSettings}
+                    disabled={generatingCallSettings}
+                  >
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Regenerate Call Settings
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Email Section (for 'email' or 'both') */}
+            {(contactMethod === 'email' || contactMethod === 'both') && (
+              <>
+                {contactMethod === 'both' && (
+                  <div className="flex items-center gap-2 mb-4 p-3 border rounded-lg bg-green-50 dark:bg-green-950">
+                    <Mail className="h-5 w-5 text-green-600" />
+                    <h3 className="font-semibold text-green-900 dark:text-green-100">
+                      Email Content
+                    </h3>
+                  </div>
+                )}
             {/* Supplier Tabs */}
             <Tabs value={activeSupplier} onValueChange={setActiveSupplier}>
               <div className="flex items-center justify-between mb-2 gap-2">
@@ -539,9 +682,11 @@ export function SendQuoteDialog({
                 disabled={generating}
               >
                 <Sparkles className="h-4 w-4 mr-2" />
-                Regenerate with AI
+                Regenerate Email with AI
               </Button>
             </div>
+              </>
+            )}
           </>
         ) : null}
         </div>

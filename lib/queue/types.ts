@@ -154,6 +154,8 @@ export const VoipCallInitiationJobSchema = z.object({
     dueDate: z.string().optional(),
     notes: z.string().optional(),
     voiceAgentContext: z.string().optional(), // User-provided custom instructions for AI agent
+    customContext: z.string().optional(), // Custom call context for the first message
+    customInstructions: z.string().optional(), // Custom agent instructions for system prompt
   }),
   metadata: z.object({
     userId: z.string(),

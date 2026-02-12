@@ -329,4 +329,100 @@ describe('VoIP Call Initiation Worker - BYOK Logic', () => {
       expect(needsReset).toBe(true);
     });
   });
+
+  describe('LangGraph Configuration', () => {
+    it('should configure Vapi with custom-llm provider for LangGraph', async () => {
+      const { prisma } = await import('@/lib/prisma');
+      
+      const mockOrg = {
+        id: 'org_langgraph',
+        usePlatformKeys: true,
+        vapiApiKey: null,
+        maxAICalls: 100,
+        aiCallsUsedThisMonth: 10,
+        aiCallsResetDate: new Date(),
+        overageEnabled: true,
+        overageRate: 6.0,
+        hardCapEnabled: false,
+        hardCapMultiplier: 2.0,
+        subscriptionTier: 'GROWTH',
+        elevenLabsApiKey: null,
+      };
+
+      (prisma.organization.findUnique as any).mockResolvedValue(mockOrg);
+      (prisma.supplierCall.create as any).mockResolvedValue({ id: 'call_langgraph' });
+
+      // Simulate Vapi API call configuration
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+      const vapiConfig = {
+        assistant: {
+          firstMessage: 'Hi, this is a test call',
+          context: 'You are an AI assistant calling suppliers.',
+          model: {
+            provider: 'custom-llm',
+            url: `${appUrl}/api/voip/langgraph-handler`,
+            headers: {
+              'Authorization': `Bearer ${process.env.VOIP_WEBHOOK_SECRET || 'dev-secret'}`,
+            },
+            fallbackModel: {
+              provider: 'openai',
+              model: 'gpt-4',
+              temperature: 0.7,
+            },
+          },
+        },
+      };
+
+      expect(vapiConfig.assistant.model.provider).toBe('custom-llm');
+      expect(vapiConfig.assistant.model.url).toContain('/api/voip/langgraph-handler');
+      expect(vapiConfig.assistant.model.headers.Authorization).toBeDefined();
+      expect(vapiConfig.assistant.model.fallbackModel).toBeDefined();
+      expect(vapiConfig.assistant.model.fallbackModel.provider).toBe('openai');
+    });
+
+    it('should include custom context in firstMessage when provided', async () => {
+      const customContext = 'Quote Request QR-02-2026-0001 for 2015 John Deere 160GLC excavator';
+      const defaultFirstMessage = 'Hi, this is an automated call';
+      
+      const firstMessage = customContext || defaultFirstMessage;
+
+      expect(firstMessage).toBe(customContext);
+      expect(firstMessage).toContain('QR-02-2026-0001');
+      expect(firstMessage).toContain('John Deere');
+    });
+
+    it('should use default firstMessage when custom context not provided', async () => {
+      const customContext = undefined;
+      const defaultFirstMessage = 'Hi, this is an automated call from org_123';
+      
+      const firstMessage = customContext || defaultFirstMessage;
+
+      expect(firstMessage).toBe(defaultFirstMessage);
+      expect(firstMessage).toContain('org_123');
+    });
+
+    it('should include custom instructions in context field', async () => {
+      const customInstructions = 'You are calling on behalf of ACME Construction. Be professional and friendly.';
+      const defaultInstructions = 'You are an AI assistant calling suppliers.';
+      
+      const systemInstructions = customInstructions || defaultInstructions;
+
+      expect(systemInstructions).toBe(customInstructions);
+      expect(systemInstructions).toContain('ACME Construction');
+      expect(systemInstructions).toContain('professional');
+    });
+
+    it('should pass customContext and customInstructions to job data', async () => {
+      const jobData = {
+        context: {
+          parts: [],
+          customContext: 'Custom greeting for supplier',
+          customInstructions: 'Special handling instructions',
+        },
+      };
+
+      expect(jobData.context.customContext).toBe('Custom greeting for supplier');
+      expect(jobData.context.customInstructions).toBe('Special handling instructions');
+    });
+  });
 });

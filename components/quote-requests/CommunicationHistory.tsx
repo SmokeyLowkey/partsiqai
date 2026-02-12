@@ -31,6 +31,8 @@ type SupplierCallWithRelations = {
   extractedQuotes: any;
   recordingUrl: string | null;
   vapiCallId: string | null;
+  notes: string | null;
+  nextAction: string | null;
   createdAt: Date;
   endedAt: Date | null;
   supplier: {
@@ -477,6 +479,9 @@ export function CommunicationHistory({
                   extractedQuotes={call.extractedQuotes}
                   recordingUrl={call.recordingUrl}
                   vapiCallId={call.vapiCallId}
+                  notes={call.notes}
+                  nextAction={call.nextAction}
+                  langGraphState={(call as any).langGraphState}
                   createdAt={call.createdAt}
                   endedAt={call.endedAt}
                 />

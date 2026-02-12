@@ -14,7 +14,7 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { supplierIds, contactMethod } = await req.json();
+    const { supplierIds, contactMethod, callContext, agentInstructions } = await req.json();
     const { id } = await params;
 
     if (!Array.isArray(supplierIds) || supplierIds.length === 0) {
@@ -103,6 +103,8 @@ export async function POST(
                   }
                 : undefined,
               notes: quoteRequest.notes || undefined,
+              customContext: callContext || undefined,
+              customInstructions: agentInstructions || undefined,
             },
             metadata: {
               userId: session.user.id,

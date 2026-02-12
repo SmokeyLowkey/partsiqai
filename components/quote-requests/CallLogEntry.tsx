@@ -16,6 +16,12 @@ import {
   XCircle,
   AlertCircle,
   Loader2,
+  ChevronRight,
+  AlertTriangle,
+  Mail,
+  UserCircle,
+  TrendingDown,
+  Activity,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -26,6 +32,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 type CallStatus =
   | 'INITIATED'
@@ -57,8 +64,22 @@ interface ExtractedQuote {
   price?: number;
   availability?: string;
   leadTime?: string;
+  leadTimeDays?: number;
   condition?: string;
   notes?: string;
+}
+
+interface LangGraphState {
+  currentNode?: string;
+  status?: string;
+  needsTransfer?: boolean;
+  needsHumanEscalation?: boolean;
+  negotiationAttempts?: number;
+  clarificationAttempts?: number;
+  outcome?: string;
+  nextAction?: string;
+  contactName?: string;
+  contactRole?: string;
 }
 
 interface CallLogEntryProps {
@@ -73,8 +94,39 @@ interface CallLogEntryProps {
   extractedQuotes?: ExtractedQuote[] | null;
   recordingUrl?: string | null;
   vapiCallId?: string | null;
+  notes?: string | null;
+  nextAction?: string | null;
+  langGraphState?: LangGraphState | null;
   createdAt: Date;
   endedAt?: Date | null;
+}
+
+// Helper function to reconstruct call flow path from current node
+function getNodePath(state: LangGraphState): string[] {
+  const currentNode = state.currentNode || 'unknown';
+  
+  // Common paths based on typical flow
+  const pathMap: Record<string, string[]> = {
+    'greeting': ['greeting'],
+    'quote_request': ['greeting', 'quote_request'],
+    'price_extract': ['greeting', 'quote_request', 'price_extract'],
+    'negotiate': ['greeting', 'quote_request', 'price_extract', 'negotiate'],
+    'confirmation': ['greeting', 'quote_request', 'confirmation'],
+    'voicemail': ['greeting', 'voicemail'],
+    'transfer': ['greeting', 'transfer'],
+    'clarification': ['greeting', 'quote_request', 'clarification'],
+    'human_escalation': ['greeting', 'quote_request', 'human_escalation'],
+    'callback': ['greeting', 'quote_request', 'callback'],
+    'polite_end': ['greeting', 'polite_end'],
+    'end': ['greeting', 'quote_request', 'end'],
+  };
+
+  // If negotiation happened, include it in path
+  if (state.negotiationAttempts && state.negotiationAttempts > 0 && currentNode === 'confirmation') {
+    return ['greeting', 'quote_request', 'negotiate', 'confirmation'];
+  }
+
+  return pathMap[currentNode] || [currentNode];
 }
 
 export function CallLogEntry({
@@ -89,11 +141,18 @@ export function CallLogEntry({
   extractedQuotes,
   recordingUrl,
   vapiCallId,
+  notes,
+  nextAction,
+  langGraphState,
   createdAt,
   endedAt,
 }: CallLogEntryProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
+  
+  // Check if escalation is needed
+  const needsEscalation = langGraphState?.needsHumanEscalation || nextAction === 'human_followup';
+  const hasNegotiation = (langGraphState?.negotiationAttempts || 0) > 0;
 
   // Format duration as MM:SS
   const formatDuration = (seconds: number | null | undefined) => {
@@ -254,6 +313,12 @@ export function CallLogEntry({
 
           {/* Actions */}
           <div className="flex items-center gap-2">
+            {needsEscalation && (
+              <Badge className="bg-orange-100 dark:bg-orange-950 text-orange-700 dark:text-orange-300">
+                <AlertTriangle className="h-3 w-3 mr-1" />
+                Escalation Required
+              </Badge>
+            )}
             {recordingUrl && (
               <Button
                 variant="outline"
@@ -264,7 +329,7 @@ export function CallLogEntry({
                 Recording
               </Button>
             )}
-            {(conversationLog || extractedQuotes) && (
+            {(conversationLog || extractedQuotes || langGraphState) && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -288,11 +353,93 @@ export function CallLogEntry({
       </CardHeader>
 
       {/* Collapsible details */}
-      {(conversationLog || extractedQuotes) && (
+      {(conversationLog || extractedQuotes || langGraphState) && (
         <Collapsible open={isExpanded}>
           <CollapsibleContent>
             <CardContent className="pt-0">
               <div className="space-y-4">
+                {/* Escalation Alert */}
+                {needsEscalation && (
+                  <Alert className="border-orange-500 bg-orange-50 dark:bg-orange-950/20">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Manager Review Required</AlertTitle>
+                    <AlertDescription>
+                      {langGraphState?.needsHumanEscalation
+                        ? 'This call encountered complexity requiring human follow-up.'
+                        : 'Follow-up action needed from management team.'}
+                      {notes && (
+                        <span className="block mt-1 text-sm font-medium">
+                          Note: {notes}
+                        </span>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {/* Next Action */}
+                {nextAction && nextAction !== 'none' && (
+                  <div className="flex items-center gap-2 p-3 border rounded-lg bg-blue-50/50 dark:bg-blue-950/20">
+                    <Activity className="h-4 w-4 text-blue-600" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">Next Step:</p>
+                      <p className="text-sm text-muted-foreground">
+                        {nextAction === 'email_fallback' && 'Email fallback will be sent automatically'}
+                        {nextAction === 'human_followup' && 'Manager should review and follow up'}
+                        {nextAction === 'callback_scheduled' && 'Supplier will call back - await their response'}
+                        {nextAction === 'retry' && 'Call will be retried automatically'}
+                      </p>
+                    </div>
+                    {nextAction === 'email_fallback' && <Mail className="h-4 w-4 text-blue-600" />}
+                    {nextAction === 'human_followup' && <UserCircle className="h-4 w-4 text-orange-600" />}
+                  </div>
+                )}
+
+                {/* LangGraph State Flow */}
+                {langGraphState?.currentNode && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <Activity className="h-4 w-4 text-purple-600" />
+                      Call Flow Path
+                    </div>
+                    <div className="flex items-center gap-1 flex-wrap text-xs">
+                      {getNodePath(langGraphState).map((node, index) => (
+                        <div key={index} className="flex items-center gap-1">
+                          {index > 0 && <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+                          <Badge
+                            variant={node === langGraphState.currentNode ? 'default' : 'outline'}
+                            className="text-xs"
+                          >
+                            {node.replace('_', ' ')}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                    {langGraphState.contactName && (
+                      <div className="text-xs text-muted-foreground">
+                        Contact: {langGraphState.contactName}
+                        {langGraphState.contactRole && ` (${langGraphState.contactRole})`}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Negotiation History */}
+                {hasNegotiation && extractedQuotes && extractedQuotes.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <TrendingDown className="h-4 w-4 text-indigo-600" />
+                      Price Negotiation ({langGraphState?.negotiationAttempts} attempt{langGraphState?.negotiationAttempts !== 1 ? 's' : ''})
+                    </div>
+                    <div className="text-sm text-muted-foreground p-3 border rounded-lg bg-indigo-50/50 dark:bg-indigo-950/20">
+                      AI agent attempted to negotiate better pricing with the supplier.
+                      {extractedQuotes[0]?.price && (
+                        <span className="block mt-1 font-medium text-indigo-700 dark:text-indigo-400">
+                          Final price: ${extractedQuotes[0].price.toFixed(2)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
                 {/* Extracted Quotes */}
                 {extractedQuotes && extractedQuotes.length > 0 && (
                   <div className="space-y-2">
@@ -327,10 +474,12 @@ export function CallLogEntry({
                                 <span className="font-medium">{quote.availability}</span>
                               </div>
                             )}
-                            {quote.leadTime && (
+                            {(quote.leadTime || quote.leadTimeDays) && (
                               <div>
                                 <span className="text-muted-foreground">Lead Time:</span>{' '}
-                                <span className="font-medium">{quote.leadTime}</span>
+                                <span className="font-medium">
+                                  {quote.leadTime || `${quote.leadTimeDays} days`}
+                                </span>
                               </div>
                             )}
                             {quote.condition && (

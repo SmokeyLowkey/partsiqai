@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCallState, saveCallState, deleteCallState } from '@/lib/voip/state-manager';
-import { processCallTurn } from '@/lib/voip/call-graph';
+import { processCallTurn, initializeCallState } from '@/lib/voip/call-graph';
 import { getLastAIMessage, determineOutcome, addMessage } from '@/lib/voip/helpers';
 import { OpenRouterClient } from '@/lib/services/llm/openrouter-client';
+import { workerLogger } from '@/lib/logger';
+
+const logger = workerLogger.child({ module: 'voip-webhooks' });
 
 /**
  * Vapi.ai Webhook Handler
@@ -66,6 +69,69 @@ export async function POST(req: NextRequest) {
 }
 
 async function handleCallStarted(callId: string, event: any) {
+  // Get call record from database to extract context
+  const call = await prisma.supplierCall.findUnique({
+    where: { id: callId },
+    include: {
+      quoteRequest: {
+        include: {
+          items: true,
+        },
+      },
+      supplier: true,
+    },
+  });
+
+  if (!call) {
+    logger.error({ callId }, 'Call record not found for handleCallStarted');
+    return;
+  }
+
+  logger.info(
+    { callId, quoteRequestId: call.quoteRequestId, supplierId: call.supplierId },
+    'Initializing call state for LangGraph'
+  );
+
+  // Extract parts information from quote request
+  const parts = call.quoteRequest?.items.map(item => ({
+    partNumber: item.partNumber,
+    description: item.description || '',
+    quantity: item.quantity,
+    budgetMax: undefined, // Could add budget tracking later
+  })) || [];
+
+  // Extract custom context from conversationLog if available
+  const conversationLog = call.conversationLog as any;
+  const customContext = conversationLog?.context?.customContext;
+  const customInstructions = conversationLog?.context?.customInstructions;
+
+  // Initialize LangGraph state
+  const initialState = initializeCallState({
+    callId: call.id,
+    quoteRequestId: call.quoteRequestId || '',
+    supplierId: call.supplierId || '',
+    supplierName: call.supplier?.name || 'the supplier',
+    supplierPhone: call.phoneNumber,
+    organizationId: call.organizationId,
+    callerId: call.callerId || '',
+    parts,
+    voiceAgentContext: customContext || customInstructions,
+  });
+
+  // Save initial state to Redis
+  await saveCallState(call.id, initialState);
+
+  logger.info(
+    { 
+      callId, 
+      partsCount: parts.length, 
+      hasCustomContext: !!customContext,
+      initialNode: initialState.currentNode 
+    },
+    'Call state initialized successfully'
+  );
+
+  // Update database status
   await prisma.supplierCall.update({
     where: { id: callId },
     data: {
