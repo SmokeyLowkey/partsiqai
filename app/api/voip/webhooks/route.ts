@@ -25,10 +25,11 @@ export async function POST(req: NextRequest) {
       // if (!isValid) return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
     }
 
-    const callId = event.metadata?.callId;
+    // Extract callLogId from metadata (matches what worker sets when creating call)
+    const callId = event.metadata?.callLogId || event.call?.metadata?.callLogId;
     
     if (!callId) {
-      console.warn('Webhook event missing callId:', event.type);
+      console.warn('Webhook event missing callLogId:', event.type, event);
       return NextResponse.json({ ok: true });
     }
 
