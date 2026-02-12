@@ -5,7 +5,12 @@ import { VoipCallRetryJobData } from '@/lib/queue/types';
 import { workerLogger } from '@/lib/logger';
 import { prisma } from '@/lib/prisma';
 import { CallStatus } from '@prisma/client';
-import { decrypt } from '@/lib/encryption';
+import { CredentialsManager } from '@/lib/services/credentials/credentials-manager';
+
+interface VapiCredentials {
+  apiKey: string;
+  phoneNumberId: string;
+}
 
 const logger = workerLogger.child({ worker: 'voip-call-retry' });
 
@@ -91,33 +96,35 @@ async function processVoipCallRetry(job: Job<VoipCallRetryJobData>) {
       throw new Error(`Organization not found: ${metadata.organizationId}`);
     }
 
-    // Determine which API keys to use (BYOK or Platform)
-    let vapiApiKey: string;
-    let vapiPhoneNumber: string;
-    
-    if (!organization.usePlatformKeys && organization.vapiApiKey) {
-      // Use customer's own keys (BYOK)
-      try {
-        vapiApiKey = decrypt(organization.vapiApiKey);
-        vapiPhoneNumber = process.env.VAPI_PHONE_NUMBER_ID!; // Fallback for now
-        logger.info({ organizationId: metadata.organizationId }, 'Using BYOK keys for VAPI retry call');
-      } catch (error) {
-        logger.error({ error, organizationId: metadata.organizationId }, 'Failed to decrypt BYOK keys, falling back to platform keys');
-        vapiApiKey = process.env.VAPI_PRIVATE_KEY!;
-        vapiPhoneNumber = process.env.VAPI_PHONE_NUMBER_ID!;
-      }
-    } else {
-      // Use platform keys (default)
-      vapiApiKey = process.env.VAPI_PRIVATE_KEY!;
-      vapiPhoneNumber = process.env.VAPI_PHONE_NUMBER_ID!;
-      logger.info({ organizationId: metadata.organizationId }, 'Using platform keys for VAPI retry call');
-    }
+    // Get VAPI credentials using CredentialsManager
+    const credentialsManager = new CredentialsManager();
+    const vapiCreds = await credentialsManager.getCredentialsWithFallback<VapiCredentials>(
+      metadata.organizationId,
+      'VAPI'
+    );
 
-    if (!vapiApiKey || !vapiPhoneNumber) {
+    if (!vapiCreds || !vapiCreds.apiKey || !vapiCreds.phoneNumberId) {
+      logger.error(
+        { organizationId: metadata.organizationId, hasCredentials: !!vapiCreds },
+        'Missing VAPI credentials in integration_credentials table'
+      );
       throw new Error(
-        'Missing VAPI configuration (VAPI_PRIVATE_KEY or VAPI_PHONE_NUMBER_ID)'
+        'VAPI credentials not configured. Please add VAPI credentials in the Admin Integrations settings.'
       );
     }
+
+    const vapiApiKey = vapiCreds.apiKey;
+    const vapiPhoneNumber = vapiCreds.phoneNumberId;
+    
+    logger.info(
+      { 
+        organizationId: metadata.organizationId,
+        usePlatformKeys: organization.usePlatformKeys,
+        hasApiKey: !!vapiApiKey,
+        hasPhoneNumber: !!vapiPhoneNumber
+      },
+      'Retrieved VAPI credentials for retry from integration_credentials'
+    );
 
     const response = await fetch('https://api.vapi.ai/call/phone', {
       method: 'POST',
