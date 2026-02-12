@@ -263,16 +263,29 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
       customInstructions: customInstructions,
     });
 
-    await saveCallState(callLog.id, initialCallState);
-    
-    logger.info(
-      { 
-        callLogId: callLog.id, 
-        partsCount: parts.length,
-        hasCustomContext: !!(customContext || customInstructions) 
-      },
-      'Call state initialized before VAPI API call'
-    );
+    try {
+      await saveCallState(callLog.id, initialCallState);
+      
+      logger.info(
+        { 
+          callLogId: callLog.id, 
+          partsCount: parts.length,
+          hasCustomContext: !!(customContext || customInstructions),
+          currentNode: initialCallState.currentNode 
+        },
+        'Call state successfully saved to Redis before VAPI API call'
+      );
+    } catch (redisError: any) {
+      logger.error(
+        {
+          callLogId: callLog.id,
+          error: redisError.message,
+          stack: redisError.stack
+        },
+        'Failed to save call state to Redis'
+      );
+      throw new Error(`Failed to save call state: ${redisError.message}`);
+    }
 
     const response = await fetch('https://api.vapi.ai/call/phone', {
       method: 'POST',
@@ -312,14 +325,45 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
       }),
     });
 
+    // Get response body for detailed error logging
+    const responseText = await response.text();
+    let vapiCallData: any;
+
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
+      let errorDetails = responseText;
+      try {
+        const errorJson = JSON.parse(responseText);
+        errorDetails = JSON.stringify(errorJson, null, 2);
+      } catch {
+        // Response is not JSON, use as-is
+      }
+      
+      logger.error(
+        { 
+          status: response.status,
+          statusText: response.statusText,
+          responseBody: errorDetails,
+          supplierId,
+          quoteRequestId 
+        },
+        'VAPI API call failed'
+      );
+      
       throw new Error(
-        `VAPI call initiation failed: ${response.status} ${response.statusText} - ${JSON.stringify(errorData)}`
+        `VAPI call initiation failed: ${response.status} ${response.statusText} - ${errorDetails}`
       );
     }
 
-    const vapiCallData = await response.json();
+    // Parse successful response
+    try {
+      vapiCallData = JSON.parse(responseText);
+    } catch (parseError) {
+      logger.error(
+        { responseText, parseError },
+        'Failed to parse VAPI response'
+      );
+      throw new Error('Failed to parse VAPI API response');
+    }
 
     // Update call log with VAPI call ID and increment AI calls counter
     await prisma.$transaction([

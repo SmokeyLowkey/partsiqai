@@ -1,4 +1,4 @@
-import { Queue } from 'bullmq';
+import { Queue, QueueEvents } from 'bullmq';
 import { redisConnection } from './connection';
 import type {
   EmailMonitorJobData,
@@ -178,6 +178,14 @@ export const voipCallRetryQueue = new Queue<VoipCallRetryJobData, any, string>(
       removeOnComplete: { age: 86400, count: 100 },
       removeOnFail: { age: 604800, count: 100 },
     },
+  }
+);
+
+// QueueEvents for listening to job completion (needed for waitUntilFinished)
+export const voipCallInitiationQueueEvents = new QueueEvents(
+  QUEUE_NAMES.VOIP_CALL_INITIATION,
+  {
+    connection: redisConnection.duplicate(),
   }
 );
 

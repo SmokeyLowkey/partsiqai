@@ -145,6 +145,16 @@ export async function POST(req: NextRequest) {
         model: body.model,
         callId: body.call?.id,
         callLogId: body.call?.metadata?.callLogId,
+        callObject: body.call ? {
+          id: body.call.id,
+          metadata: body.call.metadata
+        } : 'missing',
+        lastMessage: body.messages?.length > 0 
+          ? {
+              role: body.messages[body.messages.length - 1]?.role,
+              contentPreview: body.messages[body.messages.length - 1]?.content?.substring(0, 100)
+            }
+          : 'no messages'
       },
       'LangGraph handler request received'
     );
@@ -175,10 +185,33 @@ export async function POST(req: NextRequest) {
     }
 
     // Get current call state from Redis
-    const state = await getCallState(callId);
+    let state;
+    try {
+      state = await getCallState(callId);
+      logger.info(
+        { 
+          callId, 
+          stateFound: !!state,
+          stateNode: state?.currentNode,
+        },
+        'Call state retrieval result'
+      );
+    } catch (redisError: any) {
+      logger.error(
+        { 
+          callId, 
+          error: redisError.message, 
+          stack: redisError.stack 
+        },
+        'Redis error when retrieving call state'
+      );
+      const errorContent = "I apologize, I'm having a technical issue. Let me have someone call you right back.";
+      if (isStreaming) return buildStreamingResponse(errorContent);
+      return NextResponse.json(buildChatCompletionResponse(errorContent));
+    }
 
     if (!state) {
-      logger.error({ callId }, 'Call state not found in Redis');
+      logger.error({ callId }, 'Call state not found in Redis after retrieval attempt');
       const errorContent = "I apologize, I'm having a technical issue. Let me have someone call you right back.";
       if (isStreaming) return buildStreamingResponse(errorContent);
       return NextResponse.json(buildChatCompletionResponse(errorContent));

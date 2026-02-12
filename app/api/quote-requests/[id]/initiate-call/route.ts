@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { voipCallInitiationQueue } from '@/lib/queue/queues';
+import { voipCallInitiationQueue, voipCallInitiationQueueEvents } from '@/lib/queue/queues';
 
 export async function POST(
   req: NextRequest,
@@ -119,12 +119,31 @@ export async function POST(
           }
         );
 
-        return {
-          supplierId,
-          supplierName: supplier.name,
-          jobId: job.id,
-          status: 'queued',
-        };
+        // Wait for job to complete (with 10 second timeout)
+        try {
+          const result = await job.waitUntilFinished(voipCallInitiationQueueEvents, 10000);
+          
+          return {
+            supplierId,
+            supplierName: supplier.name,
+            jobId: job.id,
+            callId: result.callId,
+            vapiCallId: result.vapiCallId,
+            status: 'initiated',
+          };
+        } catch (waitError: any) {
+          // Job failed or timed out
+          const jobState = await job.getState();
+          const jobError = job.failedReason;
+          
+          return {
+            supplierId,
+            supplierName: supplier.name,
+            jobId: job.id,
+            status: jobState,
+            error: jobError || waitError.message || 'Call initiation timed out or failed',
+          };
+        }
       })
     );
 
@@ -134,17 +153,22 @@ export async function POST(
       } else {
         return {
           supplierId: supplierIds[index],
-          error: result.reason?.message || 'Unknown error',
+          supplierName: 'Unknown',
+          error: result.reason?.message || 'Failed to queue job',
         };
       }
     });
 
-    const successCount = jobs.filter((j) => 'jobId' in j).length;
+    const successCount = jobs.filter((j) => 
+      'status' in j && (j.status === 'initiated' || j.status === 'queued')
+    ).length;
     const failCount = jobs.length - successCount;
 
     return NextResponse.json({
-      success: true,
-      message: `Queued ${successCount} call(s) for processing. ${failCount} failed to queue.`,
+      success: successCount > 0,
+      message: successCount > 0
+        ? `Initiated ${successCount} call(s). ${failCount > 0 ? `${failCount} failed.` : ''}`
+        : `All ${failCount} call(s) failed to initiate.`,
       jobs,
     });
   } catch (error) {
