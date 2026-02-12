@@ -227,7 +227,19 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
     );
 
     // Get app URL for webhook callbacks
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    // Use VERCEL_URL for production deployments, NEXT_PUBLIC_APP_URL for local dev
+    let appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    if (!appUrl && process.env.VERCEL_URL) {
+      appUrl = `https://${process.env.VERCEL_URL}`;
+    }
+    if (!appUrl) {
+      throw new Error('Neither NEXT_PUBLIC_APP_URL nor VERCEL_URL is set - cannot configure VAPI callback URL');
+    }
+
+    logger.info(
+      { appUrl, hasVercelUrl: !!process.env.VERCEL_URL, hasPublicUrl: !!process.env.NEXT_PUBLIC_APP_URL },
+      'Using app URL for VAPI callbacks'
+    );
 
     // Format phone number to E.164 format
     const formattedPhone = formatPhoneE164(supplierPhone);
@@ -287,6 +299,35 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
       throw new Error(`Failed to save call state: ${redisError.message}`);
     }
 
+    // Build VAPI assistant configuration
+    const vapiAssistantConfig = {
+      firstMessage: firstMessage,
+      context: systemInstructions,
+      model: {
+        provider: 'custom-llm',
+        model: 'langgraph-state-machine',
+        url: `${appUrl}/api/voip/langgraph-handler`,
+        headers: {
+          'Authorization': `Bearer ${process.env.VOIP_WEBHOOK_SECRET || 'dev-secret'}`,
+        },
+      },
+      voice: {
+        provider: 'azure',
+        voiceId: 'andrew',
+      },
+    };
+
+    logger.info(
+      {
+        customLlmUrl: vapiAssistantConfig.model.url,
+        provider: vapiAssistantConfig.model.provider,
+        voiceProvider: vapiAssistantConfig.voice.provider,
+        firstMessageLength: firstMessage.length,
+        systemInstructionsLength: systemInstructions.length
+      },
+      'Built VAPI assistant configuration with custom LLM'
+    );
+
     const response = await fetch('https://api.vapi.ai/call/phone', {
       method: 'POST',
       headers: {
@@ -298,22 +339,7 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
         customer: {
           number: formattedPhone,
         },
-        assistant: {
-          firstMessage: firstMessage,
-          context: systemInstructions, // System-level instructions for the agent
-          model: {
-            provider: 'custom-llm',
-            model: 'langgraph-state-machine', // Model identifier for custom LLM
-            url: `${appUrl}/api/voip/langgraph-handler`,
-            headers: {
-              'Authorization': `Bearer ${process.env.VOIP_WEBHOOK_SECRET || 'dev-secret'}`,
-            },
-          },
-          voice: {
-            provider: 'azure',
-            voiceId: 'andrew',
-          },
-        },
+        assistant: vapiAssistantConfig,
         metadata: {
           quoteRequestId,
           supplierId,
@@ -357,6 +383,16 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
     // Parse successful response
     try {
       vapiCallData = JSON.parse(responseText);
+      logger.info(
+        {
+          vapiCallId: vapiCallData.id,
+          status: vapiCallData.status,
+          hasAssistant: !!vapiCallData.assistant,
+          assistantModel: vapiCallData.assistant?.model?.provider,
+          customLlmUrl: vapiCallData.assistant?.model?.url
+        },
+        'VAPI call created successfully, verifying custom LLM configuration'
+      );
     } catch (parseError) {
       logger.error(
         { responseText, parseError },
