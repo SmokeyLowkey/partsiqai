@@ -26,28 +26,40 @@ export async function POST(req: NextRequest) {
     }
 
     // Extract callLogId from metadata (matches what worker sets when creating call)
-    const callId = event.metadata?.callLogId || event.call?.metadata?.callLogId;
+    // Handle different event structures (call-started, transcript, end-of-call-report)
+    const callId = event.metadata?.callLogId || 
+                   event.call?.metadata?.callLogId || 
+                   event.message?.call?.metadata?.callLogId;
     
     if (!callId) {
-      console.warn('Webhook event missing callLogId:', event.type, event);
+      const eventType = event.type || event.message?.type;
+      console.warn('Webhook event missing callLogId:', eventType, {
+        hasEventMetadata: !!event.metadata,
+        hasEventCall: !!event.call,
+        hasEventMessage: !!event.message,
+        messageType: event.message?.type,
+      });
       return NextResponse.json({ ok: true });
     }
 
-    console.log(`[VOIP Webhook] ${event.type} for call ${callId}`);
+    // Handle both top-level event.type and event.message.type (for end-of-call-report)
+    const eventType = event.type || event.message?.type;
+    console.log(`[VOIP Webhook] ${eventType} for call ${callId}`);
 
-    switch (event.type) {
+    switch (eventType) {
       case 'call-started':
         await handleCallStarted(callId, event);
         break;
 
       case 'transcript':
-        if (event.transcript.role === 'user') {
+        if (event.transcript?.role === 'user') {
           await handleSupplierResponse(callId, event.transcript.text);
         }
         break;
 
       case 'call-ended':
-        await handleCallEnded(callId, event);
+      case 'end-of-call-report':
+        await handleCallEnded(callId, event.message || event);
         break;
 
       case 'error':
@@ -90,8 +102,29 @@ async function handleCallStarted(callId: string, event: any) {
 
   logger.info(
     { callId, quoteRequestId: call.quoteRequestId, supplierId: call.supplierId },
-    'Initializing call state for LangGraph'
+    'Handling call started webhook'
   );
+
+  // Check if state already exists (initialized by worker before VAPI call)
+  const existingState = await getCallState(call.id);
+  if (existingState) {
+    logger.info(
+      { callId, currentNode: existingState.currentNode },
+      'Call state already initialized by worker, skipping re-initialization'
+    );
+    
+    // Just update database status
+    await prisma.supplierCall.update({
+      where: { id: callId },
+      data: {
+        status: 'ANSWERED',
+        answeredAt: new Date(),
+      },
+    });
+    return;
+  }
+
+  logger.info({ callId }, 'Initializing call state from webhook (fallback)');
 
   // Extract parts information from quote request
   const parts = call.quoteRequest?.items.map(item => ({

@@ -26,11 +26,10 @@ import {
  * Greeting Node - Initial message to supplier
  */
 export function greetingNode(state: CallState): CallState {
-  // Use custom context if provided, otherwise use default greeting
+  // Use custom context if provided, otherwise use default natural greeting
   const greeting = state.voiceAgentContext || 
-    `Hi, this is the virtual assistant calling on behalf of ${state.organizationId}. 
-We're helping their maintenance team source parts for heavy equipment. 
-Am I speaking with someone who can provide pricing?`;
+    `Hi there! This is calling on behalf of ${state.organizationId}. 
+Could I speak to someone in your parts department?`;
 
   return addMessage(state, 'ai', greeting);
 }
@@ -43,8 +42,8 @@ export function quoteRequestNode(state: CallState): CallState {
     .map(p => `${p.partNumber} - ${p.description}, quantity ${p.quantity}`)
     .join(', and ');
 
-  const request = `Great. We need pricing and availability for the following: ${partsDescription}. 
-Do you have these items in stock, or can you source them?`;
+  const request = `Great, thanks! I'm calling to get pricing and availability for some parts: ${partsDescription}. 
+Can you help with that, or would you prefer I send this over email?`;
 
   return addMessage(state, 'ai', request);
 }

@@ -7,6 +7,8 @@ import { prisma } from '@/lib/prisma';
 import { CallStatus } from '@prisma/client';
 import { trackOverageUsage } from '@/lib/billing/overage-billing';
 import { CredentialsManager } from '@/lib/services/credentials/credentials-manager';
+import { initializeCallState } from '@/lib/voip/call-graph';
+import { saveCallState } from '@/lib/voip/state-manager';
 
 interface VapiCredentials {
   apiKey: string;
@@ -195,12 +197,14 @@ async function processVoipCallInitiation(job: Job<VoipCallInitiationJobData>) {
     const customContext = context.customContext;
     const customInstructions = context.customInstructions;
 
-    // Build first message
-    const defaultFirstMessage = `Hi, this is an automated call from ${metadata.organizationId}. I'm calling regarding quote request ${quoteRequestId.slice(0, 8)}. Am I speaking with someone at ${supplierName}?`;
+    // Build first message - natural and conversational
+    const defaultFirstMessage = `Hi, good morning! This is calling from ${metadata.organizationId}. Could I speak to someone in your parts department, please?`;
     const firstMessage = customContext || defaultFirstMessage;
 
-    // Build system instructions for the AI agent
-    const defaultSystemInstructions = `You are an AI assistant calling suppliers on behalf of ${metadata.organizationId}. Your goal is to request quotes for parts and gather pricing information. Be professional, concise, and friendly.`;
+    // Build system instructions for the AI agent - conversational approach
+    const defaultSystemInstructions = `You are a real person calling suppliers on behalf of ${metadata.organizationId}. Be natural, friendly, and conversational - not robotic.
+
+Start by asking for the parts department. Once connected, explain you need pricing for some parts. Have a natural conversation - use pauses, acknowledge their responses, and don't rush. If they can't help over the phone, ask for their preferred contact method.`;
     const systemInstructions = customInstructions || defaultSystemInstructions;
 
     logger.info(
@@ -219,6 +223,46 @@ async function processVoipCallInitiation(job: Job<VoipCallInitiationJobData>) {
     // Format phone number to E.164 format
     const formattedPhone = formatPhoneE164(supplierPhone);
     logger.debug({ original: supplierPhone, formatted: formattedPhone }, 'Formatted phone number');
+
+    // Initialize call state BEFORE making VAPI API call to avoid race condition
+    // Extract parts information from quote request
+    const quoteRequestData = await prisma.quoteRequest.findUnique({
+      where: { id: quoteRequestId },
+      include: {
+        items: true,
+      },
+    });
+
+    const parts = quoteRequestData?.items.map(item => ({
+      partNumber: item.partNumber,
+      description: item.description || '',
+      quantity: item.quantity,
+      budgetMax: undefined,
+    })) || [];
+
+    // Initialize LangGraph state and save to Redis
+    const initialCallState = initializeCallState({
+      callId: callLog.id,
+      quoteRequestId,
+      supplierId,
+      supplierName,
+      supplierPhone: formattedPhone,
+      organizationId: metadata.organizationId,
+      callerId: metadata.userId,
+      parts,
+      voiceAgentContext: customContext || customInstructions,
+    });
+
+    await saveCallState(callLog.id, initialCallState);
+    
+    logger.info(
+      { 
+        callLogId: callLog.id, 
+        partsCount: parts.length,
+        hasCustomContext: !!(customContext || customInstructions) 
+      },
+      'Call state initialized before VAPI API call'
+    );
 
     const response = await fetch('https://api.vapi.ai/call/phone', {
       method: 'POST',
