@@ -14,6 +14,34 @@ interface VapiCredentials {
 
 const logger = workerLogger.child({ worker: 'voip-call-retry' });
 
+/**
+ * Format phone number to E.164 format (e.g., +15551234567)
+ * Handles US/Canada numbers and basic international formats
+ */
+function formatPhoneE164(phone: string): string {
+  // Remove all non-digit characters
+  const digits = phone.replace(/\D/g, '');
+  
+  // If already starts with +, return as-is after cleaning
+  if (phone.trim().startsWith('+')) {
+    return '+' + digits;
+  }
+  
+  // US/Canada: 10 digits -> add +1
+  if (digits.length === 10) {
+    return '+1' + digits;
+  }
+  
+  // Already has country code (11+ digits) -> add +
+  if (digits.length >= 11) {
+    return '+' + digits;
+  }
+  
+  // Invalid format - return original with + prefix
+  logger.warn({ phone, digits }, 'Phone number may not be in valid E.164 format');
+  return '+' + digits;
+}
+
 async function processVoipCallRetry(job: Job<VoipCallRetryJobData>) {
   const {
     quoteRequestId,
@@ -126,6 +154,10 @@ async function processVoipCallRetry(job: Job<VoipCallRetryJobData>) {
       'Retrieved VAPI credentials for retry from integration_credentials'
     );
 
+    // Format phone number to E.164 format
+    const formattedPhone = formatPhoneE164(supplierPhone);
+    logger.debug({ original: supplierPhone, formatted: formattedPhone }, 'Formatted phone number for retry');
+
     const response = await fetch('https://api.vapi.ai/call/phone', {
       method: 'POST',
       headers: {
@@ -135,7 +167,7 @@ async function processVoipCallRetry(job: Job<VoipCallRetryJobData>) {
       body: JSON.stringify({
         phoneNumberId: vapiPhoneNumber,
         customer: {
-          number: supplierPhone,
+          number: formattedPhone,
         },
         assistant: {
           firstMessage: `Hi, this is a follow-up call from ${metadata.organizationId}. I'm calling again regarding quote request ${quoteRequestId.slice(0, 8)}. Am I speaking with someone at ${supplierName}?`,

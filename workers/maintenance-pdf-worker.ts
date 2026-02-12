@@ -112,8 +112,11 @@ INSTRUCTIONS:
 Extract all maintenance intervals and required parts from this maintenance planner PDF.
 
 1. Identify all maintenance intervals (typically at 50, 100, 250, 500, 1000, 2000, 3000, 5000 operating hours or daily/weekly/monthly schedules)
+   - SKIP "as required", "as needed", "when necessary" maintenance items that don't have specific intervals
+   - ONLY include maintenance that has a specific numeric interval (hours, days, months, miles)
+   
 2. For each interval, extract:
-   - The interval number (e.g., 250, 500 hours)
+   - The interval number (e.g., 250, 500 hours) - MUST be a positive number, NOT null
    - The interval type (HOURS, DAYS, MONTHS, or MILES)
    - Service name/type (e.g., "Engine Oil Change", "Hydraulic Filter Replacement")
    - Service description (additional details from the PDF)
@@ -138,7 +141,7 @@ Respond with a JSON object in this EXACT format:
   "modelMatch": "model name/number found in PDF that matches vehicle or null",
   "intervals": [
     {
-      "intervalHours": 500,
+      "intervalHours": 500,  /* REQUIRED: Must be a positive number (e.g., 50, 250, 500, 1000). Do NOT use null or 0 */
       "intervalType": "HOURS",
       "serviceName": "Engine Oil & Filter Change",
       "serviceDescription": "Change engine oil and replace oil filter. Check for leaks.",
@@ -159,6 +162,11 @@ Respond with a JSON object in this EXACT format:
   ],
   "extractionNotes": "any notes about uncertain extractions or PDF quality issues"
 }
+
+IMPORTANT: 
+- Every interval MUST have a valid intervalHours number (not null, not 0)
+- Skip any "as required" or "as needed" maintenance that doesn't have a specific interval
+- If you can't determine a specific interval, do NOT include that maintenance item
 
 If no maintenance schedule information can be extracted, return an empty intervals array with extractionNotes explaining why.`;
 
@@ -238,6 +246,18 @@ async function processMaintenancePdf(job: Job<MaintenancePdfJobData>): Promise<v
 
       // Create intervals with their parts
       for (const interval of extractedData.intervals || []) {
+        // Skip intervals without valid intervalHours (e.g., "as required" maintenance)
+        if (!interval.intervalHours || interval.intervalHours === null || interval.intervalHours <= 0) {
+          workerLogger.warn(
+            { 
+              serviceName: interval.serviceName, 
+              intervalHours: interval.intervalHours 
+            }, 
+            'Skipping interval with invalid intervalHours (likely "as required" maintenance)'
+          );
+          continue;
+        }
+
         // Normalize the interval type from LLM output to valid enum value
         const normalizedIntervalType = normalizeIntervalType(interval.intervalType);
         workerLogger.debug({ serviceName: interval.serviceName, rawType: interval.intervalType, normalizedType: normalizedIntervalType }, 'Normalized interval type');

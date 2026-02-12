@@ -364,11 +364,6 @@ describe('VoIP Call Initiation Worker - BYOK Logic', () => {
             headers: {
               'Authorization': `Bearer ${process.env.VOIP_WEBHOOK_SECRET || 'dev-secret'}`,
             },
-            fallbackModel: {
-              provider: 'openai',
-              model: 'gpt-4',
-              temperature: 0.7,
-            },
           },
         },
       };
@@ -376,8 +371,6 @@ describe('VoIP Call Initiation Worker - BYOK Logic', () => {
       expect(vapiConfig.assistant.model.provider).toBe('custom-llm');
       expect(vapiConfig.assistant.model.url).toContain('/api/voip/langgraph-handler');
       expect(vapiConfig.assistant.model.headers.Authorization).toBeDefined();
-      expect(vapiConfig.assistant.model.fallbackModel).toBeDefined();
-      expect(vapiConfig.assistant.model.fallbackModel.provider).toBe('openai');
     });
 
     it('should include custom context in firstMessage when provided', async () => {

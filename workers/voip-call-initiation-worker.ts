@@ -15,6 +15,34 @@ interface VapiCredentials {
 
 const logger = workerLogger.child({ worker: 'voip-call-initiation' });
 
+/**
+ * Format phone number to E.164 format (e.g., +15551234567)
+ * Handles US/Canada numbers and basic international formats
+ */
+function formatPhoneE164(phone: string): string {
+  // Remove all non-digit characters
+  const digits = phone.replace(/\D/g, '');
+  
+  // If already starts with +, return as-is after cleaning
+  if (phone.trim().startsWith('+')) {
+    return '+' + digits;
+  }
+  
+  // US/Canada: 10 digits -> add +1
+  if (digits.length === 10) {
+    return '+1' + digits;
+  }
+  
+  // Already has country code (11+ digits) -> add +
+  if (digits.length >= 11) {
+    return '+' + digits;
+  }
+  
+  // Invalid format - return original with + prefix
+  logger.warn({ phone, digits }, 'Phone number may not be in valid E.164 format');
+  return '+' + digits;
+}
+
 async function processVoipCallInitiation(job: Job<VoipCallInitiationJobData>) {
   const {
     quoteRequestId,
@@ -188,6 +216,10 @@ async function processVoipCallInitiation(job: Job<VoipCallInitiationJobData>) {
     // Get app URL for webhook callbacks
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
+    // Format phone number to E.164 format
+    const formattedPhone = formatPhoneE164(supplierPhone);
+    logger.debug({ original: supplierPhone, formatted: formattedPhone }, 'Formatted phone number');
+
     const response = await fetch('https://api.vapi.ai/call/phone', {
       method: 'POST',
       headers: {
@@ -197,7 +229,7 @@ async function processVoipCallInitiation(job: Job<VoipCallInitiationJobData>) {
       body: JSON.stringify({
         phoneNumberId: vapiPhoneNumber,
         customer: {
-          number: supplierPhone,
+          number: formattedPhone,
         },
         assistant: {
           firstMessage: firstMessage,
@@ -207,12 +239,6 @@ async function processVoipCallInitiation(job: Job<VoipCallInitiationJobData>) {
             url: `${appUrl}/api/voip/langgraph-handler`,
             headers: {
               'Authorization': `Bearer ${process.env.VOIP_WEBHOOK_SECRET || 'dev-secret'}`,
-            },
-            // Fallback model settings in case custom LLM fails
-            fallbackModel: {
-              provider: 'openai',
-              model: 'gpt-4',
-              temperature: 0.7,
             },
           },
           voice: {
