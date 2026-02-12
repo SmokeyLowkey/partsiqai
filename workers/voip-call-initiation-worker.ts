@@ -236,6 +236,7 @@ async function processVoipCallInitiation(job: Job<VoipCallInitiationJobData>) {
           context: systemInstructions, // System-level instructions for the agent
           model: {
             provider: 'custom-llm',
+            model: 'langgraph-state-machine', // Model identifier for custom LLM
             url: `${appUrl}/api/voip/langgraph-handler`,
             headers: {
               'Authorization': `Bearer ${process.env.VOIP_WEBHOOK_SECRET || 'dev-secret'}`,

@@ -360,6 +360,7 @@ describe('VoIP Call Initiation Worker - BYOK Logic', () => {
           context: 'You are an AI assistant calling suppliers.',
           model: {
             provider: 'custom-llm',
+            model: 'langgraph-state-machine',
             url: `${appUrl}/api/voip/langgraph-handler`,
             headers: {
               'Authorization': `Bearer ${process.env.VOIP_WEBHOOK_SECRET || 'dev-secret'}`,
@@ -369,6 +370,7 @@ describe('VoIP Call Initiation Worker - BYOK Logic', () => {
       };
 
       expect(vapiConfig.assistant.model.provider).toBe('custom-llm');
+      expect(vapiConfig.assistant.model.model).toBe('langgraph-state-machine');
       expect(vapiConfig.assistant.model.url).toContain('/api/voip/langgraph-handler');
       expect(vapiConfig.assistant.model.headers.Authorization).toBeDefined();
     });

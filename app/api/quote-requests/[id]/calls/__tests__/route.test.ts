@@ -1,7 +1,19 @@
-import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { GET } from '../route';
-import { prisma } from '@/lib/prisma';
+
+// Mock Prisma to prevent database operations
+vi.mock('@/lib/prisma', () => ({
+  prisma: {
+    quoteRequest: {
+      findUnique: vi.fn(),
+    },
+    supplierCall: {
+      findMany: vi.fn(),
+      count: vi.fn(),
+    },
+  },
+}));
 
 // Mock auth
 vi.mock('@/lib/auth', () => ({
@@ -14,75 +26,14 @@ describe('Quote Request Calls API', () => {
   const testQuoteRequestId = 'test-qr-calls-api';
   const testSupplierId = 'test-supplier-calls-api';
 
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.clearAllMocks();
-
-    // Setup test data
-    await prisma.organization.upsert({
-      where: { id: testOrgId },
-      create: {
-        id: testOrgId,
-        slug: 'test-org-calls-api',
-        name: 'Test Org',
-        subscriptionTier: 'GROWTH',
-        subscriptionStatus: 'ACTIVE',
-      },
-      update: {},
-    });
-
-    await prisma.user.upsert({
-      where: { id: testUserId },
-      create: {
-        id: testUserId,
-        email: 'test-calls-api@example.com',
-        name: 'Test User',
-        role: 'ADMIN',
-        organizationId: testOrgId,
-      },
-      update: { organizationId: testOrgId },
-    });
-
-    await prisma.supplier.upsert({
-      where: { id: testSupplierId },
-      create: {
-        id: testSupplierId,
-        supplierId: 'TESTSUP001',
-        name: 'Test Supplier',
-        type: 'LOCAL_DEALER',
-        phone: '+15551234567',
-        email: 'supplier@example.com',
-        organizationId: testOrgId,
-      },
-      update: {},
-    });
-
-    await prisma.quoteRequest.upsert({
-      where: { id: testQuoteRequestId },
-      create: {
-        id: testQuoteRequestId,
-        quoteNumber: 'QR-TEST-001',
-        title: 'Test Quote Request',
-        status: 'DRAFT',
-        organizationId: testOrgId,
-        createdById: testUserId,
-        vehicleId: null,
-      },
-      update: {},
-    });
-  });
-
-  afterAll(async () => {
-    // Cleanup
-    await prisma.supplierCall.deleteMany({ where: { quoteRequestId: testQuoteRequestId } });
-    await prisma.quoteRequest.deleteMany({ where: { id: testQuoteRequestId } });
-    await prisma.supplier.deleteMany({ where: { id: testSupplierId } });
-    await prisma.user.deleteMany({ where: { id: testUserId } });
-    await prisma.organization.deleteMany({ where: { id: testOrgId } });
   });
 
   describe('GET /api/quote-requests/[id]/calls', () => {
     it('should transform LangGraph conversationHistory to conversationLog format', async () => {
       const { getServerSession } = await import('@/lib/auth');
+      const { prisma } = await import('@/lib/prisma');
 
       (getServerSession as any).mockResolvedValue({
         user: {
@@ -91,51 +42,62 @@ describe('Quote Request Calls API', () => {
         },
       });
 
-      // Create call with LangGraph format
-      const call = await prisma.supplierCall.create({
-        data: {
-          quoteRequestId: testQuoteRequestId,
-          supplierId: testSupplierId,
-          callDirection: 'OUTBOUND',
-          callType: 'QUOTE_REQUEST',
-          callerId: testUserId,
-          phoneNumber: '+15551234567',
-          status: 'COMPLETED',
-          organizationId: testOrgId,
-          duration: 145,
-          conversationLog: {
-            conversationHistory: [
-              {
-                speaker: 'ai',
-                text: 'Hi, can you help with a quote?',
-                timestamp: new Date().toISOString(),
-              },
-              {
-                speaker: 'supplier',
-                text: 'Yes, what do you need?',
-                timestamp: new Date().toISOString(),
-              },
-              {
-                speaker: 'ai',
-                text: 'Part ABC123, quantity 2',
-                timestamp: new Date().toISOString(),
-              },
-            ],
-            currentNode: 'confirmation',
-            status: 'completed',
-            needsHumanEscalation: false,
-            negotiationAttempts: 1,
-          },
-          extractedQuotes: [
+      // Mock quote request lookup
+      (prisma.quoteRequest.findUnique as any).mockResolvedValue({
+        id: testQuoteRequestId,
+        organizationId: testOrgId,
+      });
+
+      // Mock call with LangGraph format
+      const mockCall = {
+        id: 'call_123',
+        quoteRequestId: testQuoteRequestId,
+        supplierId: testSupplierId,
+        callDirection: 'OUTBOUND',
+        callType: 'QUOTE_REQUEST',
+        callerId: testUserId,
+        phoneNumber: '+15551234567',
+        status: 'COMPLETED',
+        organizationId: testOrgId,
+        duration: 145,
+        conversationLog: {
+          conversationHistory: [
             {
-              partNumber: 'ABC123',
-              price: 450,
-              availability: 'in_stock',
-              leadTimeDays: 3,
+              speaker: 'ai',
+              text: 'Hi, can you help with a quote?',
+              timestamp: new Date().toISOString(),
+            },
+            {
+              speaker: 'supplier',
+              text: 'Yes, what do you need?',
+              timestamp: new Date().toISOString(),
+            },
+            {
+              speaker: 'ai',
+              text: 'Part ABC123, quantity 2',
+              timestamp: new Date().toISOString(),
             },
           ],
+          currentNode: 'confirmation',
+          status: 'completed',
+          needsHumanEscalation: false,
+          negotiationAttempts: 1,
         },
-      });
+        extractedQuotes: [
+          {
+            partNumber: 'ABC123',
+            price: 450,
+            availability: 'in_stock',
+            leadTimeDays: 3,
+          },
+        ],
+        supplier: { name: 'Test Supplier' },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      (prisma.supplierCall.findMany as any).mockResolvedValue([mockCall]);
+      (prisma.supplierCall.count as any).mockResolvedValue(1);
 
       const request = new NextRequest(
         `http://localhost:3000/api/quote-requests/${testQuoteRequestId}/calls`,
@@ -170,13 +132,11 @@ describe('Quote Request Calls API', () => {
       expect(transformedCall.extractedQuotes).toHaveLength(1);
       expect(transformedCall.extractedQuotes[0].partNumber).toBe('ABC123');
       expect(transformedCall.extractedQuotes[0].price).toBe(450);
-
-      // Cleanup
-      await prisma.supplierCall.delete({ where: { id: call.id } });
     });
 
     it('should handle calls without LangGraph state', async () => {
       const { getServerSession } = await import('@/lib/auth');
+      const { prisma } = await import('@/lib/prisma');
 
       (getServerSession as any).mockResolvedValue({
         user: {
@@ -185,27 +145,38 @@ describe('Quote Request Calls API', () => {
         },
       });
 
-      // Create call without LangGraph format (old format)
-      const call = await prisma.supplierCall.create({
-        data: {
-          quoteRequestId: testQuoteRequestId,
-          supplierId: testSupplierId,
-          callDirection: 'OUTBOUND',
-          callType: 'QUOTE_REQUEST',
-          callerId: testUserId,
-          phoneNumber: '+15551234567',
-          status: 'COMPLETED',
-          organizationId: testOrgId,
-          duration: 85,
-          conversationLog: [
-            {
-              role: 'assistant',
-              content: 'Hello',
-              timestamp: new Date().toISOString(),
-            },
-          ],
-        },
+      // Mock quote request lookup
+      (prisma.quoteRequest.findUnique as any).mockResolvedValue({
+        id: testQuoteRequestId,
+        organizationId: testOrgId,
       });
+
+      // Mock call without LangGraph format (old format)
+      const mockCall = {
+        id: 'call_456',
+        quoteRequestId: testQuoteRequestId,
+        supplierId: testSupplierId,
+        callDirection: 'OUTBOUND',
+        callType: 'QUOTE_REQUEST',
+        callerId: testUserId,
+        phoneNumber: '+15551234567',
+        status: 'COMPLETED',
+        organizationId: testOrgId,
+        duration: 85,
+        conversationLog: [
+          {
+            role: 'assistant',
+            content: 'Hello',
+            timestamp: new Date().toISOString(),
+          },
+        ],
+        supplier: { name: 'Test Supplier' },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      (prisma.supplierCall.findMany as any).mockResolvedValue([mockCall]);
+      (prisma.supplierCall.count as any).mockResolvedValue(1);
 
       const request = new NextRequest(
         `http://localhost:3000/api/quote-requests/${testQuoteRequestId}/calls`,
@@ -224,13 +195,11 @@ describe('Quote Request Calls API', () => {
 
       // No langGraphState for old format
       expect(transformedCall.langGraphState).toBeNull();
-
-      // Cleanup
-      await prisma.supplierCall.delete({ where: { id: call.id } });
     });
 
     it('should handle calls with escalation flags', async () => {
       const { getServerSession } = await import('@/lib/auth');
+      const { prisma } = await import('@/lib/prisma');
 
       (getServerSession as any).mockResolvedValue({
         user: {
@@ -239,26 +208,37 @@ describe('Quote Request Calls API', () => {
         },
       });
 
-      const call = await prisma.supplierCall.create({
-        data: {
-          quoteRequestId: testQuoteRequestId,
-          supplierId: testSupplierId,
-          callDirection: 'OUTBOUND',
-          callType: 'QUOTE_REQUEST',
-          callerId: testUserId,
-          phoneNumber: '+15551234567',
-          status: 'COMPLETED',
-          organizationId: testOrgId,
-          notes: 'Complex pricing structure - manager review needed',
-          nextAction: 'human_followup',
-          conversationLog: {
-            conversationHistory: [],
-            currentNode: 'human_escalation',
-            needsHumanEscalation: true,
-            clarificationAttempts: 3,
-          },
-        },
+      // Mock quote request lookup
+      (prisma.quoteRequest.findUnique as any).mockResolvedValue({
+        id: testQuoteRequestId,
+        organizationId: testOrgId,
       });
+
+      const mockCall = {
+        id: 'call_789',
+        quoteRequestId: testQuoteRequestId,
+        supplierId: testSupplierId,
+        callDirection: 'OUTBOUND',
+        callType: 'QUOTE_REQUEST',
+        callerId: testUserId,
+        phoneNumber: '+15551234567',
+        status: 'COMPLETED',
+        organizationId: testOrgId,
+        notes: 'Complex pricing structure - manager review needed',
+        nextAction: 'human_followup',
+        conversationLog: {
+          conversationHistory: [],
+          currentNode: 'human_escalation',
+          needsHumanEscalation: true,
+          clarificationAttempts: 3,
+        },
+        supplier: { name: 'Test Supplier' },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      (prisma.supplierCall.findMany as any).mockResolvedValue([mockCall]);
+      (prisma.supplierCall.count as any).mockResolvedValue(1);
 
       const request = new NextRequest(
         `http://localhost:3000/api/quote-requests/${testQuoteRequestId}/calls`,
@@ -274,9 +254,6 @@ describe('Quote Request Calls API', () => {
       expect(transformedCall.nextAction).toBe('human_followup');
       expect(transformedCall.langGraphState.needsHumanEscalation).toBe(true);
       expect(transformedCall.langGraphState.currentNode).toBe('human_escalation');
-
-      // Cleanup
-      await prisma.supplierCall.delete({ where: { id: call.id } });
     });
 
     it('should return 401 for unauthenticated requests', async () => {
@@ -296,12 +273,19 @@ describe('Quote Request Calls API', () => {
 
     it('should return 403 for unauthorized organization access', async () => {
       const { getServerSession } = await import('@/lib/auth');
+      const { prisma } = await import('@/lib/prisma');
 
       (getServerSession as any).mockResolvedValue({
         user: {
           id: testUserId,
           organizationId: 'different-org-id',
         },
+      });
+
+      // Mock quote request with different org
+      (prisma.quoteRequest.findUnique as any).mockResolvedValue({
+        id: testQuoteRequestId,
+        organizationId: testOrgId,
       });
 
       const request = new NextRequest(
