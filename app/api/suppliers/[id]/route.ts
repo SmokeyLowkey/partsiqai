@@ -31,6 +31,11 @@ const UpdateSupplierSchema = z.object({
   taxId: z.string().optional(),
   certifications: z.any().optional(),
   specialties: z.any().optional(),
+  preferredContactMethod: z.enum(['EMAIL', 'PHONE', 'SMS', 'BOTH']).optional(),
+  timezone: z.string().optional(),
+  callWindowStart: z.string().optional(),
+  callWindowEnd: z.string().optional(),
+  doNotCall: z.boolean().optional(),
 });
 
 // GET /api/suppliers/[id] - Get a single supplier

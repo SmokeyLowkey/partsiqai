@@ -61,6 +61,12 @@ interface Supplier {
   qualityRating?: number;
   avgDeliveryTime?: number;
   paymentTerms?: string;
+  taxId?: string;
+  preferredContactMethod?: 'EMAIL' | 'PHONE' | 'SMS' | 'BOTH';
+  timezone?: string;
+  callWindowStart?: string;
+  callWindowEnd?: string;
+  doNotCall?: boolean;
 }
 
 interface FormErrors {
@@ -755,32 +761,304 @@ export default function SuppliersPage() {
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Same form fields as Add dialog - omitted for brevity */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-name">Supplier Name *</Label>
+                <Label htmlFor="edit-name" className={formErrors.name ? 'text-destructive' : ''}>
+                  Supplier Name *
+                </Label>
                 <Input
                   id="edit-name"
+                  placeholder="Company Name"
                   value={formData.name || ''}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, name: e.target.value });
+                    if (formErrors.name) setFormErrors({ ...formErrors, name: undefined });
+                  }}
+                  className={formErrors.name ? 'border-destructive' : ''}
                 />
+                {formErrors.name && (
+                  <p className="text-xs text-destructive flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {formErrors.name}
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-supplierId">Supplier ID *</Label>
                 <Input
                   id="edit-supplierId"
                   value={formData.supplierId || ''}
-                  onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}
                   disabled
+                  className="bg-muted"
                 />
               </div>
             </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-type">Supplier Type *</Label>
+                <Select
+                  value={formData.type}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, type: value as Supplier['type'] })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="OEM_DIRECT">OEM Direct</SelectItem>
+                    <SelectItem value="DISTRIBUTOR">Distributor</SelectItem>
+                    <SelectItem value="AFTERMARKET">Aftermarket</SelectItem>
+                    <SelectItem value="LOCAL_DEALER">Local Dealer</SelectItem>
+                    <SelectItem value="ONLINE_RETAILER">Online Retailer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-status">Status</Label>
+                <Select
+                  value={formData.status}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, status: value as Supplier['status'] })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ACTIVE">Active</SelectItem>
+                    <SelectItem value="INACTIVE">Inactive</SelectItem>
+                    <SelectItem value="PENDING_APPROVAL">Pending Approval</SelectItem>
+                    <SelectItem value="SUSPENDED">Suspended</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-contactPerson">Contact Person</Label>
+              <Input
+                id="edit-contactPerson"
+                placeholder="John Smith"
+                value={formData.contactPerson || ''}
+                onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-email" className={formErrors.email ? 'text-destructive' : ''}>
+                  Email
+                </Label>
+                <Input
+                  id="edit-email"
+                  type="email"
+                  placeholder="contact@supplier.com"
+                  value={formData.email || ''}
+                  onChange={(e) => {
+                    setFormData({ ...formData, email: e.target.value });
+                    if (formErrors.email) setFormErrors({ ...formErrors, email: undefined });
+                  }}
+                  className={formErrors.email ? 'border-destructive' : ''}
+                />
+                {formErrors.email && (
+                  <p className="text-xs text-destructive flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {formErrors.email}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-phone">Phone</Label>
+                <Input
+                  id="edit-phone"
+                  placeholder="(555) 123-4567"
+                  value={formData.phone || ''}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-website" className={formErrors.website ? 'text-destructive' : ''}>
+                Website
+              </Label>
+              <Input
+                id="edit-website"
+                placeholder="example.com or https://example.com"
+                value={formData.website || ''}
+                onChange={(e) => {
+                  setFormData({ ...formData, website: e.target.value });
+                  if (formErrors.website) setFormErrors({ ...formErrors, website: undefined });
+                }}
+                className={formErrors.website ? 'border-destructive' : ''}
+              />
+              {formErrors.website && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  {formErrors.website}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-address">Address</Label>
+              <Input
+                id="edit-address"
+                placeholder="123 Main St"
+                value={formData.address || ''}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+              />
+            </div>
+
+            <div className="grid grid-cols-4 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-city">City</Label>
+                <Input
+                  id="edit-city"
+                  placeholder="Chicago"
+                  value={formData.city || ''}
+                  onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-state">State</Label>
+                <Input
+                  id="edit-state"
+                  placeholder="IL"
+                  value={formData.state || ''}
+                  onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-zipCode">ZIP Code</Label>
+                <Input
+                  id="edit-zipCode"
+                  placeholder="60601"
+                  value={formData.zipCode || ''}
+                  onChange={(e) => setFormData({ ...formData, zipCode: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-country">Country</Label>
+                <Input
+                  id="edit-country"
+                  placeholder="USA"
+                  value={formData.country || ''}
+                  onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-paymentTerms">Payment Terms</Label>
+                <Textarea
+                  id="edit-paymentTerms"
+                  placeholder="Net 30, credit card accepted..."
+                  value={formData.paymentTerms || ''}
+                  onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-taxId">Tax ID</Label>
+                <Input
+                  id="edit-taxId"
+                  placeholder="XX-XXXXXXX"
+                  value={formData.taxId || ''}
+                  onChange={(e) => setFormData({ ...formData, taxId: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-preferredContactMethod">Preferred Contact Method</Label>
+                <Select
+                  value={formData.preferredContactMethod || 'EMAIL'}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, preferredContactMethod: value as Supplier['preferredContactMethod'] })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="EMAIL">Email</SelectItem>
+                    <SelectItem value="PHONE">Phone</SelectItem>
+                    <SelectItem value="SMS">SMS</SelectItem>
+                    <SelectItem value="BOTH">Both (Email & Phone)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-timezone">Timezone</Label>
+                <Input
+                  id="edit-timezone"
+                  placeholder="America/Chicago"
+                  value={formData.timezone || ''}
+                  onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-callWindowStart">Call Window Start</Label>
+                <Input
+                  id="edit-callWindowStart"
+                  type="time"
+                  value={formData.callWindowStart || ''}
+                  onChange={(e) => setFormData({ ...formData, callWindowStart: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-callWindowEnd">Call Window End</Label>
+                <Input
+                  id="edit-callWindowEnd"
+                  type="time"
+                  value={formData.callWindowEnd || ''}
+                  onChange={(e) => setFormData({ ...formData, callWindowEnd: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="edit-doNotCall"
+                checked={formData.doNotCall || false}
+                onChange={(e) => setFormData({ ...formData, doNotCall: e.target.checked })}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              <Label htmlFor="edit-doNotCall" className="text-sm font-normal">
+                Do Not Call — prevent automated calls to this supplier
+              </Label>
+            </div>
+
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setIsEditDialogOpen(false);
+                  resetForm();
+                  setSelectedSupplier(null);
+                }}
+                disabled={isSubmitting}
+              >
                 Cancel
               </Button>
               <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? 'Saving...' : 'Save Changes'}
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save Changes'
+                )}
               </Button>
             </DialogFooter>
           </form>
