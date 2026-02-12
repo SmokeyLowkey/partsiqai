@@ -14,6 +14,7 @@ export class CredentialsManager {
    * Get credentials with platform key fallback
    * Checks usePlatformKeys flag - if true, returns platform-wide keys from SystemSettings
    * If false or platform keys not available, returns organization-specific keys
+   * If neither exist, falls back to environment variables
    */
   async getCredentialsWithFallback<T>(organizationId: string, type: IntegrationType): Promise<T | null> {
     // Get organization to check usePlatformKeys flag
@@ -49,10 +50,66 @@ export class CredentialsManager {
     // Fall back to organization-specific credentials
     console.log(`[CredentialsManager] Fetching org-specific credentials for ${type}`);
     const orgCreds = await this.getCredentials<T>(organizationId, type);
-    if (!orgCreds) {
-      console.error(`[CredentialsManager] No credentials found for ${type} (neither platform nor org-specific)`);
+    if (orgCreds) {
+      return orgCreds;
     }
-    return orgCreds;
+
+    // Final fallback: environment variables (system default)
+    console.log(`[CredentialsManager] No database credentials found for ${type}, checking environment variables`);
+    const envCreds = this.getCredentialsFromEnvironment<T>(type);
+    if (envCreds) {
+      console.log(`[CredentialsManager] Using ${type} credentials from environment variables`);
+      return envCreds;
+    }
+
+    console.error(`[CredentialsManager] No credentials found for ${type} (database or environment)`);
+    return null;
+  }
+
+  /**
+   * Get credentials from environment variables as fallback
+   */
+  private getCredentialsFromEnvironment<T>(type: IntegrationType): T | null {
+    switch (type) {
+      case 'OPENROUTER':
+        if (process.env.OPENROUTER_API_KEY) {
+          return {
+            apiKey: process.env.OPENROUTER_API_KEY,
+            defaultModel: 'meta-llama/llama-3.1-8b-instruct',
+          } as T;
+        }
+        break;
+      
+      case 'VAPI':
+        if (process.env.VAPI_API_KEY && process.env.VAPI_PHONE_NUMBER_ID) {
+          return {
+            apiKey: process.env.VAPI_API_KEY,
+            phoneNumberId: process.env.VAPI_PHONE_NUMBER_ID,
+          } as T;
+        }
+        break;
+      
+      case 'PINECONE':
+        if (process.env.PINECONE_API_KEY && process.env.PINECONE_HOST) {
+          return {
+            apiKey: process.env.PINECONE_API_KEY,
+            host: process.env.PINECONE_HOST,
+          } as T;
+        }
+        break;
+      
+      case 'NEO4J':
+        if (process.env.NEO4J_URI && process.env.NEO4J_USERNAME && process.env.NEO4J_PASSWORD) {
+          return {
+            uri: process.env.NEO4J_URI,
+            username: process.env.NEO4J_USERNAME,
+            password: process.env.NEO4J_PASSWORD,
+          } as T;
+        }
+        break;
+    }
+    
+    return null;
   }
 
   /**
