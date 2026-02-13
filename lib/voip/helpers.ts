@@ -119,39 +119,43 @@ export async function extractPricing(
     .map(p => `- ${p.partNumber}: ${p.description}`)
     .join('\n');
 
-  const prompt = `You extract structured data from conversations. Return only valid JSON.
+  const prompt = `Extract pricing from this supplier response. Return ONLY valid JSON, no markdown, no explanation.
 
-Extract pricing information from this supplier phone conversation response.
+Supplier: "${supplierResponse}"
 
-Supplier response: "${supplierResponse}"
-
-Parts we asked about:
+Parts requested:
 ${partsDescription}
 
-Return a JSON array with this structure:
+Return JSON array:
 [
   {
-    "partNumber": "string",
+    "partNumber": "exact part number",
     "price": number or null,
-    "availability": "in_stock" | "backorder" | "unavailable",
+    "availability": "in_stock" or "backorder" or "unavailable",
     "leadTimeDays": number or null,
-    "notes": "any additional context"
+    "notes": "string or null"
   }
 ]
 
-If supplier didn't provide pricing, return empty array [].
-If supplier mentioned alternative parts, include them with the original part number and a note.`;
+If no pricing mentioned, return []. Match part numbers carefully (e.g., "a t five one four seven nine nine" = "AT514799").`;
 
   try {
     const result = await llmClient.generateCompletion(prompt, {
       temperature: 0,
-      model: 'meta-llama/llama-3.1-8b-instruct',
+      model: 'anthropic/claude-3.5-sonnet', // Upgrade for better structured extraction
       maxTokens: 1000,
     });
     
-    // Extract JSON from potential markdown code blocks
-    const jsonMatch = result.match(/\[[\s\S]*\]/);
-    const jsonStr = jsonMatch ? jsonMatch[0] : result;
+    // Extract JSON from potential markdown code blocks or text
+    let jsonStr = result.trim();
+    const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlockMatch) {
+      jsonStr = codeBlockMatch[1].trim();
+    }
+    const jsonMatch = jsonStr.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      jsonStr = jsonMatch[0];
+    }
     
     return JSON.parse(jsonStr);
   } catch (error) {
@@ -191,21 +195,29 @@ export async function generateClarification(
   supplierResponse: string,
   parts: CallState['parts']
 ): Promise<string> {
-  const prompt = `You are a professional parts procurement assistant. The supplier seems confused about our parts request. Generate a clear, concise clarification.
+  const partsList = parts
+    .map(p => `${p.partNumber} (${p.description}) - qty ${p.quantity}`)
+    .join(', ');
 
-Supplier's response: "${supplierResponse}"
+  const prompt = `You're on a phone call. The supplier's response wasn't clear. Restate what you need in one clear sentence.
 
-Parts we need:
-${parts.map(p => `- ${p.partNumber}: ${p.description}, qty ${p.quantity}`).join('\n')}
+Supplier said: "${supplierResponse}"
 
-Generate a clarification message that restates the request clearly. Be professional and friendly.`;
+You need: ${partsList}
+
+Respond naturally, don't add preambles like "Here's my clarification" - just say it directly.`;
 
   try {
-    const result = await llmClient.generateCompletion(prompt, {
+    let result = await llmClient.generateCompletion(prompt, {
       temperature: 0.3,
-      model: 'meta-llama/llama-3.1-8b-instruct',
-      maxTokens: 200,
+      model: 'anthropic/claude-3.5-sonnet', // Upgrade for better natural responses
+      maxTokens: 150,
     });
+    
+    // Clean meta-commentary aggressively
+    result = result
+      .replace(/^(here'?s? (?:a |my |the )?(?:clear and concise |clarification |response|message):?|let me clarify:?)\s*/i, '')
+      .trim();
     
     return result;
   } catch (error) {
