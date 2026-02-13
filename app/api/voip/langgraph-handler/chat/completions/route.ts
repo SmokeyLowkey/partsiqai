@@ -122,19 +122,55 @@ function extractLastUserMessage(messages: any[]): string | null {
 }
 
 export async function POST(req: NextRequest) {
+  // FIRST LOG - Before anything else, confirm request received
+  console.log('[LangGraph Handler] ⚡ REQUEST RECEIVED at', new Date().toISOString());
+  logger.info({
+    timestamp: new Date().toISOString(),
+    url: req.url,
+    method: req.method,
+    headers: Object.fromEntries(req.headers.entries()),
+  }, '⚡ LangGraph handler endpoint hit - request received from VAPI');
+  
   let isStreaming = false;
 
   try {
-    // Verify authorization
+    // Verify authorization - check VOIP_WEBHOOK_SECRET from environment
     const authHeader = req.headers.get('authorization');
-    const expectedAuth = `Bearer ${process.env.VOIP_WEBHOOK_SECRET || 'dev-secret'}`;
+    const webhookSecret = process.env.VOIP_WEBHOOK_SECRET;
+    
+    logger.info({
+      hasAuthHeader: !!authHeader,
+      authHeaderPreview: authHeader ? authHeader.substring(0, 20) + '...' : 'missing',
+      hasWebhookSecret: !!webhookSecret,
+      nodeEnv: process.env.NODE_ENV,
+      webhookSecretConfigured: !!webhookSecret,
+    }, 'Authorization check - VOIP_WEBHOOK_SECRET from environment');
 
-    if (process.env.NODE_ENV === 'production' && authHeader !== expectedAuth) {
-      logger.warn({ authHeader }, 'Unauthorized LangGraph handler request');
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // Only enforce auth if VOIP_WEBHOOK_SECRET is configured
+    if (webhookSecret) {
+      const expectedAuth = `Bearer ${webhookSecret}`;
+      
+      if (authHeader !== expectedAuth) {
+        logger.warn({ 
+          authHeaderPreview: authHeader?.substring(0, 30),
+          expectedAuthPreview: expectedAuth?.substring(0, 30),
+          match: authHeader === expectedAuth,
+        }, 'Unauthorized LangGraph handler request - auth mismatch');
+        return NextResponse.json({ 
+          error: 'Unauthorized',
+          message: 'Invalid authorization header'
+        }, { status: 401 });
+      }
+      
+      logger.info('Authorization check passed');
+    } else {
+      logger.warn(
+        'VOIP_WEBHOOK_SECRET not configured - skipping auth check (set in Vercel environment variables for production)'
+      );
     }
 
     const body = await req.json();
+    console.log('[LangGraph Handler] 📦 Body parsed:', JSON.stringify(body, null, 2));
     isStreaming = body.stream === true;
 
     logger.info(
@@ -272,11 +308,35 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// GET endpoint for health check
+/**
+ * GET endpoint for health check / testing
+ * Visit: https://partsiqai.com/api/voip/langgraph-handler/chat/completions
+ */
 export async function GET(req: NextRequest) {
+  logger.info({ url: req.url }, 'LangGraph handler health check');
+  
   return NextResponse.json({
     status: 'ok',
-    endpoint: 'langgraph-handler',
+    endpoint: '/api/voip/langgraph-handler/chat/completions',
+    message: 'LangGraph Custom LLM Handler is running',
     timestamp: new Date().toISOString(),
+    env: process.env.NODE_ENV,
+    expectedAuth: process.env.VOIP_WEBHOOK_SECRET ? 'configured' : 'missing',
+  });
+}
+
+/**
+ * OPTIONS handler for CORS preflight
+ */
+export async function OPTIONS(req: NextRequest) {
+  logger.info({ url: req.url }, 'LangGraph handler CORS preflight');
+  
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    },
   });
 }
