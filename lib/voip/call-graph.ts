@@ -208,6 +208,66 @@ export function politeEndNode(state: CallState): CallState {
   };
 }
 
+/**
+ * Conversational Response Node - Handle follow-up questions and clarifications
+ * Uses LLM to generate contextually appropriate responses based on conversation history
+ */
+export async function conversationalResponseNode(
+  llmClient: OpenRouterClient,
+  state: CallState
+): Promise<CallState> {
+  const lastResponse = getLastSupplierResponse(state);
+  
+  // Build conversation context for the LLM
+  const conversationContext = state.conversationHistory
+    .map(msg => `${msg.speaker === 'ai' ? 'Assistant' : 'Supplier'}: ${msg.text}`)
+    .join('\n');
+  
+  // Build parts context
+  const partsContext = state.parts
+    .map(p => `- Part Number: ${p.partNumber}\n  Description: ${p.description}\n  Quantity: ${p.quantity}`)
+    .join('\n');
+  
+  // Build custom context if available
+  const additionalContext = state.customContext || '';
+  
+  const prompt = `You are a professional parts procurement assistant making a phone call to get quotes. 
+
+## Call Context
+${additionalContext}
+
+## Parts Needed
+${partsContext}
+
+## Conversation So Far
+${conversationContext}
+
+## Current Situation
+The supplier just said: "${lastResponse}"
+
+Respond naturally and professionally. If they're asking for clarification about part numbers or other details, provide the information they requested. Be concise and conversational - this is a phone call, not an email.
+
+${state.customInstructions || 'Be friendly, helpful, and focused on getting the pricing information.'}`;
+
+  try {
+    const response = await llmClient.generateCompletion(prompt, {
+      temperature: 0.7,
+      model: 'meta-llama/llama-3.1-8b-instruct',
+      maxTokens: 250,
+    });
+    
+    return addMessage(state, 'ai', response);
+  } catch (error) {
+    console.error('Conversational response generation error:', error);
+    // Fallback response
+    return addMessage(
+      state, 
+      'ai', 
+      "I apologize, could you repeat that? I want to make sure I give you the right information."
+    );
+  }
+}
+
 // ============================================================================
 // ROUTING LOGIC
 // ============================================================================
@@ -367,9 +427,18 @@ export async function processCallTurn(
     case 'polite_end':
       newState = politeEndNode(state);
       break;
+    case 'conversational_response':
+      newState = await conversationalResponseNode(llmClient, state);
+      break;
+    case 'end':
+      // If we're at end but receiving more input, handle conversationally
+      newState = await conversationalResponseNode(llmClient, state);
+      break;
     default:
       console.warn(`Unknown node: ${currentNode}`);
-      return state;
+      // Fall back to conversational response for unknown nodes
+      newState = await conversationalResponseNode(llmClient, state);
+      break;
   }
 
   // Determine next node
@@ -390,6 +459,14 @@ export async function processCallTurn(
       break;
     case 'transfer':
       nextNode = 'greeting'; // Back to greeting after transfer
+      break;
+    case 'conversational_response':
+      // Stay in conversational mode - could route based on detection of completion
+      nextNode = 'conversational_response';
+      break;
+    case 'end':
+      // If we handled a follow-up question, stay in conversational mode
+      nextNode = 'conversational_response';
       break;
     default:
       nextNode = 'end';
