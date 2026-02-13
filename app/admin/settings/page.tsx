@@ -164,6 +164,7 @@ export default function SettingsPage() {
   const [vapiPlatformConfig, setVapiPlatformConfig] = useState({
     apiKey: "",
     phoneNumberId: "",
+    assistantId: "",
   });
   const [savingVapi, setSavingVapi] = useState(false);
   const [testingVapi, setTestingVapi] = useState(false);
@@ -250,12 +251,15 @@ export default function SettingsPage() {
         
         const vapiApiKey = settings.find((s: SystemSetting) => s.key === "VAPI_PLATFORM_API_KEY");
         const vapiPhoneId = settings.find((s: SystemSetting) => s.key === "VAPI_PLATFORM_PHONE_NUMBER_ID");
+        const vapiAssistantId = settings.find((s: SystemSetting) => s.key === "VAPI_PLATFORM_ASSISTANT_ID");
         
         setVapiPlatformConfig({
           apiKey: vapiApiKey?.value || "",
           phoneNumberId: vapiPhoneId?.value || "",
+          assistantId: vapiAssistantId?.value || "",
         });
-      }  } catch (error) {
+      }
+    } catch (error) {
       console.error("Error fetching Vapi platform settings:", error);
     }
   };
@@ -292,6 +296,7 @@ export default function SettingsPage() {
         setVapiPlatformConfig({
           apiKey: vapiCreds.apiKey || "",
           phoneNumberId: vapiCreds.phoneNumberId || "",
+          assistantId: vapiCreds.assistantId || "",
         });
 
         // OpenRouter
@@ -519,6 +524,7 @@ export default function SettingsPage() {
           credentials: {
             apiKey: vapiPlatformConfig.apiKey,
             phoneNumberId: vapiPlatformConfig.phoneNumberId,
+            assistantId: vapiPlatformConfig.assistantId,
           },
         }),
       });
@@ -1416,6 +1422,17 @@ export default function SettingsPage() {
                     🎯 Active phone number configured
                   </p>
                 )}
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label>Platform Assistant ID <span className="text-xs text-muted-foreground">(Optional)</span></Label>
+                <Input
+                  value={vapiPlatformConfig.assistantId}
+                  onChange={(e) => setVapiPlatformConfig({ ...vapiPlatformConfig, assistantId: e.target.value })}
+                  placeholder="77b77311-8e3f-4a22-a202-aa0b7709c400"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Pre-configured assistant from Vapi.ai dashboard. If provided, uses this instead of inline configuration. Leave blank to use inline LangGraph config.
+                </p>
               </div>
             </div>
 
