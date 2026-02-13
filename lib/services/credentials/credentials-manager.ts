@@ -85,6 +85,7 @@ export class CredentialsManager {
           return {
             apiKey: process.env.VAPI_API_KEY,
             phoneNumberId: process.env.VAPI_PHONE_NUMBER_ID,
+            assistantId: process.env.VAPI_ASSISTANT_ID, // Optional assistant ID
           } as T;
         }
         break;

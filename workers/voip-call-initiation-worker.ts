@@ -13,6 +13,7 @@ import { saveCallState } from '@/lib/voip/state-manager';
 interface VapiCredentials {
   apiKey: string;
   phoneNumberId: string;
+  assistantId?: string; // Optional: Pre-configured VAPI assistant ID
 }
 
 const logger = workerLogger.child({ worker: 'voip-call-initiation' });
@@ -227,7 +228,7 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
     );
 
     // Get app URL for webhook callbacks
-    // Use VERCEL_URL for production deployments, NEXT_PUBLIC_APP_URL for local dev
+    // Priority: NEXT_PUBLIC_APP_URL > VERCEL_URL
     let appUrl = process.env.NEXT_PUBLIC_APP_URL;
     if (!appUrl && process.env.VERCEL_URL) {
       appUrl = `https://${process.env.VERCEL_URL}`;
@@ -236,8 +237,17 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
       throw new Error('Neither NEXT_PUBLIC_APP_URL nor VERCEL_URL is set - cannot configure VAPI callback URL');
     }
 
+    // Ensure URL doesn't have trailing slash
+    appUrl = appUrl.replace(/\/$/, '');
+
     logger.info(
-      { appUrl, hasVercelUrl: !!process.env.VERCEL_URL, hasPublicUrl: !!process.env.NEXT_PUBLIC_APP_URL },
+      { 
+        appUrl, 
+        hasVercelUrl: !!process.env.VERCEL_URL, 
+        hasPublicUrl: !!process.env.NEXT_PUBLIC_APP_URL,
+        vercelUrl: process.env.VERCEL_URL,
+        publicUrl: process.env.NEXT_PUBLIC_APP_URL
+      },
       'Using app URL for VAPI callbacks'
     );
 
@@ -299,8 +309,24 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
       throw new Error(`Failed to save call state: ${redisError.message}`);
     }
 
-    // Build VAPI assistant configuration
-    const vapiAssistantConfig = {
+    // Check for pre-configured VAPI assistant ID (more reliable than inline config)
+    // Priority: 1. From credentials (DB), 2. Environment variable
+    const vapiAssistantId = vapiCreds.assistantId || process.env.VAPI_ASSISTANT_ID;
+    
+    // Log URL configuration for debugging
+    logger.info(
+      {
+        appUrl,
+        langgraphHandlerUrl: `${appUrl}/api/voip/langgraph-handler`,
+        webhookUrl: `${appUrl}/api/voip/webhooks`,
+        usingAssistantId: !!vapiAssistantId,
+        assistantIdPreview: vapiAssistantId ? vapiAssistantId.slice(0, 10) + '...' : 'none',
+      },
+      'VAPI URL configuration'
+    );
+
+    // Build VAPI assistant configuration (only if not using assistant ID)
+    const vapiAssistantConfig = vapiAssistantId ? undefined : {
       firstMessage: firstMessage,
       context: systemInstructions,
       model: {
@@ -317,15 +343,68 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
       },
     };
 
+    if (vapiAssistantConfig) {
+      logger.info(
+        {
+          customLlmUrl: vapiAssistantConfig.model.url,
+          provider: vapiAssistantConfig.model.provider,
+          voiceProvider: vapiAssistantConfig.voice.provider,
+          firstMessageLength: firstMessage.length,
+          systemInstructionsLength: systemInstructions.length
+        },
+        'Built VAPI assistant configuration with custom LLM (inline)'
+      );
+    } else {
+      logger.info(
+        {
+          assistantId: vapiAssistantId,
+          firstMessageLength: firstMessage.length,
+          systemInstructionsLength: systemInstructions.length
+        },
+        'Using pre-configured VAPI assistant with ID'
+      );
+    }
+
+    const callPayload: any = {
+      phoneNumberId: vapiPhoneNumber,
+      customer: {
+        number: formattedPhone,
+      },
+      metadata: {
+        quoteRequestId,
+        supplierId,
+        organizationId: metadata.organizationId,
+        callLogId: callLog.id,
+        context: JSON.stringify(context),
+        hasCustomSettings: !!(customContext || customInstructions),
+      },
+      serverUrl: `${appUrl}/api/voip/webhooks`,
+    };
+    
+    // Use assistant ID if provided, otherwise inline config
+    if (vapiAssistantId) {
+      callPayload.assistantId = vapiAssistantId;
+      // Pass custom values via assistant overrides
+      callPayload.assistantOverrides = {
+        variableValues: {
+          firstMessage,
+          systemContext: systemInstructions,
+          callId: callLog.id,
+        },
+      };
+    } else {
+      callPayload.assistant = vapiAssistantConfig;
+    }
+
+    // Log the full payload being sent to VAPI for debugging
     logger.info(
       {
-        customLlmUrl: vapiAssistantConfig.model.url,
-        provider: vapiAssistantConfig.model.provider,
-        voiceProvider: vapiAssistantConfig.voice.provider,
-        firstMessageLength: firstMessage.length,
-        systemInstructionsLength: systemInstructions.length
+        callPayload: JSON.stringify(callPayload, null, 2),
+        customLlmEndpoint: callPayload.assistant?.model?.url || 'using-assistant-id',
+        webhookEndpoint: callPayload.serverUrl,
+        assistantId: callPayload.assistantId || 'inline-config',
       },
-      'Built VAPI assistant configuration with custom LLM'
+      'Sending call request to VAPI'
     );
 
     const response = await fetch('https://api.vapi.ai/call/phone', {
@@ -334,21 +413,7 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
         'Authorization': `Bearer ${vapiApiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        phoneNumberId: vapiPhoneNumber,
-        customer: {
-          number: formattedPhone,
-        },
-        assistant: vapiAssistantConfig,
-        metadata: {
-          quoteRequestId,
-          supplierId,
-          organizationId: metadata.organizationId,
-          callLogId: callLog.id,
-          context: JSON.stringify(context),
-          hasCustomSettings: !!(customContext || customInstructions),
-        },
-      }),
+      body: JSON.stringify(callPayload),
     });
 
     // Get response body for detailed error logging
