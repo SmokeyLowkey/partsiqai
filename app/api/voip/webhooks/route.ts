@@ -216,11 +216,26 @@ async function handleSupplierResponse(callId: string, text: string) {
   // Save updated state
   await saveCallState(callId, newState);
 
-  // Update database with conversation log
+  // Get existing call record to preserve context data
+  const existingCall = await prisma.supplierCall.findUnique({
+    where: { id: callId },
+    select: { conversationLog: true },
+  });
+  
+  const existingLog = (existingCall?.conversationLog as any) || {};
+
+  // Update database with conversation log - preserve context, add conversationHistory
   await prisma.supplierCall.update({
     where: { id: callId },
     data: {
-      conversationLog: newState.conversationHistory,
+      conversationLog: {
+        ...existingLog,
+        conversationHistory: newState.conversationHistory,
+        currentNode: newState.currentNode,
+        status: newState.status,
+        negotiationAttempts: newState.negotiationAttempts,
+        clarificationAttempts: newState.clarificationAttempts,
+      },
       status: newState.status === 'escalated' ? 'HUMAN_ESCALATED' : 'IN_PROGRESS',
     },
   });
@@ -259,13 +274,28 @@ async function handleCallEnded(callId: string, vapiCallId: string | undefined, e
   // Extract quotes from final state
   const extractedQuotes = state?.quotes.filter(q => q.price) || [];
 
+  // Get existing call record to preserve context data
+  const existingLog = (call.conversationLog as any) || {};
+
   // Update call record with all final data
   const updateData: any = {
     status: 'COMPLETED',
     endedAt: new Date(),
     duration: event.durationSeconds || 0,
     recordingUrl: event.recordingUrl,
-    conversationLog: state?.conversationHistory || [],
+    conversationLog: {
+      ...existingLog,
+      conversationHistory: state?.conversationHistory || [],
+      currentNode: state?.currentNode,
+      status: state?.status,
+      outcome: outcome,
+      negotiationAttempts: state?.negotiationAttempts,
+      clarificationAttempts: state?.clarificationAttempts,
+      contactName: state?.contactName,
+      contactRole: state?.contactRole,
+      nextAction: state?.nextAction,
+      needsHumanEscalation: state?.needsHumanEscalation,
+    },
     extractedQuotes: extractedQuotes.length > 0 ? extractedQuotes : undefined,
     outcome: outcome as any,
     notes: state?.nextAction ? `Next action: ${state.nextAction}` : undefined,
@@ -353,11 +383,23 @@ async function handleStatusUpdate(callId: string, vapiCallId: string | undefined
 
       const voicemailMessage = getLastAIMessage(stateWithVoicemail);
       
+      // Get existing call record to preserve context
+      const existingCall = await prisma.supplierCall.findUnique({
+        where: { id: callId },
+        select: { conversationLog: true },
+      });
+      const existingLog = (existingCall?.conversationLog as any) || {};
+      
       await prisma.supplierCall.update({
         where: { id: callId },
         data: {
           status: 'VOICEMAIL',
-          conversationLog: stateWithVoicemail.conversationHistory,
+          conversationLog: {
+            ...existingLog,
+            conversationHistory: stateWithVoicemail.conversationHistory,
+            currentNode: stateWithVoicemail.currentNode,
+            status: stateWithVoicemail.status,
+          },
           outcome: 'VOICEMAIL_LEFT',
         },
       });

@@ -134,7 +134,7 @@ async function processVoipCallInitiation(job: Job<VoipCallInitiationJobData>) {
       );
     }
 
-    // Check if at soft limit without overage enabled
+    // Check if at soft limit without overage enabled (only if not unlimited plan)
     if (currentUsage >= softLimit && !organization.overageEnabled && organization.maxAICalls < 9999) {
       logger.warn(
         { organizationId: metadata.organizationId, used: currentUsage, limit: softLimit },
@@ -143,6 +143,21 @@ async function processVoipCallInitiation(job: Job<VoipCallInitiationJobData>) {
       throw new Error(
         `AI call limit reached. Your plan allows ${softLimit} calls per month. Please upgrade your plan, enable overage billing, or wait until next month.`
       );
+    }
+
+    // If overage is enabled but no hard cap, enforce a safety limit to prevent runaway costs
+    if (currentUsage >= softLimit && organization.overageEnabled && !organization.hardCapEnabled && organization.maxAICalls < 9999) {
+      const defaultHardCap = softLimit * 5; // 5x soft limit as safety
+      if (currentUsage >= defaultHardCap) {
+        const overageAmount = (defaultHardCap - softLimit) * Number(organization.overageRate);
+        logger.warn(
+          { organizationId: metadata.organizationId, currentUsage, defaultHardCap, overageAmount },
+          'Safety hard cap reached (5x soft limit)'
+        );
+        throw new Error(
+          `Safety limit reached (${defaultHardCap} calls). You have $${overageAmount.toFixed(2)} in pending overage charges. Please contact support to increase limits or enable hard cap settings.`
+        );
+      }
     }
 
     // Create call log entry
