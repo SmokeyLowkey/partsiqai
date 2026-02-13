@@ -63,20 +63,20 @@ export async function POST(
         });
 
         if (!supplier) {
-          return { supplierId, error: 'Supplier not found' };
+          return { supplierId, supplierName: 'Unknown Supplier', error: 'Supplier not found' };
         }
 
         if (!supplier.phone) {
-          return { supplierId, error: 'Supplier has no phone number' };
+          return { supplierId, supplierName: supplier.name, error: 'No phone number configured' };
         }
 
         if (supplier.doNotCall) {
-          return { supplierId, error: 'Supplier is marked as do not call' };
+          return { supplierId, supplierName: supplier.name, error: 'Marked as do not call' };
         }
 
         // Validate email if method requires it
         if ((contactMethod === 'both' || contactMethod === 'email') && !supplier.email) {
-          return { supplierId, error: 'Supplier has no email address' };
+          return { supplierId, supplierName: supplier.name, error: 'No email address configured' };
         }
 
         // Queue background job for call initiation

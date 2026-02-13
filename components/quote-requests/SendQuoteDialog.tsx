@@ -490,14 +490,14 @@ Conversation tips:
               ) : (
                 <span>No calls were queued successfully.</span>
               )}
-              {callResults.some((c) => 'error' in c) && (
+              {callResults.some((c) => 'error' in c && c.error) && (
                 <div className="mt-2 space-y-1">
                   {callResults
-                    .filter((c) => 'error' in c)
+                    .filter((c) => 'error' in c && c.error)
                     .map((c, idx) => (
-                      <div key={idx} className="text-sm text-amber-600 dark:text-amber-400">
-                        <span className="font-medium">{c.supplierName}:</span>{' '}
-                        {c.error || 'Unknown error'}
+                      <div key={idx} className="text-sm text-red-600 dark:text-red-400">
+                        <span className="font-medium">{c.supplierName || 'Supplier'}:</span>{' '}
+                        {c.error || 'Failed to initiate call'}
                       </div>
                     ))}
                 </div>
