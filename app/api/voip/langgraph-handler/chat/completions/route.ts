@@ -315,11 +315,34 @@ export async function POST(req: NextRequest) {
       'LangGraph processing complete'
     );
 
+    // Check if call should end - when status is 'completed', tell VAPI to hang up
+    const shouldEndCall = newState.status === 'completed';
+    
+    if (shouldEndCall) {
+      logger.info(
+        { callId, status: newState.status, outcome: newState.outcome },
+        'Call marked as completed - sending endOfCallMessage to VAPI'
+      );
+    }
+
     // Return response in OpenAI Chat Completions format
     if (isStreaming) {
       return buildStreamingResponse(aiResponse);
     }
-    return NextResponse.json(buildChatCompletionResponse(aiResponse));
+    
+    // Build base response
+    const response = buildChatCompletionResponse(aiResponse);
+    
+    // Add VAPI call termination signals if call is complete
+    if (shouldEndCall) {
+      return NextResponse.json({
+        ...response,
+        endOfCallMessage: aiResponse, // Use the goodbye message from the state machine
+        stopGeneratingMessages: true, // Tell VAPI not to send more messages
+      });
+    }
+    
+    return NextResponse.json(response);
 
   } catch (error: any) {
     logger.error({ error: error.message, stack: error.stack }, 'LangGraph handler error');

@@ -16,6 +16,7 @@ import {
   containsRefusal,
   generateClarification,
   determineOutcome,
+  formatPartNumberForSpeech,
 } from './helpers';
 
 // ============================================================================
@@ -35,16 +36,32 @@ export function greetingNode(state: CallState): CallState {
 
 /**
  * Quote Request Node - Ask for pricing on specific parts
+ * First mentions what they're looking for (descriptions only),
+ * then provides part numbers when supplier is ready
  */
 export function quoteRequestNode(state: CallState): CallState {
-  const partsDescription = state.parts
-    .map(p => `${p.partNumber} - ${p.description}, quantity ${p.quantity}`)
-    .join(', and ');
-
-  const request = `Great, thanks! I'm calling to get pricing and availability for some parts: ${partsDescription}. 
-Can you help with that, or would you prefer I send this over email?`;
-
-  return addMessage(state, 'ai', request);
+  // Check if we've already mentioned what we're looking for
+  const alreadyMentionedParts = state.conversationHistory.some(
+    msg => msg.speaker === 'ai' && msg.text.toLowerCase().includes("i'm looking for")
+  );
+  
+  if (!alreadyMentionedParts) {
+    // First time - just mention descriptions, not part numbers
+    const descriptions = state.parts
+      .map(p => `${p.description}, quantity ${p.quantity}`)
+      .join(', and ');
+    
+    const request = `Great, thanks! I'm looking for: ${descriptions}. Whenever you're ready, I have the part numbers.`;
+    return addMessage(state, 'ai', request);
+  } else {
+    // Second time - provide the actual part numbers
+    const partNumbers = state.parts
+      .map(p => `${formatPartNumberForSpeech(p.partNumber)} for the ${p.description}`)
+      .join(', and ');
+    
+    const request = `Sure! The part numbers are: ${partNumbers}. Can you check pricing and availability on those?`;
+    return addMessage(state, 'ai', request);
+  }
 }
 
 /**
@@ -456,7 +473,8 @@ export async function processCallTurn(
       nextNode = await routeFromNegotiation(llmClient, newState);
       break;
     case 'clarification':
-      nextNode = 'quote_request';
+      // After clarification, route to conversational_response instead of repeating full quote
+      nextNode = 'conversational_response';
       break;
     case 'transfer':
       nextNode = 'greeting'; // Back to greeting after transfer
@@ -466,6 +484,13 @@ export async function processCallTurn(
       const lastSupplierMsg = getLastSupplierResponse(newState);
       const isQuestion = await detectQuestion(lastSupplierMsg);
       
+      // Check if supplier is wrapping up the call
+      const isWrappingUp = /\b(bye|goodbye|thanks|thank you|have a (good|great|nice) day)\b/i.test(lastSupplierMsg);
+      if (isWrappingUp) {
+        nextNode = 'polite_end';
+        break;
+      }
+      
       if (isQuestion && newState.conversationHistory.length > 8) {
         // Many exchanges already, likely wrapping up
         nextNode = 'polite_end';
@@ -473,13 +498,19 @@ export async function processCallTurn(
         // Still early - try to get back on track with quote request
         nextNode = 'quote_request';
       } else {
-        // Check if they gave pricing info
+        // Mid-conversation - check if they gave pricing info
         const quotes = await extractPricing(llmClient, lastSupplierMsg, newState.parts);
         if (quotes.length > 0) {
           nextNode = 'price_extract';
         } else {
-          // Continue conversationally
-          nextNode = 'quote_request';
+          // Don't repeat full quote - just stay conversational unless they seem stuck
+          const seemsStuck = /\b(what|huh|repeat|again|didn'?t (catch|hear|get) that)\b/i.test(lastSupplierMsg);
+          if (seemsStuck && newState.clarificationAttempts < 2) {
+            nextNode = 'clarification';
+          } else {
+            // Keep it conversational, wait for pricing
+            nextNode = 'conversational_response';
+          }
         }
       }
       break;

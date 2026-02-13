@@ -190,13 +190,42 @@ export function containsRefusal(response: string): boolean {
 /**
  * Generate a clarification message based on confused supplier response
  */
+/**
+ * Format part numbers for better TTS pronunciation using SSML
+ * Splits alphanumeric codes into letter and number segments
+ * Example: "MIA883029" → "<say-as interpret-as='characters'>MIA</say-as>-<say-as interpret-as='digits'>883029</say-as>"
+ */
+export function formatPartNumberForSpeech(partNumber: string): string {
+  // Check if part number has mix of letters and numbers
+  const hasLetters = /[A-Za-z]/.test(partNumber);
+  const hasNumbers = /[0-9]/.test(partNumber);
+  
+  if (hasLetters && hasNumbers) {
+    // Split into letter prefix and number suffix
+    const match = partNumber.match(/^([A-Za-z]+)([0-9]+)$/);
+    if (match) {
+      const [, letters, numbers] = match;
+      // Use SSML to spell out letters, then say numbers as digits
+      return `<say-as interpret-as="characters">${letters}</say-as>-<say-as interpret-as="digits">${numbers}</say-as>`;
+    }
+  }
+  
+  // Fallback: for part numbers with complex patterns, add hyphens between letters
+  if (hasLetters && !hasNumbers) {
+    return partNumber.split('').join('-');
+  }
+  
+  // Just numbers or complex pattern - return as-is
+  return partNumber;
+}
+
 export async function generateClarification(
   llmClient: OpenRouterClient,
   supplierResponse: string,
   parts: CallState['parts']
 ): Promise<string> {
   const partsList = parts
-    .map(p => `${p.partNumber} (${p.description}) - qty ${p.quantity}`)
+    .map(p => `${formatPartNumberForSpeech(p.partNumber)} (${p.description}) - qty ${p.quantity}`)
     .join(', ');
 
   const prompt = `You're on a phone call. The supplier's response wasn't clear. Restate what you need in one clear sentence.
@@ -222,7 +251,7 @@ Respond naturally, don't add preambles like "Here's my clarification" - just say
     return result;
   } catch (error) {
     console.error('Clarification generation error:', error);
-    return `Let me clarify - we need pricing for ${parts[0].partNumber}, ${parts[0].description}, quantity ${parts[0].quantity}.`;
+    return `Let me clarify - we need pricing for ${formatPartNumberForSpeech(parts[0].partNumber)}, ${parts[0].description}, quantity ${parts[0].quantity}.`;
   }
 }
 

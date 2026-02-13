@@ -147,8 +147,38 @@ export async function POST(
     ).length;
     const failCount = jobs.length - successCount;
 
+    // If no calls were queued successfully, return error
+    if (successCount === 0) {
+      return NextResponse.json(
+        {
+          error: 'Failed to initiate calls to any suppliers',
+          details: jobs,
+        },
+        { status: 500 }
+      );
+    }
+
+    // If at least one call was successfully queued, update quote request status
+    // Determine the primary supplier (first successful one)
+    const primarySupplier = jobs.find((j) => 'status' in j && (j.status === 'initiated' || j.status === 'queued'));
+    const additionalSupplierIds = jobs
+      .filter((j, idx) => idx > 0 && 'status' in j && (j.status === 'initiated' || j.status === 'queued'))
+      .map((j) => j.supplierId);
+
+    await prisma.quoteRequest.update({
+      where: { id },
+      data: {
+        status: 'SENT',
+        supplierId: primarySupplier?.supplierId,
+        additionalSupplierIds:
+          additionalSupplierIds.length > 0
+            ? additionalSupplierIds.join(',')
+            : null,
+      },
+    });
+
     return NextResponse.json({
-      success: successCount > 0,
+      success: true,
       message: successCount > 0
         ? `Initiated ${successCount} call(s). ${failCount > 0 ? `${failCount} failed.` : ''}`
         : `All ${failCount} call(s) failed to initiate.`,

@@ -31,6 +31,11 @@ export async function POST(req: NextRequest) {
                    event.call?.metadata?.callLogId || 
                    event.message?.call?.metadata?.callLogId;
     
+    // Extract VAPI call ID from event (UUID format like 019c57c9-1381-7227-8d2e-bd56f788bc8f)
+    const vapiCallId = event.call?.id || 
+                       event.id || 
+                       event.message?.call?.id;
+    
     if (!callId) {
       const eventType = event.type || event.message?.type;
       console.warn('Webhook event missing callLogId:', eventType, {
@@ -48,7 +53,7 @@ export async function POST(req: NextRequest) {
 
     switch (eventType) {
       case 'call-started':
-        await handleCallStarted(callId, event);
+        await handleCallStarted(callId, vapiCallId, event);
         break;
 
       case 'transcript':
@@ -59,15 +64,15 @@ export async function POST(req: NextRequest) {
 
       case 'call-ended':
       case 'end-of-call-report':
-        await handleCallEnded(callId, event.message || event);
+        await handleCallEnded(callId, vapiCallId, event.message || event);
         break;
 
       case 'error':
-        await handleCallError(callId, event);
+        await handleCallError(callId, vapiCallId, event);
         break;
 
       case 'status-update':
-        await handleStatusUpdate(callId, event);
+        await handleStatusUpdate(callId, vapiCallId, event);
         break;
     }
 
@@ -81,7 +86,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function handleCallStarted(callId: string, event: any) {
+async function handleCallStarted(callId: string, vapiCallId: string | undefined, event: any) {
   // Get call record from database to extract context
   const call = await prisma.supplierCall.findUnique({
     where: { id: callId },
@@ -101,7 +106,7 @@ async function handleCallStarted(callId: string, event: any) {
   }
 
   logger.info(
-    { callId, quoteRequestId: call.quoteRequestId, supplierId: call.supplierId },
+    { callId, vapiCallId, quoteRequestId: call.quoteRequestId, supplierId: call.supplierId },
     'Handling call started webhook'
   );
 
@@ -113,13 +118,21 @@ async function handleCallStarted(callId: string, event: any) {
       'Call state already initialized by worker, skipping re-initialization'
     );
     
-    // Just update database status
+    // Update database status and ensure VAPI call ID is saved (handles race condition)
+    const updateData: any = {
+      status: 'ANSWERED',
+      answeredAt: new Date(),
+    };
+    
+    // Only update vapiCallId if we have it and DB doesn't
+    if (vapiCallId && !call.vapiCallId) {
+      updateData.vapiCallId = vapiCallId;
+      logger.info({ callId, vapiCallId }, 'Saved VAPI call ID from webhook (race condition handled)');
+    }
+    
     await prisma.supplierCall.update({
       where: { id: callId },
-      data: {
-        status: 'ANSWERED',
-        answeredAt: new Date(),
-      },
+      data: updateData,
     });
     return;
   }
@@ -166,13 +179,20 @@ async function handleCallStarted(callId: string, event: any) {
     'Call state initialized successfully'
   );
 
-  // Update database status
+  // Update database status and save VAPI call ID
+  const updateData: any = {
+    status: 'ANSWERED',
+    answeredAt: new Date(),
+  };
+  
+  if (vapiCallId && !call.vapiCallId) {
+    updateData.vapiCallId = vapiCallId;
+    logger.info({ callId, vapiCallId }, 'Saved VAPI call ID from webhook (fallback initialization)');
+  }
+  
   await prisma.supplierCall.update({
     where: { id: callId },
-    data: {
-      status: 'ANSWERED',
-      answeredAt: new Date(),
-    },
+    data: updateData,
   });
 }
 
@@ -220,7 +240,7 @@ async function handleSupplierResponse(callId: string, text: string) {
   return NextResponse.json({ say: nextMessage });
 }
 
-async function handleCallEnded(callId: string, event: any) {
+async function handleCallEnded(callId: string, vapiCallId: string | undefined, event: any) {
   const state = await getCallState(callId);
 
   // Extract final outcome
@@ -239,19 +259,27 @@ async function handleCallEnded(callId: string, event: any) {
   // Extract quotes from final state
   const extractedQuotes = state?.quotes.filter(q => q.price) || [];
 
-  // Update call record
+  // Update call record with all final data
+  const updateData: any = {
+    status: 'COMPLETED',
+    endedAt: new Date(),
+    duration: event.durationSeconds || 0,
+    recordingUrl: event.recordingUrl,
+    conversationLog: state?.conversationHistory || [],
+    extractedQuotes: extractedQuotes.length > 0 ? extractedQuotes : undefined,
+    outcome: outcome as any,
+    notes: state?.nextAction ? `Next action: ${state.nextAction}` : undefined,
+  };
+  
+  // Ensure VAPI call ID is saved (critical for fetching call details from VAPI later)
+  if (vapiCallId && !call.vapiCallId) {
+    updateData.vapiCallId = vapiCallId;
+    logger.info({ callId, vapiCallId }, 'Saved VAPI call ID from end-of-call webhook');
+  }
+  
   await prisma.supplierCall.update({
     where: { id: callId },
-    data: {
-      status: 'COMPLETED',
-      endedAt: new Date(),
-      duration: event.durationSeconds || 0,
-      recordingUrl: event.recordingUrl,
-      conversationLog: state?.conversationHistory || [],
-      extractedQuotes: extractedQuotes.length > 0 ? extractedQuotes : undefined,
-      outcome: outcome as any,
-      notes: state?.nextAction ? `Next action: ${state.nextAction}` : undefined,
-    },
+    data: updateData,
   });
 
   // If quote received, create SupplierQuoteItems
@@ -278,21 +306,30 @@ async function handleCallEnded(callId: string, event: any) {
   await deleteCallState(callId);
 }
 
-async function handleCallError(callId: string, event: any) {
+async function handleCallError(callId: string, vapiCallId: string | undefined, event: any) {
+  // Get call to check if vapiCallId is missing
+  const call = await prisma.supplierCall.findUnique({ where: { id: callId } });
+  
+  const updateData: any = {
+    status: 'FAILED',
+    endedAt: new Date(),
+    notes: `Error: ${event.error?.message || 'Unknown error'}`,
+  };
+  
+  if (vapiCallId && call && !call.vapiCallId) {
+    updateData.vapiCallId = vapiCallId;
+  }
+  
   await prisma.supplierCall.update({
     where: { id: callId },
-    data: {
-      status: 'FAILED',
-      endedAt: new Date(),
-      notes: `Error: ${event.error?.message || 'Unknown error'}`,
-    },
+    data: updateData,
   });
 
   // Clean up Redis state
   await deleteCallState(callId);
 }
 
-async function handleStatusUpdate(callId: string, event: any) {
+async function handleStatusUpdate(callId: string, vapiCallId: string | undefined, event: any) {
   const statusMapping: Record<string, any> = {
     'ringing': 'RINGING',
     'answered': 'ANSWERED',
@@ -302,6 +339,9 @@ async function handleStatusUpdate(callId: string, event: any) {
   };
 
   const status = statusMapping[event.status] || event.status;
+  
+  // Get call to check if vapiCallId is missing
+  const call = await prisma.supplierCall.findUnique({ where: { id: callId } });
 
   // Handle voicemail detection
   if (status === 'VOICEMAIL') {
@@ -330,9 +370,16 @@ async function handleStatusUpdate(callId: string, event: any) {
     }
   }
 
+  const updateData: any = { status };
+  
+  if (vapiCallId && call && !call.vapiCallId) {
+    updateData.vapiCallId = vapiCallId;
+    logger.info({ callId, vapiCallId }, 'Saved VAPI call ID from status update');
+  }
+  
   await prisma.supplierCall.update({
     where: { id: callId },
-    data: { status },
+    data: updateData,
   });
 }
 
