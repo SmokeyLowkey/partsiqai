@@ -261,15 +261,51 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
       where: { id: quoteRequestId },
       include: {
         items: true,
+        organization: {
+          select: { name: true },
+        },
       },
     });
 
-    const parts = quoteRequestData?.items.map(item => ({
+    if (!quoteRequestData) {
+      throw new Error(`Quote request not found: ${quoteRequestId}`);
+    }
+
+    const parts = quoteRequestData.items.map(item => ({
       partNumber: item.partNumber,
       description: item.description || '',
       quantity: item.quantity,
       budgetMax: undefined,
-    })) || [];
+    }));
+
+    // Fetch human-readable values for voice output
+    const organizationName = quoteRequestData.organization?.name || 'our company';
+    const quoteNumber = quoteRequestData.quoteNumber || 'QR-UNKNOWN';
+
+    // Build or fix customContext to include human-readable values
+    // If customContext was provided by user, preserve it but ensure it has proper format
+    let finalCustomContext = customContext || '';
+    
+    // Check if customContext contains company and quote info - if not, prepend them
+    if (!finalCustomContext.match(/Company:\s*.+/i)) {
+      finalCustomContext = `Company: ${organizationName}\n${finalCustomContext}`;
+    } else {
+      // Replace any CUID-looking values in company line
+      finalCustomContext = finalCustomContext.replace(
+        /(Company:\s*)([a-z0-9]{20,})/gi,
+        `$1${organizationName}`
+      );
+    }
+    
+    if (!finalCustomContext.match(/Quote Request:\s*.+/i)) {
+      finalCustomContext = `Quote Request: ${quoteNumber}\n${finalCustomContext}`;
+    } else {
+      // Replace any CUID-looking values in quote line
+      finalCustomContext = finalCustomContext.replace(
+        /(Quote Request:\s*#?)([a-z0-9]{20,})/gi,
+        `$1${quoteNumber}`
+      );
+    }
 
     // Initialize LangGraph state and save to Redis
     const initialCallState = initializeCallState({
@@ -281,7 +317,7 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
       organizationId: metadata.organizationId,
       callerId: metadata.userId,
       parts,
-      customContext: customContext,
+      customContext: finalCustomContext.trim(),
       customInstructions: customInstructions,
     });
 

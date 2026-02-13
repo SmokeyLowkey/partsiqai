@@ -4,10 +4,12 @@ export interface CallState {
   // Context
   callId: string;
   quoteRequestId: string;
+  quoteReference: string; // Human-readable like "QR-02-2026-0009"
   supplierId: string;
   supplierName: string;
   supplierPhone: string;
   organizationId: string;
+  organizationName: string; // Human-readable company name
   callerId: string;
   
   // Parts being quoted

@@ -83,10 +83,12 @@ describe('LangGraph Integration - End-to-End', () => {
       let state: CallState = {
         callId: 'call_flow_test',
         quoteRequestId: 'qr_123',
+        quoteReference: 'QR-01-2026-0001',
         supplierId: 'sup_456',
         supplierName: 'Test Supplier',
         supplierPhone: '+15551234567',
         organizationId: 'org_789',
+        organizationName: 'Test Company',
         callerId: 'user_abc',
         parts: [
           { partNumber: 'ABC123', description: 'Test Part', quantity: 2 },
@@ -106,7 +108,7 @@ describe('LangGraph Integration - End-to-End', () => {
       state = greetingNode(state);
       expect(state.conversationHistory).toHaveLength(1);
       expect(state.conversationHistory[0].speaker).toBe('ai');
-      expect(state.conversationHistory[0].text).toContain('pricing');
+      expect(state.conversationHistory[0].text.toLowerCase()).toContain('parts department');
 
       // Step 2: Supplier responds "yes"
       state = addMessage(state, 'supplier', 'Yes, I can help with that.');
@@ -138,10 +140,12 @@ describe('LangGraph Integration - End-to-End', () => {
       let state: CallState = {
         callId: 'call_negotiation_test',
         quoteRequestId: 'qr_123',
+        quoteReference: 'QR-01-2026-0002',
         supplierId: 'sup_456',
         supplierName: 'Test Supplier',
         supplierPhone: '+15551234567',
         organizationId: 'org_789',
+        organizationName: 'Test Company',
         callerId: 'user_abc',
         parts: [
           { partNumber: 'ABC123', description: 'Test Part', quantity: 2, budgetMax: 400 },
@@ -177,10 +181,12 @@ describe('LangGraph Integration - End-to-End', () => {
       let state: CallState = {
         callId: 'call_escalation_test',
         quoteRequestId: 'qr_123',
+        quoteReference: 'QR-01-2026-0003',
         supplierId: 'sup_456',
         supplierName: 'Test Supplier',
         supplierPhone: '+15551234567',
         organizationId: 'org_789',
+        organizationName: 'Test Company',
         callerId: 'user_abc',
         parts: [],
         currentNode: 'human_escalation',
@@ -207,10 +213,12 @@ describe('LangGraph Integration - End-to-End', () => {
       let state: CallState = {
         callId: 'call_voicemail_test',
         quoteRequestId: 'qr_123',
+        quoteReference: 'QR-01-2026-0004',
         supplierId: 'sup_456',
         supplierName: 'ACME Supplier',
         supplierPhone: '+15551234567',
         organizationId: 'org_789',
+        organizationName: 'Test Company',
         callerId: 'user_abc',
         parts: [],
         currentNode: 'voicemail',
@@ -228,8 +236,9 @@ describe('LangGraph Integration - End-to-End', () => {
       expect(state.status).toBe('completed');
       expect(state.outcome).toBe('VOICEMAIL_LEFT');
       expect(state.nextAction).toBe('email_fallback');
-      expect(state.conversationHistory[0].text).toContain('ACME Supplier');
-      expect(state.conversationHistory[0].text).toContain('qr_123');
+      expect(state.conversationHistory[0].text).toContain('ACME Supplier'); // supplierName
+      expect(state.conversationHistory[0].text).toContain('Test Company'); // organizationName
+      expect(state.conversationHistory[0].text).toContain('QR-01-2026-0004'); // quoteReference (not quoteRequestId)
     });
   });
 
@@ -240,10 +249,12 @@ describe('LangGraph Integration - End-to-End', () => {
       const state = {
         callId: 'call_custom_test',
         quoteRequestId: 'qr_123',
+        quoteReference: 'QR-01-2026-0005',
         supplierId: 'sup_456',
         supplierName: 'Test Supplier',
         supplierPhone: '+15551234567',
         organizationId: 'org_789',
+        organizationName: 'Test Company',
         callerId: 'user_abc',
         parts: [],
         currentNode: 'greeting',
@@ -270,10 +281,12 @@ describe('LangGraph Integration - End-to-End', () => {
       const state = {
         callId: 'call_default_test',
         quoteRequestId: 'qr_123',
+        quoteReference: 'QR-01-2026-0006',
         supplierId: 'sup_456',
         supplierName: 'Test Supplier',
         supplierPhone: '+15551234567',
         organizationId: 'org_789',
+        organizationName: 'Test Company',
         callerId: 'user_abc',
         parts: [],
         currentNode: 'greeting',
@@ -288,8 +301,8 @@ describe('LangGraph Integration - End-to-End', () => {
       };
 
       const result = greetingNode(state);
-      expect(result.conversationHistory[0].text).toContain('org_789');
-      expect(result.conversationHistory[0].text).toContain('pricing');
+      // Greeting should be natural and ask for parts department
+      expect(result.conversationHistory[0].text.toLowerCase()).toContain('parts department');
     });
   });
 

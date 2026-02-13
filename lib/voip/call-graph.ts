@@ -124,8 +124,8 @@ We'll send a formal quote request via email to finalize. Thank you!`;
  */
 export function voicemailNode(state: CallState): CallState {
   const message = `Hi, this is a message for the parts procurement team at ${state.supplierName}. 
-We're calling on behalf of ${state.organizationId} to request pricing for equipment parts. 
-The quote reference is QR-${state.quoteRequestId.slice(-6)}. 
+We're calling on behalf of ${state.organizationName} to request pricing for equipment parts. 
+The quote reference is ${state.quoteReference}. 
 Please call us back or we'll follow up via email with the full details. Thank you.`;
 
   return {
@@ -184,7 +184,7 @@ export async function clarificationNode(
  * Callback Node - Supplier will call back
  */
 export function callbackNode(state: CallState): CallState {
-  const message = `Of course. The quote reference is QR-${state.quoteRequestId.slice(-6)}. 
+  const message = `Of course. The quote reference is ${state.quoteReference}. 
 We'll also send you an email with the part details. 
 If we don't hear back by end of day, we'll give you a follow-up call. Thank you!`;
 
@@ -505,6 +505,25 @@ export async function processCallTurn(
 /**
  * Initialize a new call state
  */
+/**
+ * Parse human-readable values from customContext string
+ */
+function parseContextValues(customContext?: string): { organizationName: string; quoteReference: string } {
+  if (!customContext) {
+    return { organizationName: 'our company', quoteReference: 'QR-UNKNOWN' };
+  }
+  
+  // Extract company name: "Company: {name}\n"
+  const companyMatch = customContext.match(/Company:\s*(.+?)(?:\n|$)/i);
+  const organizationName = companyMatch?.[1]?.trim() || 'our company';
+  
+  // Extract quote reference: "Quote Request: {ref}\n" or "Quote Request: #{ref}\n"
+  const quoteMatch = customContext.match(/Quote Request:\s*(#?[A-Z0-9-]+)(?:\n|$)/i);
+  const quoteReference = quoteMatch?.[1]?.trim() || 'QR-UNKNOWN';
+  
+  return { organizationName, quoteReference };
+}
+
 export function initializeCallState(params: {
   callId: string;
   quoteRequestId: string;
@@ -522,8 +541,12 @@ export function initializeCallState(params: {
   customContext?: string;
   customInstructions?: string;
 }): CallState {
+  const { organizationName, quoteReference } = parseContextValues(params.customContext);
+  
   return {
     ...params,
+    organizationName,
+    quoteReference,
     currentNode: 'greeting',
     conversationHistory: [],
     quotes: [],
