@@ -32,7 +32,28 @@ function completionId(): string {
 }
 
 /** Build a non-streaming OpenAI Chat Completions response */
-function buildChatCompletionResponse(content: string, finishReason: string = 'stop') {
+function buildChatCompletionResponse(content: string, options?: { endCall?: boolean }) {
+  const message: any = {
+    role: 'assistant',
+    content,
+  };
+
+  let finishReason = 'stop';
+
+  if (options?.endCall) {
+    message.tool_calls = [
+      {
+        id: `call_end_${crypto.randomUUID()}`,
+        type: 'function',
+        function: {
+          name: 'endCall',
+          arguments: '{}',
+        },
+      },
+    ];
+    finishReason = 'tool_calls';
+  }
+
   return {
     id: completionId(),
     object: 'chat.completion',
@@ -41,10 +62,7 @@ function buildChatCompletionResponse(content: string, finishReason: string = 'st
     choices: [
       {
         index: 0,
-        message: {
-          role: 'assistant',
-          content,
-        },
+        message,
         finish_reason: finishReason,
       },
     ],
@@ -57,7 +75,7 @@ function buildChatCompletionResponse(content: string, finishReason: string = 'st
 }
 
 /** Build an SSE streaming response for Vapi */
-function buildStreamingResponse(content: string): Response {
+function buildStreamingResponse(content: string, options?: { endCall?: boolean }): Response {
   const id = completionId();
   const created = Math.floor(Date.now() / 1000);
 
@@ -79,28 +97,73 @@ function buildStreamingResponse(content: string): Response {
     ],
   };
 
-  // Chunk 2: finish
-  const chunk2 = {
-    id,
-    object: 'chat.completion.chunk',
-    created,
-    model: 'langgraph-state-machine',
-    choices: [
-      {
-        index: 0,
-        delta: {},
-        finish_reason: 'stop',
-      },
-    ],
-  };
+  const chunks = [`data: ${JSON.stringify(chunk1)}\n\n`];
 
-  const body = [
-    `data: ${JSON.stringify(chunk1)}\n\n`,
-    `data: ${JSON.stringify(chunk2)}\n\n`,
-    `data: [DONE]\n\n`,
-  ].join('');
+  if (options?.endCall) {
+    // Chunk 2: endCall tool_call
+    const toolCallChunk = {
+      id,
+      object: 'chat.completion.chunk',
+      created,
+      model: 'langgraph-state-machine',
+      choices: [
+        {
+          index: 0,
+          delta: {
+            tool_calls: [
+              {
+                index: 0,
+                id: `call_end_${crypto.randomUUID()}`,
+                type: 'function',
+                function: {
+                  name: 'endCall',
+                  arguments: '{}',
+                },
+              },
+            ],
+          },
+          finish_reason: null,
+        },
+      ],
+    };
+    chunks.push(`data: ${JSON.stringify(toolCallChunk)}\n\n`);
 
-  return new Response(body, {
+    // Chunk 3: finish with tool_calls reason
+    const finishChunk = {
+      id,
+      object: 'chat.completion.chunk',
+      created,
+      model: 'langgraph-state-machine',
+      choices: [
+        {
+          index: 0,
+          delta: {},
+          finish_reason: 'tool_calls',
+        },
+      ],
+    };
+    chunks.push(`data: ${JSON.stringify(finishChunk)}\n\n`);
+  } else {
+    // Chunk 2: normal finish
+    const finishChunk = {
+      id,
+      object: 'chat.completion.chunk',
+      created,
+      model: 'langgraph-state-machine',
+      choices: [
+        {
+          index: 0,
+          delta: {},
+          finish_reason: 'stop',
+        },
+      ],
+    };
+    chunks.push(`data: ${JSON.stringify(finishChunk)}\n\n`);
+  }
+
+  chunks.push(`data: [DONE]\n\n`);
+
+  return new Response(chunks.join(''), {
     status: 200,
     headers: {
       'Content-Type': 'text/event-stream',
@@ -278,6 +341,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(buildChatCompletionResponse(errorContent));
     }
 
+    // Early exit: if call is already completed or escalated, send goodbye + endCall
+    if (state.status === 'completed' || state.status === 'escalated') {
+      logger.info(
+        { callId, status: state.status },
+        'Call already completed/escalated - returning endCall without processing new turn'
+      );
+      const goodbyeContent = "Thank you, goodbye!";
+      if (isStreaming) return buildStreamingResponse(goodbyeContent, { endCall: true });
+      return NextResponse.json(buildChatCompletionResponse(goodbyeContent, { endCall: true }));
+    }
+
     logger.info(
       {
         callId,
@@ -315,34 +389,22 @@ export async function POST(req: NextRequest) {
       'LangGraph processing complete'
     );
 
-    // Check if call should end - when status is 'completed', tell VAPI to hang up
-    const shouldEndCall = newState.status === 'completed';
-    
+    // Check if call should end - when status is 'completed' or 'escalated', tell VAPI to hang up
+    const shouldEndCall = newState.status === 'completed' || newState.status === 'escalated';
+
     if (shouldEndCall) {
       logger.info(
         { callId, status: newState.status, outcome: newState.outcome },
-        'Call marked as completed - sending endOfCallMessage to VAPI'
+        'Call completed - sending endCall tool_call to VAPI'
       );
     }
 
     // Return response in OpenAI Chat Completions format
     if (isStreaming) {
-      return buildStreamingResponse(aiResponse);
+      return buildStreamingResponse(aiResponse, { endCall: shouldEndCall });
     }
-    
-    // Build base response
-    const response = buildChatCompletionResponse(aiResponse);
-    
-    // Add VAPI call termination signals if call is complete
-    if (shouldEndCall) {
-      return NextResponse.json({
-        ...response,
-        endOfCallMessage: aiResponse, // Use the goodbye message from the state machine
-        stopGeneratingMessages: true, // Tell VAPI not to send more messages
-      });
-    }
-    
-    return NextResponse.json(response);
+
+    return NextResponse.json(buildChatCompletionResponse(aiResponse, { endCall: shouldEndCall }));
 
   } catch (error: any) {
     logger.error({ error: error.message, stack: error.stack }, 'LangGraph handler error');
@@ -352,7 +414,7 @@ export async function POST(req: NextRequest) {
     if (isStreaming) {
       return buildStreamingResponse(fallbackContent);
     }
-    return NextResponse.json(buildChatCompletionResponse(fallbackContent, 'stop'));
+    return NextResponse.json(buildChatCompletionResponse(fallbackContent));
   }
 }
 

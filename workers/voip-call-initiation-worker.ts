@@ -392,6 +392,7 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
         provider: 'azure',
         voiceId: 'andrew',
       },
+      tools: [{ type: 'endCall' }],
     };
 
     if (vapiAssistantConfig) {
@@ -441,6 +442,7 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
           systemContext: systemInstructions,
           callId: callLog.id,
         },
+        tools: [{ type: 'endCall' }],
       };
       // Note: When using assistantId, serverUrl is pre-configured in VAPI dashboard
       // and should NOT be included in the call payload

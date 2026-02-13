@@ -161,6 +161,11 @@ export async function GET(
             name: true,
           },
         },
+        organization: {
+          select: {
+            name: true,
+          },
+        },
       },
     });
 

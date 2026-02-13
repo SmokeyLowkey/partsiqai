@@ -181,42 +181,35 @@ export function SendQuoteDialog({
 
       // Build structured context - provide FACTS for the AI to use naturally, NOT a script
       const orgName = qr.organization?.name || 'our company';
-      const requestNum = qr.requestNumber || qr.id.slice(0, 8);
-      
+      const requestNum = qr.quoteNumber || qr.id.slice(0, 8);
+
       let context = `Company: ${orgName}\n`;
       context += `Quote Request: #${requestNum}\n`;
-      
+
       if (vehicleContext) {
         context += `Vehicle: ${vehicleContext}\n`;
       }
-      
+
       if (items.length > 0) {
         const partsCount = items.filter((item: any) => item.partNumber !== 'MISC-COSTS').length;
         context += `\nParts Needed (${partsCount} part${partsCount > 1 ? 's' : ''}):\n`;
-        
+
         if (partsDetails) {
           context += partsDetails;
         }
       }
-      
+
       // Generate natural, conversational agent instructions
-      const instructions = `You are a real person calling on behalf of ${orgName} to get quotes for parts. Be natural, friendly, and conversational.
+      const instructions = `You are calling on behalf of ${orgName} to get quotes for the parts listed in the call context.
 
-IMPORTANT - Follow this conversation flow:
-1. FIRST: Greet them naturally ("Hi, this is [your name] calling from ${orgName}") and ask if you've reached the parts department or if they can transfer you
-2. WAIT for their response - they may transfer you or confirm you're speaking to the right person
-3. ONLY AFTER confirming you're with the right department: Explain you're calling about parts for the vehicle listed in the context${vehicleContext ? ` (${vehicleContext})` : ''}
-4. Ask if they can provide pricing and availability over the phone
-5. If yes, go through the parts list conversationally - don't just read it like a robot
-6. Ask for lead times and any minimum order requirements
-7. If they can't help by phone, politely ask for their preferred contact method (email, fax, online portal)
-
-Conversation tips:
-- Use natural pauses and transitions like "Great, thanks" or "Perfect"
-- If they ask questions, answer them naturally before continuing
-- If they need you to slow down or repeat something, do so patiently
-- Thank them for their time at the end
-- Don't rush through the information - speak at a normal, conversational pace`;
+Key guidance:
+- Introduce yourself as calling from ${orgName}
+- Reference the vehicle naturally if applicable${vehicleContext ? ` (${vehicleContext})` : ''}
+- Go through parts one at a time, not all at once
+- Ask for pricing, availability, and lead times for each part
+- If price seems high, try negotiating — mention you're comparing suppliers
+- If they can't help by phone, ask for their preferred contact method
+- Be patient if transferred or put on hold`;
 
       setCallContext(context);
       setAgentInstructions(instructions);

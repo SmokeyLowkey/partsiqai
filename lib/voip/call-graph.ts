@@ -406,6 +406,11 @@ export async function processCallTurn(
   llmClient: OpenRouterClient,
   state: CallState
 ): Promise<CallState> {
+  // Already completed or escalated — don't process more turns
+  if (state.status === 'completed' || state.status === 'escalated') {
+    return state;
+  }
+
   const currentNode = state.currentNode;
 
   // Execute current node
