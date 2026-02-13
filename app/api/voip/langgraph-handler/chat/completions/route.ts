@@ -150,11 +150,15 @@ export async function POST(req: NextRequest) {
     if (webhookSecret) {
       const expectedAuth = `Bearer ${webhookSecret}`;
       
-      if (authHeader !== expectedAuth) {
+      // TEMPORARY: Allow VAPI's default placeholder for testing
+      const isVapiPlaceholder = authHeader === 'Bearer no-custom-llm-key-provided';
+      
+      if (authHeader !== expectedAuth && !isVapiPlaceholder) {
         logger.warn({ 
           authHeaderPreview: authHeader?.substring(0, 30),
           expectedAuthPreview: expectedAuth?.substring(0, 30),
           match: authHeader === expectedAuth,
+          isVapiPlaceholder,
         }, 'Unauthorized LangGraph handler request - auth mismatch');
         return NextResponse.json({ 
           error: 'Unauthorized',
@@ -162,7 +166,13 @@ export async function POST(req: NextRequest) {
         }, { status: 401 });
       }
       
-      logger.info('Authorization check passed');
+      if (isVapiPlaceholder) {
+        logger.warn(
+          '⚠️  TEMPORARY: Accepting VAPI placeholder auth token for testing. Configure custom headers in VAPI assistant model settings for production.'
+        );
+      } else {
+        logger.info('Authorization check passed');
+      }
     } else {
       logger.warn(
         'VOIP_WEBHOOK_SECRET not configured - skipping auth check (set in Vercel environment variables for production)'
@@ -171,6 +181,21 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     console.log('[LangGraph Handler] 📦 Body parsed:', JSON.stringify(body, null, 2));
+    
+    // Check if this is a status update webhook (not a chat completion request)
+    if (body.message?.type === 'status-update') {
+      logger.info({
+        type: 'status-update',
+        status: body.message.status,
+        endedReason: body.message.endedReason,
+        msg: 'Received status update webhook at chat completions endpoint - returning 200. NOTE: Configure assistant server.url to /api/voip/webhooks instead',
+      });
+      return NextResponse.json({ 
+        acknowledged: true,
+        note: 'Status updates should be sent to /api/voip/webhooks. Please update VAPI assistant configuration.' 
+      }, { status: 200 });
+    }
+    
     isStreaming = body.stream === true;
 
     logger.info(
