@@ -257,8 +257,6 @@ Conversation tips:
     // Generate appropriate content based on contact method
     if (contactMethod === 'email') {
       generateEmail();
-    } else if (contactMethod === 'call') {
-      generateCallSettings();
     } else if (contactMethod === 'both') {
       // Generate both email and call settings
       generateEmail();
@@ -314,13 +312,7 @@ Conversation tips:
       const successCount = data.jobs.filter((j: any) => j.jobId).length;
       if (successCount > 0) {
         setError(null);
-        // Close dialog after showing results briefly if call-only mode
-        if (contactMethod === 'call') {
-          setTimeout(() => {
-            onOpenChange(false);
-            onSent();
-          }, 2500);
-        }
+        // Note: For 'both' mode, we continue to email sending after this
       }
     } catch (error: any) {
       console.error('Error initiating calls:', error);
@@ -331,25 +323,15 @@ Conversation tips:
   };
 
   const handleSend = async () => {
-    // Handle calling first if needed
-    if (contactMethod === 'call' || contactMethod === 'both') {
+    // Validate based on contact method
+    if (contactMethod === 'both') {
       // Validate call settings
       if (!callContext.trim()) {
         setError('Call context is required');
         return;
       }
       
-      await handleInitiateCalls();
-      
-      // If call-only, we're done
-      if (contactMethod === 'call') {
-        return;
-      }
-    }
-
-    // Handle email sending (for 'email' or 'both' methods)
-    if (contactMethod === 'email' || contactMethod === 'both') {
-      // Validate all suppliers have email addresses and content
+      // Validate email content
       const missingEmails = supplierEmails.filter((se) => !se.email);
       if (missingEmails.length > 0) {
         setError(
@@ -366,6 +348,35 @@ Conversation tips:
           `Missing email content for: ${missingContent.map((se) => se.name).join(', ')}`
         );
         return;
+      }
+      
+      // Initiate calls first
+      await handleInitiateCalls();
+      
+      // Continue to email sending below
+    }
+
+    // Handle email sending (for 'email' or 'both' methods)
+    if (contactMethod === 'email' || contactMethod === 'both') {
+      // Validate for email-only (both validation is done above)
+      if (contactMethod === 'email') {
+        const missingEmails = supplierEmails.filter((se) => !se.email);
+        if (missingEmails.length > 0) {
+          setError(
+            `Missing email addresses for: ${missingEmails.map((se) => se.name).join(', ')}`
+          );
+          return;
+        }
+
+        const missingContent = supplierEmails.filter(
+          (se) => !se.subject || !se.body
+        );
+        if (missingContent.length > 0) {
+          setError(
+            `Missing email content for: ${missingContent.map((se) => se.name).join(', ')}`
+          );
+          return;
+        }
       }
 
       setSending(true);
@@ -428,11 +439,6 @@ Conversation tips:
                 <Building2 className="h-5 w-5" />
                 Contact Method
               </>
-            ) : contactMethod === 'call' ? (
-              <>
-                <Phone className="h-5 w-5" />
-                Configure Call Settings
-              </>
             ) : contactMethod === 'both' ? (
               <>
                 <Send className="h-5 w-5" />
@@ -448,8 +454,6 @@ Conversation tips:
           <DialogDescription>
             {step === 'method'
               ? 'Choose how to contact suppliers for this quote request'
-              : contactMethod === 'call'
-              ? 'Configure settings for AI agent calls to suppliers'
               : contactMethod === 'both'
               ? 'Set up email content and call settings for suppliers'
               : 'Review and customize the quote request email for each supplier'}
@@ -574,8 +578,8 @@ Conversation tips:
           </div>
         ) : step === 'content' ? (
           <>
-            {/* Call Settings Section (for 'call' or 'both') */}
-            {(contactMethod === 'call' || contactMethod === 'both') && (
+            {/* Call Settings Section (for 'both' method) */}
+            {contactMethod === 'both' && (
               <div className="space-y-4 mb-6 p-4 border rounded-lg bg-blue-50 dark:bg-blue-950">
                 <div className="flex items-center gap-2 mb-2">
                   <Phone className="h-5 w-5 text-blue-600" />
@@ -787,17 +791,10 @@ Conversation tips:
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Sending...
                 </>
-              ) : contactMethod === 'call' ? (
-                <>
-                  <Phone className="h-4 w-4 mr-2" />
-                  Call {suppliers.filter(s => s.phone && !(s as any).doNotCall).length} Supplier
-                  {suppliers.filter(s => s.phone && !(s as any).doNotCall).length > 1 ? 's' : ''}
-                </>
               ) : contactMethod === 'both' ? (
                 <>
                   <Send className="h-4 w-4 mr-2" />
-                  Send & Call {supplierEmails.length} Supplier
-                  {supplierEmails.length > 1 ? 's' : ''}
+                  Send & Call {suppliers.length} Supplier{suppliers.length > 1 ? 's' : ''}
                 </>
               ) : (
                 <>

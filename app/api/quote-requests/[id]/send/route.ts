@@ -67,10 +67,11 @@ export async function POST(
       );
     }
 
-    // Only allow sending DRAFT quotes
-    if (quoteRequest.status !== 'DRAFT') {
+    // Allow sending DRAFT or SENT quotes (for 'both' method where calls already updated status)
+    // Don't allow if already converted to order or expired
+    if (['CONVERTED_TO_ORDER', 'EXPIRED'].includes(quoteRequest.status)) {
       return NextResponse.json(
-        { error: 'Can only send draft quote requests' },
+        { error: `Cannot send quote requests with status: ${quoteRequest.status}` },
         { status: 400 }
       );
     }
@@ -218,17 +219,23 @@ export async function POST(
       );
     }
 
-    // Update quote request
+    // Update quote request - if already SENT (from calls), keep supplierId that was set
+    const updateData: any = {
+      status: 'SENT',
+    };
+    
+    // Only update supplier IDs if not already set (i.e., if this is the first contact)
+    if (!quoteRequest.supplierId) {
+      updateData.supplierId = primarySupplierId;
+      updateData.additionalSupplierIds = 
+        additionalSupplierIds.length > 0
+          ? additionalSupplierIds.join(',')
+          : null;
+    }
+    
     await prisma.quoteRequest.update({
       where: { id },
-      data: {
-        status: 'SENT',
-        supplierId: primarySupplierId,
-        additionalSupplierIds:
-          additionalSupplierIds.length > 0
-            ? additionalSupplierIds.join(',')
-            : null,
-      },
+      data: updateData,
     });
 
     return NextResponse.json({

@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Mail, Phone, PhoneCall, AlertCircle, Clock, Building2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
-export type ContactMethod = 'email' | 'call' | 'both';
+export type ContactMethod = 'email' | 'both';
 
 interface SupplierContact {
   id: string;
@@ -93,49 +93,6 @@ export function SupplierMethodSelector({
               {!canEmail && (
                 <p className="text-sm text-destructive">
                   ⚠️ No suppliers have email addresses configured
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Call First */}
-        <Card
-          className={`cursor-pointer transition-colors ${
-            selectedMethod === 'call'
-              ? 'border-primary bg-primary/5'
-              : 'border-border hover:border-primary/50'
-          } ${!canCall ? 'opacity-50 cursor-not-allowed' : ''}`}
-          onClick={() => canCall && handleMethodChange('call')}
-        >
-          <CardContent className="flex items-start space-x-4 p-4">
-            <RadioGroupItem value="call" id="method-call" disabled={!canCall} />
-            <div className="flex-1 space-y-1">
-              <div className="flex items-center gap-2">
-                <Phone className="h-4 w-4 text-green-500" />
-                <Label
-                  htmlFor="method-call"
-                  className="font-medium cursor-pointer"
-                >
-                  Call First
-                </Label>
-                <Badge variant="outline" className="ml-auto bg-green-50 text-green-700 border-green-200">
-                  AI Agent
-                </Badge>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                AI agent calls suppliers immediately to get instant quotes. Email
-                fallback if no answer.
-              </p>
-              {!canCall && (
-                <p className="text-sm text-destructive">
-                  ⚠️ No suppliers have phone numbers or all are marked "Do Not Call"
-                </p>
-              )}
-              {canCall && suppliersWithPhone.length < suppliers.length && (
-                <p className="text-sm text-amber-600">
-                  ℹ️ {suppliers.length - suppliersWithPhone.length} supplier(s) will
-                  receive email only
                 </p>
               )}
             </div>
