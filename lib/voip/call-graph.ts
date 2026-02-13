@@ -220,41 +220,42 @@ export async function conversationalResponseNode(
   
   // Build conversation context for the LLM
   const conversationContext = state.conversationHistory
-    .map(msg => `${msg.speaker === 'ai' ? 'Assistant' : 'Supplier'}: ${msg.text}`)
+    .slice(-6) // Only last 6 messages to keep prompt focused
+    .map(msg => `${msg.speaker === 'ai' ? 'You' : 'Supplier'}: ${msg.text}`)
     .join('\n');
   
   // Build parts context
   const partsContext = state.parts
-    .map(p => `- Part Number: ${p.partNumber}\n  Description: ${p.description}\n  Quantity: ${p.quantity}`)
-    .join('\n');
+    .map(p => `${p.partNumber} (${p.description}) - Qty: ${p.quantity}`)
+    .join(', ');
   
   // Build custom context if available
   const additionalContext = state.customContext || '';
   
-  const prompt = `You are a professional parts procurement assistant making a phone call to get quotes. 
+  const prompt = `You are on a phone call getting quotes for parts. Answer the supplier's question naturally.
 
-## Call Context
-${additionalContext}
+Context: ${additionalContext}
 
-## Parts Needed
-${partsContext}
+Parts you need quotes for: ${partsContext}
 
-## Conversation So Far
+Recent conversation:
 ${conversationContext}
 
-## Current Situation
-The supplier just said: "${lastResponse}"
+Supplier just said: "${lastResponse}"
 
-Respond naturally and professionally. If they're asking for clarification about part numbers or other details, provide the information they requested. Be concise and conversational - this is a phone call, not an email.
-
-${state.customInstructions || 'Be friendly, helpful, and focused on getting the pricing information.'}`;
+Respond in a single sentence. Be specific about the part numbers if they ask. Don't add "Here's my response" or other meta-commentary - just give the direct response.`;
 
   try {
-    const response = await llmClient.generateCompletion(prompt, {
-      temperature: 0.7,
-      model: 'meta-llama/llama-3.1-8b-instruct',
-      maxTokens: 250,
+    let response = await llmClient.generateCompletion(prompt, {
+      temperature: 0.4,
+      model: 'anthropic/claude-3.5-sonnet', // Upgrade for better context awareness
+      maxTokens: 150,
     });
+    
+    // Clean up meta-commentary more aggressively (must be done BEFORE adding to state)
+    response = response
+      .replace(/^(here'?s? my (response|result|answer):?|my (response|result|answer):?)\\s*/i, '')
+      .trim();
     
     return addMessage(state, 'ai', response);
   } catch (error) {
@@ -263,7 +264,7 @@ ${state.customInstructions || 'Be friendly, helpful, and focused on getting the 
     return addMessage(
       state, 
       'ai', 
-      "I apologize, could you repeat that? I want to make sure I give you the right information."
+      "Could you repeat that?"
     );
   }
 }
@@ -431,7 +432,7 @@ export async function processCallTurn(
       newState = await conversationalResponseNode(llmClient, state);
       break;
     case 'end':
-      // If we're at end but receiving more input, handle conversationally
+      // If we're at end but receiving more input, use conversational response
       newState = await conversationalResponseNode(llmClient, state);
       break;
     default:
@@ -461,12 +462,35 @@ export async function processCallTurn(
       nextNode = 'greeting'; // Back to greeting after transfer
       break;
     case 'conversational_response':
-      // Stay in conversational mode - could route based on detection of completion
-      nextNode = 'conversational_response';
+      // After a conversational response, detect what to do next
+      const lastSupplierMsg = getLastSupplierResponse(newState);
+      const isQuestion = await detectQuestion(lastSupplierMsg);
+      
+      if (isQuestion && newState.conversationHistory.length > 8) {
+        // Many exchanges already, likely wrapping up
+        nextNode = 'polite_end';
+      } else if (newState.conversationHistory.length <= 4) {
+        // Still early - try to get back on track with quote request
+        nextNode = 'quote_request';
+      } else {
+        // Check if they gave pricing info
+        const quotes = await extractPricing(llmClient, lastSupplierMsg, newState.parts);
+        if (quotes.length > 0) {
+          nextNode = 'price_extract';
+        } else {
+          // Continue conversationally
+          nextNode = 'quote_request';
+        }
+      }
+      break;
+    case 'voicemail':
+      // If we're in voicemail node, the call should end
+      // (If supplier responds after voicemail message, they'll trigger a new turn and routing will handle it)
+      nextNode = 'end';
       break;
     case 'end':
-      // If we handled a follow-up question, stay in conversational mode
-      nextNode = 'conversational_response';
+      // Conversation continuing after end - route based on intent
+      nextNode = await routeFromGreeting(llmClient, newState);
       break;
     default:
       nextNode = 'end';

@@ -46,27 +46,58 @@ export async function classifyIntent(
   response: string,
   possibleIntents: string[]
 ): Promise<string> {
-  const prompt = `Classify this supplier response into one of these intents: ${possibleIntents.join(', ')}
+  // Provide context for better classification
+  const intentDescriptions: Record<string, string> = {
+    'yes_can_help': 'Person confirms they can help, they\'re the right department, or they\'re ready to listen (e.g., "Yes", "Speaking", "This is parts", "Go ahead")',
+    'transfer_needed': 'Person says they need to transfer you or you\'re not speaking to the right person (e.g., "Let me transfer you", "Wrong department", "Hold on")',
+    'not_interested': 'Person clearly declines or is not interested (e.g., "Not interested", "Don\'t call again", "No thanks")',
+    'voicemail': 'You reached voicemail, answering machine, or no human answered',
+    'has_info': 'Supplier is providing pricing, availability, or quote information',
+    'needs_clarification': 'Supplier is confused or asking for clarification',
+    'callback_request': 'Supplier wants to call back or needs time to check',
+  };
 
-Supplier response: "${response}"
+  const descriptions = possibleIntents
+    .map(intent => `${intent}: ${intentDescriptions[intent] || intent}`)
+    .join('\n');
 
-Return ONLY the intent name, nothing else.`;
+  const prompt = `Classify this supplier phone response into ONE of these intents:
+
+${descriptions}
+
+Supplier said: "${response}"
+
+IMPORTANT: If they confirm they're the right person/department (like "Yeah this is parts", "Speaking", "Yes"), classify as yes_can_help, NOT voicemail.
+Voicemail is ONLY for actual voicemail/answering machine greetings like "You've reached...", "Please leave a message", or when nobody answers.
+
+Return ONLY the intent name (e.g., "yes_can_help"), nothing else.`;
 
   try {
     const result = await llmClient.generateCompletion(prompt, {
       temperature: 0,
-      model: 'meta-llama/llama-3.1-8b-instruct',
-      maxTokens: 50,
+      model: 'anthropic/claude-3.5-sonnet', // Upgrade from llama to Claude for better accuracy
+      maxTokens: 30,
     });
     
-    const intent = result.trim().toLowerCase();
+    const intent = result.trim().toLowerCase().replace(/[^a-z_]/g, '');
+    
+    // Additional validation: Check for obvious misclassifications
+    const responseLower = response.toLowerCase();
+    if (intent === 'voicemail') {
+      // If classified as voicemail but response has engagement words, override to yes_can_help
+      const engagementWords = ['yeah', 'yes', 'speaking', 'this is', 'go ahead', 'sure'];
+      if (engagementWords.some(word => responseLower.includes(word))) {
+        console.log(`Intent override: "${response}" classified as voicemail, but contains engagement words. Changing to yes_can_help.`);
+        return possibleIntents.includes('yes_can_help') ? 'yes_can_help' : possibleIntents[0];
+      }
+    }
     
     // Find matching intent (case-insensitive)
     const match = possibleIntents.find(i => i.toLowerCase() === intent);
-    return match || possibleIntents[possibleIntents.length - 1]; // Default to last intent
+    return match || possibleIntents[0]; // Default to first intent (usually positive)
   } catch (error) {
     console.error('Intent classification error:', error);
-    return possibleIntents[possibleIntents.length - 1];
+    return possibleIntents[0]; // Default to first rather than last
   }
 }
 
