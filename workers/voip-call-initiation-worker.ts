@@ -378,7 +378,6 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
         context: JSON.stringify(context),
         hasCustomSettings: !!(customContext || customInstructions),
       },
-      serverUrl: `${appUrl}/api/voip/webhooks`,
     };
     
     // Use assistant ID if provided, otherwise inline config
@@ -392,8 +391,12 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
           callId: callLog.id,
         },
       };
+      // Note: When using assistantId, serverUrl is pre-configured in VAPI dashboard
+      // and should NOT be included in the call payload
     } else {
       callPayload.assistant = vapiAssistantConfig;
+      // Only include serverUrl when using inline assistant config
+      callPayload.serverUrl = `${appUrl}/api/voip/webhooks`;
     }
 
     // Log the full payload being sent to VAPI for debugging
@@ -401,7 +404,7 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
       {
         callPayload: JSON.stringify(callPayload, null, 2),
         customLlmEndpoint: callPayload.assistant?.model?.url || 'using-assistant-id',
-        webhookEndpoint: callPayload.serverUrl,
+        webhookEndpoint: callPayload.serverUrl || 'configured-in-assistant',
         assistantId: callPayload.assistantId || 'inline-config',
       },
       'Sending call request to VAPI'
