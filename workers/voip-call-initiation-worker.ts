@@ -1,6 +1,6 @@
 import { Worker, Job } from 'bullmq';
 import { redisConnection } from '@/lib/queue/connection';
-import { QUEUE_NAMES, voipFallbackQueue, voipCallRetryQueue } from '@/lib/queue/queues';
+import { QUEUE_NAMES, voipFallbackQueue } from '@/lib/queue/queues';
 import { VoipCallInitiationJobData } from '@/lib/queue/types';
 import { workerLogger } from '@/lib/logger';
 import { prisma } from '@/lib/prisma';
@@ -393,6 +393,13 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
         voiceId: 'andrew',
       },
       tools: [{ type: 'endCall' }],
+      endCallPhrases: [
+        'goodbye',
+        'have a great day',
+        'thank you for your time',
+        'we\'ll follow up via email',
+        'have a good one',
+      ],
     };
 
     if (vapiAssistantConfig) {
@@ -442,7 +449,16 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
           systemContext: systemInstructions,
           callId: callLog.id,
         },
-        tools: [{ type: 'endCall' }],
+        // VAPI rejects `tools` in assistantOverrides, so endCall tool must be
+        // configured in VAPI dashboard. As a reliable fallback, use endCallPhrases
+        // which trigger termination at the speech layer when the assistant says them.
+        endCallPhrases: [
+          'goodbye',
+          'have a great day',
+          'thank you for your time',
+          'we\'ll follow up via email',
+          'have a good one',
+        ],
       };
       // Note: When using assistantId, serverUrl is pre-configured in VAPI dashboard
       // and should NOT be included in the call payload
@@ -633,37 +649,7 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
       }
     }
 
-    // Queue retry for call-only or if retry count is below max
-    const retryAttempt = (job.attemptsMade || 0) + 1;
-    const maxRetries = 3;
-
-    if (retryAttempt < maxRetries && (metadata.preferredMethod === 'call' || metadata.preferredMethod === 'both')) {
-      logger.info(
-        { quoteRequestId, supplierId, retryAttempt },
-        'Queueing call retry'
-      );
-
-      await voipCallRetryQueue.add(
-        `voip-retry-${quoteRequestId}-${supplierId}-${retryAttempt}`,
-        {
-          quoteRequestId,
-          supplierId,
-          supplierName,
-          supplierPhone,
-          previousCallId: '', // Will be filled from the failed call log
-          retryAttempt,
-          maxRetries,
-          context,
-          metadata: {
-            userId: metadata.userId,
-            organizationId: metadata.organizationId,
-          },
-        },
-        {
-          delay: Math.min(60000 * Math.pow(2, retryAttempt), 300000), // Exponential backoff: 2min, 4min, 5min max
-        }
-      );
-    }
+    // No automatic retry — user can manually retry from the communication history UI
 
     throw error;
   }
