@@ -2,6 +2,7 @@
 
 # misc
 nul
+/json/
 
 # dependencies
 /node_modules

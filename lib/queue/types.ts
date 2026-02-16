@@ -160,6 +160,7 @@ export const VoipCallInitiationJobSchema = z.object({
     userId: z.string(),
     organizationId: z.string(),
     preferredMethod: z.enum(['call', 'email', 'both']),
+    userRole: z.enum(['TECHNICIAN', 'MANAGER', 'ADMIN', 'MASTER_ADMIN', 'USER']).optional(),
   }),
 });
 

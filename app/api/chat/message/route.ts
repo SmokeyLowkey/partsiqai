@@ -92,8 +92,9 @@ export async function POST(req: NextRequest) {
     if (isSearchQuery) {
       console.log('[Chat API] Executing multi-agent search...');
 
-      // Check if vehicle is ready for search before proceeding
+      // Check if vehicle is ready for search
       const vehicleId = vehicleContext?.id || vehicleContext?.vehicleId;
+      let webSearchOnly = false;
       if (vehicleId) {
         const vehicle = await prisma.vehicle.findUnique({
           where: { id: vehicleId },
@@ -101,22 +102,9 @@ export async function POST(req: NextRequest) {
         });
 
         if (vehicle?.searchConfigStatus !== 'SEARCH_READY') {
-          // Return user-friendly message for pending vehicles
-          const pendingMessage = await prisma.chatMessage.create({
-            data: {
-              conversationId: conversation.id,
-              role: 'ASSISTANT',
-              content: `⚠️ **Vehicle Configuration Pending**\n\nThis vehicle (${vehicle?.year} ${vehicle?.make} ${vehicle?.model}) is still being configured by your administrator.\n\nOnce the vehicle's search settings are verified, you'll be able to search for parts. Please contact your administrator or wait for them to complete the setup.`,
-              messageType: 'SYSTEM_NOTIFICATION',
-            },
-          });
-
-          return NextResponse.json({
-            userMessage,
-            assistantMessage: pendingMessage,
-            conversationId: conversation.id,
-            vehicleStatus: vehicle?.searchConfigStatus || 'PENDING_ADMIN_REVIEW',
-          });
+          // Vehicle not configured — fall back to web search only
+          console.log('[Chat API] Vehicle not SEARCH_READY, falling back to web search only');
+          webSearchOnly = true;
         }
       }
 
@@ -135,7 +123,8 @@ export async function POST(req: NextRequest) {
         const searchResults = await orchestrator.searchWithFormatting(
           message,
           session.user.organizationId,
-          searchVehicleContext
+          searchVehicleContext,
+          { webSearchOnly }
         );
 
         // Save assistant response with formatted results

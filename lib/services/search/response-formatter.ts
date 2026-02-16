@@ -21,6 +21,9 @@ export interface FormattedSearchResponse {
     hasMoreResults: boolean;
     queryIntent?: string;
   };
+
+  // Flag indicating only web results are available (vehicle not configured)
+  webSearchOnly?: boolean;
 }
 
 export interface FormattedPart {

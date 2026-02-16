@@ -87,6 +87,8 @@ export default function QuoteRequestDetailPage() {
   const [showApprovalActionsDialog, setShowApprovalActionsDialog] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [extractionMessage, setExtractionMessage] = useState<string | null>(null);
+  const [extractingCalls, setExtractingCalls] = useState(false);
+  const [callExtractionMessage, setCallExtractionMessage] = useState<string | null>(null);
   
   const userRole = session?.user?.role;
   const canApprove = userRole === 'MANAGER' || userRole === 'ADMIN' || userRole === 'MASTER_ADMIN';
@@ -129,6 +131,29 @@ export default function QuoteRequestDetailPage() {
       }
     } catch (error) {
       console.error('Error fetching suppliers:', error);
+    }
+  };
+
+  const extractCallPrices = async () => {
+    setExtractingCalls(true);
+    setCallExtractionMessage(null);
+    try {
+      const response = await fetch(`/api/quote-requests/${params.id}/extract-call-prices`, {
+        method: 'POST',
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setCallExtractionMessage(data.message);
+        await fetchQuoteRequest();
+      } else {
+        setCallExtractionMessage(data.error || 'Failed to extract prices from calls');
+      }
+    } catch (error) {
+      console.error('Error extracting call prices:', error);
+      setCallExtractionMessage('Error extracting prices from call transcripts');
+    } finally {
+      setExtractingCalls(false);
+      setTimeout(() => setCallExtractionMessage(null), 5000);
     }
   };
 
@@ -555,21 +580,37 @@ export default function QuoteRequestDetailPage() {
                 </div>
               )}
 
-              {/* Extract Prices Button */}
+              {/* Extract Prices Buttons */}
               {quoteRequest.status !== 'DRAFT' && (
                 <div className="space-y-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={extractPrices}
-                    disabled={extracting || loading}
-                  >
-                    <RefreshCw className={`h-4 w-4 mr-2 ${extracting ? 'animate-spin' : ''}`} />
-                    {extracting ? 'Extracting Prices...' : 'Extract Prices from Emails'}
-                  </Button>
+                  <div className="flex gap-2 flex-wrap">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={extractPrices}
+                      disabled={extracting || loading}
+                    >
+                      <Mail className={`h-4 w-4 mr-2 ${extracting ? 'animate-spin' : ''}`} />
+                      {extracting ? 'Extracting...' : 'Extract Prices from Emails'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={extractCallPrices}
+                      disabled={extractingCalls || loading}
+                    >
+                      <Phone className={`h-4 w-4 mr-2 ${extractingCalls ? 'animate-spin' : ''}`} />
+                      {extractingCalls ? 'Extracting...' : 'Extract Prices from Calls'}
+                    </Button>
+                  </div>
                   {extractionMessage && (
                     <p className={`text-sm ${extractionMessage.includes('Error') || extractionMessage.includes('Failed') ? 'text-red-600' : 'text-green-600'}`}>
                       {extractionMessage}
+                    </p>
+                  )}
+                  {callExtractionMessage && (
+                    <p className={`text-sm ${callExtractionMessage.includes('Error') || callExtractionMessage.includes('Failed') ? 'text-red-600' : 'text-green-600'}`}>
+                      {callExtractionMessage}
                     </p>
                   )}
                 </div>

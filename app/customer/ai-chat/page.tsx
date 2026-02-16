@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,6 +58,7 @@ import {
   Filter,
   Search,
   Menu,
+  Minus,
 } from "lucide-react";
 
 interface Message {
@@ -185,6 +186,54 @@ interface PickListItem {
   supplier?: string;
 }
 
+// --- Pick list localStorage helpers ---
+const PICKLIST_PREFIX = 'picklist-';
+const PICKLIST_DRAFT_KEY = 'picklist-draft';
+
+function savePickListToStorage(convId: string | null, items: PickListItem[]) {
+  try {
+    const key = convId ? `${PICKLIST_PREFIX}${convId}` : PICKLIST_DRAFT_KEY;
+    if (items.length === 0) {
+      localStorage.removeItem(key);
+    } else {
+      localStorage.setItem(key, JSON.stringify(items));
+    }
+  } catch (e) {
+    console.warn('[PickList] Failed to save to localStorage:', e);
+  }
+}
+
+function loadPickListFromStorage(convId: string | null): PickListItem[] {
+  try {
+    const key = convId ? `${PICKLIST_PREFIX}${convId}` : PICKLIST_DRAFT_KEY;
+    const stored = localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : [];
+  } catch (e) {
+    console.warn('[PickList] Failed to load from localStorage:', e);
+    return [];
+  }
+}
+
+function removePickListFromStorage(convId: string) {
+  try {
+    localStorage.removeItem(`${PICKLIST_PREFIX}${convId}`);
+  } catch (e) {
+    console.warn('[PickList] Failed to remove from localStorage:', e);
+  }
+}
+
+function migrateDraftPickList(newConvId: string) {
+  try {
+    const draft = localStorage.getItem(PICKLIST_DRAFT_KEY);
+    if (draft) {
+      localStorage.setItem(`${PICKLIST_PREFIX}${newConvId}`, draft);
+      localStorage.removeItem(PICKLIST_DRAFT_KEY);
+    }
+  } catch (e) {
+    console.warn('[PickList] Failed to migrate draft pick list:', e);
+  }
+}
+
 export default function AIChatPage() {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -206,6 +255,38 @@ export default function AIChatPage() {
   const [showAllResults, setShowAllResults] = useState<Record<string, boolean>>({});
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const prevConversationIdRef = useRef<string | null>(null);
+
+  // Persist pick list when conversation changes
+  useEffect(() => {
+    const prevId = prevConversationIdRef.current;
+    if (prevId !== conversationId) {
+      // Save current pick list for the old conversation
+      if (prevId !== undefined) {
+        savePickListToStorage(prevId, pickList);
+      }
+      // Load pick list for the new conversation
+      const loaded = loadPickListFromStorage(conversationId);
+      setPickList(loaded);
+      prevConversationIdRef.current = conversationId;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId]);
+
+  // Persist pick list to localStorage whenever it changes
+  useEffect(() => {
+    savePickListToStorage(conversationId, pickList);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickList]);
+
+  const updatePickListQuantity = useCallback((id: string, newQuantity: number) => {
+    if (newQuantity < 1) return;
+    setPickList((prev) =>
+      prev.map((item) =>
+        item.id === id ? { ...item, quantity: newQuantity } : item
+      )
+    );
+  }, []);
 
   // Log state changes
   useEffect(() => {
@@ -325,9 +406,12 @@ export default function AIChatPage() {
   const startNewConversation = () => {
     trackEvent(AnalyticsEvents.AI_CHAT_SESSION_STARTED);
     console.log("[AI Chat] Starting new conversation, keeping selected vehicle:", selectedVehicle);
+    // Save current pick list before switching
+    savePickListToStorage(conversationId, pickList);
     setMessages([]);
     setConversationId(null);
     // Don't clear selectedVehicle - keep it for the new conversation
+    // Pick list will be loaded from draft storage via the conversationId effect
     setPickList([]);
     setShowNewConversationDialog(false);
   };
@@ -345,8 +429,9 @@ export default function AIChatPage() {
       });
 
       if (response.ok) {
-        // Remove from state
+        // Remove from state and localStorage
         setConversations((prev) => prev.filter((c) => c.id !== convId));
+        removePickListFromStorage(convId);
 
         // If this was the active conversation, clear the messages
         if (conversationId === convId) {
@@ -414,6 +499,7 @@ export default function AIChatPage() {
 
       // Update conversation ID if new
       if (data.conversationId && !conversationId) {
+        migrateDraftPickList(data.conversationId);
         setConversationId(data.conversationId);
         await loadConversations(); // Refresh conversation list
       }
@@ -1502,7 +1588,27 @@ export default function AIChatPage() {
                           </Button>
                         </div>
                         <div className="flex items-center justify-between text-xs">
-                          <span>Qty: {item.quantity}</span>
+                          <div className="flex items-center gap-1">
+                            <span className="text-muted-foreground mr-1">Qty:</span>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 w-6 p-0"
+                              onClick={() => updatePickListQuantity(item.id, item.quantity - 1)}
+                              disabled={item.quantity <= 1}
+                            >
+                              <Minus className="h-3 w-3" />
+                            </Button>
+                            <span className="w-6 text-center font-medium">{item.quantity}</span>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 w-6 p-0"
+                              onClick={() => updatePickListQuantity(item.id, item.quantity + 1)}
+                            >
+                              <Plus className="h-3 w-3" />
+                            </Button>
+                          </div>
                           {item.price && (
                             <span className="font-medium text-green-600">
                               ${(item.price * item.quantity).toFixed(2)}

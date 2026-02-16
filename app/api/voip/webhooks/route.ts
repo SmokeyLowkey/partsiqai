@@ -277,6 +277,32 @@ async function handleCallEnded(callId: string, vapiCallId: string | undefined, e
   // Get existing call record to preserve context data
   const existingLog = (call.conversationLog as any) || {};
 
+  // Build conversation history: prefer Vapi's artifact (complete transcript)
+  // over Redis state (which may have missed early turns due to race conditions)
+  let conversationHistory = state?.conversationHistory || [];
+
+  const vapiMessages = event.artifact?.messages;
+  if (Array.isArray(vapiMessages) && vapiMessages.length > 0) {
+    // Convert Vapi artifact messages to our conversationHistory format
+    const vapiTranscript = vapiMessages
+      .filter((msg: any) => msg.role === 'bot' || msg.role === 'user')
+      .map((msg: any) => ({
+        speaker: (msg.role === 'bot' ? 'ai' : 'supplier') as 'ai' | 'supplier' | 'system',
+        text: msg.message as string,
+        timestamp: msg.time ? new Date(msg.time) : new Date(),
+      }));
+
+    // Use Vapi transcript if it has more turns (more complete)
+    if (vapiTranscript.length > conversationHistory.length) {
+      logger.info({
+        callId,
+        vapiTurns: vapiTranscript.length,
+        redisTurns: conversationHistory.length,
+      }, 'Using Vapi artifact transcript (more complete than Redis state)');
+      conversationHistory = vapiTranscript;
+    }
+  }
+
   // Update call record with all final data
   const updateData: any = {
     status: 'COMPLETED',
@@ -285,7 +311,7 @@ async function handleCallEnded(callId: string, vapiCallId: string | undefined, e
     recordingUrl: event.recordingUrl,
     conversationLog: {
       ...existingLog,
-      conversationHistory: state?.conversationHistory || [],
+      conversationHistory,
       currentNode: state?.currentNode,
       status: state?.status,
       outcome: outcome,

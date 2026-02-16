@@ -110,6 +110,7 @@ export async function POST(
               userId: session.user.id,
               organizationId: quoteRequest.organizationId,
               preferredMethod: contactMethod as 'call' | 'email' | 'both',
+              userRole: session.user.role,
             },
           },
           {

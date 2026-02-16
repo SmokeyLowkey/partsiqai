@@ -160,6 +160,9 @@ async function processVoipCallInitiation(job: Job<VoipCallInitiationJobData>) {
       }
     }
 
+    // Determine threadRole from user's actual role
+    const threadRole = (metadata.userRole === 'TECHNICIAN' || metadata.userRole === 'USER') ? 'TECHNICIAN' : 'MANAGER';
+
     // Create call log entry
     const callLog = await prisma.supplierCall.create({
       data: {
@@ -171,6 +174,7 @@ async function processVoipCallInitiation(job: Job<VoipCallInitiationJobData>) {
         callType: 'QUOTE_REQUEST',
         callerId: metadata.userId,
         organizationId: metadata.organizationId,
+        threadRole,
         conversationLog: {
           context,
           initiatedBy: metadata.userId,

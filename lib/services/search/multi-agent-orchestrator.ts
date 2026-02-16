@@ -51,24 +51,90 @@ export class MultiAgentOrchestrator {
   async searchWithFormatting(
     query: string,
     organizationId: string,
-    vehicleContext?: VehicleContext
+    vehicleContext?: VehicleContext,
+    options?: { webSearchOnly?: boolean }
   ): Promise<FormattedSearchResponse> {
-    const rawResults = await this.search(query, organizationId, vehicleContext);
-    return this.formatter.formatSearchResults(rawResults, query, vehicleContext);
+    const rawResults = await this.search(query, organizationId, vehicleContext, options);
+    const formatted = this.formatter.formatSearchResults(rawResults, query, vehicleContext);
+    if (options?.webSearchOnly) {
+      formatted.webSearchOnly = true;
+      formatted.messageText = `🔍 **Web Search Results** — This vehicle is still being configured by your administrator. Showing web search results only.\n\n${formatted.messageText}`;
+    }
+    return formatted;
   }
 
   async search(
     query: string,
     organizationId: string,
-    vehicleContext?: VehicleContext
+    vehicleContext?: VehicleContext,
+    options?: { webSearchOnly?: boolean }
   ): Promise<SearchResult> {
     const startTime = Date.now();
-    const sourcesUsed: string[] = ['postgres']; // Postgres is always available
+    const sourcesUsed: string[] = [];
 
-    console.log('[MultiAgentOrchestrator] Starting search:', { query, organizationId, vehicleContext });
+    console.log('[MultiAgentOrchestrator] Starting search:', { query, organizationId, vehicleContext, webSearchOnly: options?.webSearchOnly });
 
     try {
-      // Check if vehicle is SEARCH_READY before allowing search
+      // If webSearchOnly, skip vehicle check and internal searches — go straight to web
+      if (options?.webSearchOnly) {
+        console.log('[MultiAgentOrchestrator] Web search only mode (vehicle not configured)');
+        await this.initializeAgents(organizationId);
+
+        if (!this.webSearchAgent) {
+          console.warn('[MultiAgentOrchestrator] No web search agent available for web-only search');
+          return {
+            results: [],
+            suggestedFilters: [],
+            relatedQueries: [],
+            searchMetadata: {
+              totalResults: 0,
+              searchTime: Date.now() - startTime,
+              sourcesUsed: [],
+            },
+          };
+        }
+
+        sourcesUsed.push('web');
+        const processedQuery = await QueryUnderstandingAgent.analyze(query, vehicleContext, this.llmClient, 2000);
+
+        try {
+          const rawWebResults = await this.webSearchAgent.search(processedQuery, vehicleContext, this.llmClient);
+          const webResults: EnrichedPartResult[] = rawWebResults.map(r => ({
+            ...r,
+            confidence: r.score,
+            foundBy: ['web'] as Array<'postgres' | 'pinecone' | 'neo4j' | 'web'>,
+            reason: 'Found via web search — vehicle configuration pending',
+            isWebResult: true,
+          }));
+
+          return {
+            results: [],
+            webResults: webResults.slice(0, 10),
+            suggestedFilters: [],
+            relatedQueries: [],
+            searchMetadata: {
+              totalResults: webResults.length,
+              searchTime: Date.now() - startTime,
+              sourcesUsed,
+              queryIntent: processedQuery.intent,
+            },
+          };
+        } catch (error: any) {
+          console.warn('[MultiAgentOrchestrator] Web-only search failed:', error.message);
+          return {
+            results: [],
+            suggestedFilters: [],
+            relatedQueries: [],
+            searchMetadata: {
+              totalResults: 0,
+              searchTime: Date.now() - startTime,
+              sourcesUsed: [],
+            },
+          };
+        }
+      }
+
+      // Check if vehicle is SEARCH_READY before allowing internal search
       if (vehicleContext?.vehicleId) {
         const vehicle = await prisma.vehicle.findUnique({
           where: { id: vehicleContext.vehicleId },
@@ -96,6 +162,8 @@ export class MultiAgentOrchestrator {
 
         console.log('[MultiAgentOrchestrator] Vehicle is SEARCH_READY:', vehicleContext.vehicleId);
       }
+
+      sourcesUsed.push('postgres'); // Postgres is always used for full search
       // Initialize optional agents (they may not be configured)
       console.log('[MultiAgentOrchestrator] Initializing agents...');
       await this.initializeAgents(organizationId);
