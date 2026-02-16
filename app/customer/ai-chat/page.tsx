@@ -26,6 +26,15 @@ import {
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { trackEvent, AnalyticsEvents } from "@/lib/analytics";
+import {
   Bot,
   User,
   Send,
@@ -48,6 +57,7 @@ import {
   Link as LinkIcon,
   Filter,
   Search,
+  Menu,
 } from "lucide-react";
 
 interface Message {
@@ -187,7 +197,9 @@ export default function AIChatPage() {
   const [pickList, setPickList] = useState<PickListItem[]>([]);
   const [showNewConversationDialog, setShowNewConversationDialog] =
     useState(false);
-  const [showPickList, setShowPickList] = useState(false);
+  const [showMobileConversations, setShowMobileConversations] = useState(false);
+  const [showMobilePickList, setShowMobilePickList] = useState(false);
+  const isMobile = useIsMobile();
   const [hasOpenRouter, setHasOpenRouter] = useState<boolean | null>(null);
   const [creatingQuoteRequest, setCreatingQuoteRequest] = useState(false);
   const [expandedParts, setExpandedParts] = useState<Record<string, boolean>>({});
@@ -311,6 +323,7 @@ export default function AIChatPage() {
   };
 
   const startNewConversation = () => {
+    trackEvent(AnalyticsEvents.AI_CHAT_SESSION_STARTED);
     console.log("[AI Chat] Starting new conversation, keeping selected vehicle:", selectedVehicle);
     setMessages([]);
     setConversationId(null);
@@ -367,6 +380,7 @@ export default function AIChatPage() {
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
+    trackEvent(AnalyticsEvents.AI_CHAT_MESSAGE_SENT);
 
     try {
       // Call the chat API with vehicle context
@@ -434,7 +448,7 @@ export default function AIChatPage() {
         const formattedResponse = data.searchResults || data.assistantMessage.metadata?.formattedResponse;
         if (formattedResponse?.parts) {
           // Show pick list panel when parts are available
-          setShowPickList(true);
+          setShowMobilePickList(true);
         }
       }
     } catch (error: any) {
@@ -483,7 +497,7 @@ export default function AIChatPage() {
         supplier: part.supplier,
       };
       setPickList((prev) => [...prev, newItem]);
-      setShowPickList(true);
+      setShowMobilePickList(true);
     }
   };
 
@@ -537,7 +551,7 @@ export default function AIChatPage() {
 
       // Clear the pick list and redirect to quote request page
       setPickList([]);
-      setShowPickList(false);
+      setShowMobilePickList(false);
 
       // Redirect to the quote request detail page
       router.push(`/customer/quote-requests/${quoteRequestData.quoteRequest.id}`);
@@ -1006,135 +1020,266 @@ export default function AIChatPage() {
         </Alert>
       )}
 
-      <div className="h-[calc(100vh-8rem)] flex gap-4 overflow-hidden">
-        {/* Conversation History Sidebar */}
-        <Card className="w-80 flex flex-col overflow-hidden">
-        <CardHeader className="border-b pb-3 shrink-0">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg">Conversations</CardTitle>
-            <Dialog
-              open={showNewConversationDialog}
-              onOpenChange={setShowNewConversationDialog}
-            >
-              <DialogTrigger asChild>
-                <Button size="sm">
-                  <Plus className="h-4 w-4 mr-1" />
-                  New
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>New Conversation</DialogTitle>
-                  <DialogDescription>
-                    Select a vehicle context for this conversation (optional)
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">
-                      Vehicle Context (Optional)
-                    </label>
-                    <Select
-                      onValueChange={(value) => {
-                        const vehicle = vehicles.find((v) => v.id === value);
-                        setSelectedVehicle(vehicle || null);
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a vehicle" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {vehicles.map((vehicle) => (
-                          <SelectItem key={vehicle.id} value={vehicle.id}>
-                            {vehicle.year} {vehicle.make} {vehicle.model}
-                            {vehicle.serialNumber && ` - ${vehicle.serialNumber}`}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Button onClick={startNewConversation} className="w-full">
-                    Start Conversation
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </CardHeader>
-        <ScrollArea className="flex-1">
-          <div className="p-2 space-y-2">
-            {conversations.map((conv) => (
-              <div
-                key={conv.id}
-                className={`relative group rounded-lg border transition-colors ${
-                  conversationId === conv.id
-                    ? "bg-primary/10 border-primary"
-                    : "bg-card border-border hover:bg-muted"
-                }`}
-              >
-                <button
-                  onClick={() => loadConversationMessages(conv.id)}
-                  className="w-full text-left p-3 overflow-hidden"
+      <div className="h-[calc(100vh-4rem)] md:h-[calc(100vh-8rem)] flex gap-0 md:gap-4 overflow-hidden">
+        {/* Conversation History Sidebar — Desktop: inline Card, Mobile: Sheet overlay */}
+        {!isMobile ? (
+          <Card className="w-80 flex flex-col overflow-hidden">
+            <CardHeader className="border-b pb-3 shrink-0">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">Conversations</CardTitle>
+                <Dialog
+                  open={showNewConversationDialog}
+                  onOpenChange={setShowNewConversationDialog}
                 >
-                  <div className="flex items-start gap-2">
-                    <MessageSquare className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-                    <div className="flex-1 min-w-0 pr-6">
-                      <p
-                        className="font-medium text-sm line-clamp-2 break-words"
-                        title={conv.title}
-                      >
-                        {conv.title}
-                      </p>
-                      {conv.vehicle && (
-                        <Badge
-                          variant="outline"
-                          className="text-xs mt-1 bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800 max-w-full truncate"
+                  <DialogTrigger asChild>
+                    <Button size="sm">
+                      <Plus className="h-4 w-4 mr-1" />
+                      New
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>New Conversation</DialogTitle>
+                      <DialogDescription>
+                        Select a vehicle context for this conversation (optional)
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">
+                          Vehicle Context (Optional)
+                        </label>
+                        <Select
+                          onValueChange={(value) => {
+                            const vehicle = vehicles.find((v) => v.id === value);
+                            setSelectedVehicle(vehicle || null);
+                          }}
                         >
-                          <Truck className="h-2.5 w-2.5 mr-1 shrink-0" />
-                          <span className="truncate">
-                            {conv.vehicle.year} {conv.vehicle.make} {conv.vehicle.model}
-                          </span>
-                        </Badge>
-                      )}
-                      <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                        <span>{conv.messageCount} {conv.messageCount === 1 ? 'message' : 'messages'}</span>
-                        <span>•</span>
-                        <span>{new Date(conv.lastMessageAt).toLocaleDateString()}</span>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a vehicle" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {vehicles.map((vehicle) => (
+                              <SelectItem key={vehicle.id} value={vehicle.id}>
+                                {vehicle.year} {vehicle.make} {vehicle.model}
+                                {vehicle.serialNumber && ` - ${vehicle.serialNumber}`}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
+                      <Button onClick={startNewConversation} className="w-full">
+                        Start Conversation
+                      </Button>
                     </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </CardHeader>
+            <ScrollArea className="flex-1">
+              <div className="p-2 space-y-2">
+                {conversations.map((conv) => (
+                  <div
+                    key={conv.id}
+                    className={`relative group rounded-lg border transition-colors ${
+                      conversationId === conv.id
+                        ? "bg-primary/10 border-primary"
+                        : "bg-card border-border hover:bg-muted"
+                    }`}
+                  >
+                    <button
+                      onClick={() => loadConversationMessages(conv.id)}
+                      className="w-full text-left p-3 overflow-hidden"
+                    >
+                      <div className="flex items-start gap-2">
+                        <MessageSquare className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                        <div className="flex-1 min-w-0 pr-6">
+                          <p
+                            className="font-medium text-sm line-clamp-2 break-words"
+                            title={conv.title}
+                          >
+                            {conv.title}
+                          </p>
+                          {conv.vehicle && (
+                            <Badge
+                              variant="outline"
+                              className="text-xs mt-1 bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800 max-w-full truncate"
+                            >
+                              <Truck className="h-2.5 w-2.5 mr-1 shrink-0" />
+                              <span className="truncate">
+                                {conv.vehicle.year} {conv.vehicle.make} {conv.vehicle.model}
+                              </span>
+                            </Badge>
+                          )}
+                          <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                            <span>{conv.messageCount} {conv.messageCount === 1 ? 'message' : 'messages'}</span>
+                            <span>•</span>
+                            <span>{new Date(conv.lastMessageAt).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="absolute top-2 right-2 h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => deleteConversation(conv.id, e)}
+                    >
+                      <Trash2 className="h-3 w-3 text-destructive" />
+                    </Button>
                   </div>
-                </button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="absolute top-2 right-2 h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={(e) => deleteConversation(conv.id, e)}
-                >
-                  <Trash2 className="h-3 w-3 text-destructive" />
-                </Button>
+                ))}
+                {conversations.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground text-sm">
+                    No conversations yet.
+                    <br />
+                    Start a new one!
+                  </div>
+                )}
               </div>
-            ))}
-            {conversations.length === 0 && (
-              <div className="text-center py-8 text-muted-foreground text-sm">
-                No conversations yet.
-                <br />
-                Start a new one!
-              </div>
-            )}
-          </div>
-        </ScrollArea>
-      </Card>
+            </ScrollArea>
+          </Card>
+        ) : (
+          <Sheet open={showMobileConversations} onOpenChange={setShowMobileConversations}>
+            <SheetContent side="left" className="w-[85vw] max-w-sm p-0 flex flex-col">
+              <SheetHeader className="p-4 border-b shrink-0">
+                <SheetTitle>Conversations</SheetTitle>
+                <SheetDescription>
+                  <Dialog
+                    open={showNewConversationDialog}
+                    onOpenChange={setShowNewConversationDialog}
+                  >
+                    <DialogTrigger asChild>
+                      <Button size="sm" className="mt-2 w-full">
+                        <Plus className="h-4 w-4 mr-1" />
+                        New Conversation
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>New Conversation</DialogTitle>
+                        <DialogDescription>
+                          Select a vehicle context for this conversation (optional)
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">
+                            Vehicle Context (Optional)
+                          </label>
+                          <Select
+                            onValueChange={(value) => {
+                              const vehicle = vehicles.find((v) => v.id === value);
+                              setSelectedVehicle(vehicle || null);
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a vehicle" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {vehicles.map((vehicle) => (
+                                <SelectItem key={vehicle.id} value={vehicle.id}>
+                                  {vehicle.year} {vehicle.make} {vehicle.model}
+                                  {vehicle.serialNumber && ` - ${vehicle.serialNumber}`}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button onClick={() => { startNewConversation(); setShowMobileConversations(false); }} className="w-full">
+                          Start Conversation
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </SheetDescription>
+              </SheetHeader>
+              <ScrollArea className="flex-1">
+                <div className="p-2 space-y-2">
+                  {conversations.map((conv) => (
+                    <div
+                      key={conv.id}
+                      className={`relative group rounded-lg border transition-colors ${
+                        conversationId === conv.id
+                          ? "bg-primary/10 border-primary"
+                          : "bg-card border-border hover:bg-muted"
+                      }`}
+                    >
+                      <button
+                        onClick={() => { loadConversationMessages(conv.id); setShowMobileConversations(false); }}
+                        className="w-full text-left p-3 overflow-hidden"
+                      >
+                        <div className="flex items-start gap-2">
+                          <MessageSquare className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                          <div className="flex-1 min-w-0 pr-6">
+                            <p
+                              className="font-medium text-sm line-clamp-2 break-words"
+                              title={conv.title}
+                            >
+                              {conv.title}
+                            </p>
+                            {conv.vehicle && (
+                              <Badge
+                                variant="outline"
+                                className="text-xs mt-1 bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800 max-w-full truncate"
+                              >
+                                <Truck className="h-2.5 w-2.5 mr-1 shrink-0" />
+                                <span className="truncate">
+                                  {conv.vehicle.year} {conv.vehicle.make} {conv.vehicle.model}
+                                </span>
+                              </Badge>
+                            )}
+                            <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                              <span>{conv.messageCount} {conv.messageCount === 1 ? 'message' : 'messages'}</span>
+                              <span>•</span>
+                              <span>{new Date(conv.lastMessageAt).toLocaleDateString()}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="absolute top-2 right-2 h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => deleteConversation(conv.id, e)}
+                      >
+                        <Trash2 className="h-3 w-3 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                  {conversations.length === 0 && (
+                    <div className="text-center py-8 text-muted-foreground text-sm">
+                      No conversations yet.
+                      <br />
+                      Start a new one!
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </SheetContent>
+          </Sheet>
+        )}
 
       {/* Main Chat Area */}
       <Card className="flex-1 flex flex-col overflow-hidden">
         <CardHeader className="border-b shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
+              {isMobile && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="mr-2 h-10 w-10"
+                  onClick={() => setShowMobileConversations(true)}
+                >
+                  <Menu className="h-5 w-5" />
+                </Button>
+              )}
               <Bot className="h-6 w-6 text-green-600 mr-2" />
               <div>
                 <CardTitle className="flex items-center">
                   AI Parts Assistant
-                  <Badge variant="secondary" className="ml-2">
+                  <Badge variant="secondary" className="ml-2 hidden sm:inline-flex">
                     <Sparkles className="h-3 w-3 mr-1" />
                     Multi-Agent Search
                   </Badge>
@@ -1144,13 +1289,13 @@ export default function AIChatPage() {
                   return null;
                 })()}
                 {selectedVehicle && (
-                  <div className="flex items-center gap-2 mt-2">
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
                     <Badge
                       variant="outline"
-                      className="text-xs py-1 px-2 bg-blue-50 dark:bg-blue-950 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 font-medium"
+                      className="text-xs py-1 px-2 bg-blue-50 dark:bg-blue-950 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 font-medium max-w-[70vw] sm:max-w-none truncate"
                     >
-                      <Truck className="h-3.5 w-3.5 mr-1.5" />
-                      Vehicle Context: {selectedVehicle.year} {selectedVehicle.make} {selectedVehicle.model}
+                      <Truck className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+                      <span className="truncate">Vehicle Context: {selectedVehicle.year} {selectedVehicle.make} {selectedVehicle.model}</span>
                     </Badge>
                     <Button
                       size="sm"
@@ -1169,7 +1314,7 @@ export default function AIChatPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setShowPickList(!showPickList)}
+                onClick={() => setShowMobilePickList(true)}
               >
                 <ShoppingCart className="h-4 w-4 mr-1" />
                 Pick List ({pickList.length})
@@ -1185,7 +1330,7 @@ export default function AIChatPage() {
               {messages.length === 0 && (
                 <div className="space-y-4">
                   <div className="flex justify-start">
-                    <div className="max-w-[80%]">
+                    <div className="max-w-full sm:max-w-[80%]">
                       <div className="flex items-start space-x-2">
                         <div className="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center">
                           <Bot className="h-4 w-4 text-white" />
@@ -1231,7 +1376,7 @@ export default function AIChatPage() {
                   className={`flex ${message.role === "USER" ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`max-w-[80%] ${message.role === "USER" ? "order-2" : "order-1"}`}
+                    className={`max-w-full sm:max-w-[80%] ${message.role === "USER" ? "order-2" : "order-1"}`}
                   >
                     <div
                       className={`flex items-start space-x-2 ${message.role === "USER" ? "flex-row-reverse space-x-reverse" : ""}`}
@@ -1321,25 +1466,17 @@ export default function AIChatPage() {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Pick List Panel */}
-            {showPickList && pickList.length > 0 && (
-              <div className="w-80 border-l border-border bg-muted/30 flex flex-col overflow-hidden relative">
-                <div className="p-4 border-b border-border shrink-0">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold flex items-center">
-                      <ShoppingCart className="h-4 w-4 mr-2" />
-                      Pick List
-                    </h3>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setShowPickList(false)}
-                    >
-                      Close
-                    </Button>
-                  </div>
-                </div>
-                <ScrollArea className="flex-1 pb-20">
+            {/* Pick List — Sheet overlay (all screen sizes) */}
+            <Sheet open={showMobilePickList} onOpenChange={setShowMobilePickList}>
+              <SheetContent side="right" className="w-[85vw] max-w-sm p-0">
+                <SheetHeader className="p-4 border-b border-border">
+                  <SheetTitle className="flex items-center">
+                    <ShoppingCart className="h-4 w-4 mr-2" />
+                    Pick List ({pickList.length})
+                  </SheetTitle>
+                  <SheetDescription className="sr-only">Your selected parts</SheetDescription>
+                </SheetHeader>
+                <ScrollArea className="flex-1 pb-24">
                   <div className="p-4 space-y-2">
                     {pickList.map((item) => (
                       <div
@@ -1378,8 +1515,8 @@ export default function AIChatPage() {
                 </ScrollArea>
                 <div className="absolute bottom-0 left-0 right-0 p-4 bg-background border-t border-border">
                   <Button
-                    onClick={createPickListOrder}
-                    className="w-full"
+                    onClick={() => { createPickListOrder(); setShowMobilePickList(false); }}
+                    className="w-full h-12"
                     disabled={pickList.length === 0 || creatingQuoteRequest}
                   >
                     <CheckCircle className="h-4 w-4 mr-2" />
@@ -1388,34 +1525,35 @@ export default function AIChatPage() {
                       : `Create Quote Request (${pickList.length} items)`}
                   </Button>
                 </div>
-              </div>
-            )}
+              </SheetContent>
+            </Sheet>
           </div>
 
           <Separator className="shrink-0" />
 
           {/* Input Area */}
-          <div className="p-4 bg-background border-t border-border shrink-0">
+          <div className="p-3 sm:p-4 bg-background border-t border-border shrink-0">
             <div className="flex space-x-2">
-              <Button variant="outline" size="icon">
+              <Button variant="outline" size="icon" className="h-10 w-10 shrink-0">
                 <Paperclip className="h-4 w-4" />
               </Button>
               <Input
-                placeholder="Describe the part you need or ask a question..."
+                placeholder="Describe the part you need..."
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
-                className="flex-1 bg-background text-foreground"
+                className="flex-1 h-10 bg-background text-foreground"
                 disabled={isLoading}
               />
               <Button
                 onClick={handleSendMessage}
                 disabled={!input.trim() || isLoading}
+                className="h-10 shrink-0"
               >
                 <Send className="h-4 w-4" />
               </Button>
             </div>
-            <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
+            <div className="hidden sm:flex items-center justify-between mt-2 text-xs text-muted-foreground">
               <span>
                 AI can identify parts, find suppliers, and help with orders
               </span>

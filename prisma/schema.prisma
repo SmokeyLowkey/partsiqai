@@ -1611,6 +1611,7 @@ enum IntegrationType {
   SMTP
   MISTRAL
   VAPI
+  SERPER
 }
 
 enum TestStatus {

@@ -1,3 +1,5 @@
+"use client"
+
 import { Button } from "@/components/ui/button"
 import {
   ArrowRight,
@@ -18,10 +20,14 @@ import {
   Mail,
   Bot,
   Mic,
+  X,
+  List,
 } from "lucide-react"
 import Link from "next/link"
+import { useState } from "react"
 
 export default function HomePage() {
+  const [isPickListOpen, setIsPickListOpen] = useState(false)
   return (
     <div className="min-h-screen bg-white">
       {/* Hero Section — AI Voice Agent */}
@@ -621,9 +627,9 @@ export default function HomePage() {
                 </div>
               </div>
 
-              <div className="flex gap-0 bg-slate-950 rounded-lg overflow-hidden shadow-lg">
+              <div className="relative bg-slate-950 rounded-lg overflow-hidden shadow-lg">
                 {/* Chat Interface */}
-                <div className="flex-1 flex flex-col bg-slate-950 min-w-0">
+                <div className="flex flex-col bg-slate-950">
                   {/* Chat Header */}
                   <div className="bg-slate-900 border-b border-slate-800 px-4 py-3">
                     <div className="flex items-center justify-between">
@@ -631,9 +637,19 @@ export default function HomePage() {
                         <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
                         <span className="font-medium text-white">AI Parts Assistant</span>
                       </div>
-                      <div className="flex items-center gap-2 px-3 py-1 bg-blue-900/30 border border-blue-700 rounded text-xs text-blue-300">
-                        <Search className="h-3 w-3" />
-                        Multi-Agent Search
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 px-3 py-1 bg-blue-900/30 border border-blue-700 rounded text-xs text-blue-300">
+                          <Search className="h-3 w-3" />
+                          Multi-Agent Search
+                        </div>
+                        <button
+                          onClick={() => setIsPickListOpen(!isPickListOpen)}
+                          className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded text-xs text-white transition-colors"
+                          aria-label="Toggle pick list"
+                        >
+                          <List className="h-3.5 w-3.5" />
+                          <span>Pick List (1)</span>
+                        </button>
                       </div>
                     </div>
                     <div className="mt-2 flex items-center gap-2 text-xs text-slate-400">
@@ -713,25 +729,44 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                {/* Pick List Sidebar */}
-                <div className="w-56 bg-slate-900 border-l border-slate-800 flex flex-col">
-                  <div className="px-3 py-2.5 border-b border-slate-800">
-                    <div className="flex items-center justify-between">
+                {/* Backdrop */}
+                {isPickListOpen && (
+                  <div
+                    className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm z-10 transition-opacity"
+                    onClick={() => setIsPickListOpen(false)}
+                  />
+                )}
+
+                {/* Pick List Overlay */}
+                <div
+                  className={`absolute top-0 right-0 bottom-0 w-80 bg-slate-900 border-l border-slate-800 flex flex-col z-20 transition-transform duration-300 ease-in-out ${
+                    isPickListOpen ? 'translate-x-0' : 'translate-x-full'
+                  }`}
+                >
+                  <div className="px-3 py-2.5 border-b border-slate-800 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
                       <h3 className="font-semibold text-white text-sm">Pick List</h3>
                       <span className="text-xs text-slate-400">(1)</span>
                     </div>
+                    <button
+                      onClick={() => setIsPickListOpen(false)}
+                      className="text-slate-400 hover:text-white transition-colors p-1"
+                      aria-label="Close pick list"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
                   </div>
 
                   <div className="flex-1 p-3 overflow-y-auto">
                     {/* Pick List Item */}
-                    <div className="bg-slate-950 border border-slate-700 rounded-lg p-2.5 mb-2">
-                      <div className="flex items-start justify-between mb-1.5">
+                    <div className="bg-slate-950 border border-slate-700 rounded-lg p-3 mb-2">
+                      <div className="flex items-start justify-between mb-2">
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm font-semibold text-white mb-0.5 truncate">9323701G</div>
-                          <div className="text-xs text-slate-400 leading-tight line-clamp-2">Right Boom Hydraulic Cylinder</div>
+                          <div className="text-sm font-semibold text-white mb-1">9323701G</div>
+                          <div className="text-xs text-slate-400 leading-tight">Right Boom Hydraulic Cylinder</div>
                         </div>
-                        <button className="text-slate-500 hover:text-white ml-1 flex-shrink-0">
-                          <span className="text-base leading-none">&times;</span>
+                        <button className="text-slate-500 hover:text-white ml-2 flex-shrink-0 p-1">
+                          <X className="h-3.5 w-3.5" />
                         </button>
                       </div>
                       <div className="text-xs text-slate-500">Qty: 1</div>
@@ -743,7 +778,7 @@ export default function HomePage() {
                   </div>
 
                   <div className="p-3 border-t border-slate-800">
-                    <button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium py-2 rounded-lg transition-colors">
+                    <button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium py-2.5 rounded-lg transition-colors">
                       Create Quote Request (1)
                     </button>
                   </div>

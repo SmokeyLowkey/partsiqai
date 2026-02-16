@@ -187,6 +187,9 @@ export default function SettingsPage() {
   const [platformMistralConfig, setPlatformMistralConfig] = useState({
     apiKey: "",
   });
+  const [platformSerperConfig, setPlatformSerperConfig] = useState({
+    apiKey: "",
+  });
   const [savingPlatformIntegration, setSavingPlatformIntegration] = useState<string | null>(null);
 
   // Organization Pinecone mapping state (Master Admin only)
@@ -326,6 +329,12 @@ export default function SettingsPage() {
         const mistralCreds = creds.MISTRAL || {};
         setPlatformMistralConfig({
           apiKey: mistralCreds.apiKey || "",
+        });
+
+        // Serper
+        const serperCreds = creds.SERPER || {};
+        setPlatformSerperConfig({
+          apiKey: serperCreds.apiKey || "",
         });
       }
     } catch (error) {
@@ -604,6 +613,12 @@ export default function SettingsPage() {
         case "MISTRAL":
           credentials = {
             apiKey: platformMistralConfig.apiKey,
+          };
+          break;
+
+        case "SERPER":
+          credentials = {
+            apiKey: platformSerperConfig.apiKey,
           };
           break;
       }
@@ -1873,6 +1888,71 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Platform-wide Serper (Web Search) Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Globe className="h-5 w-5" />
+            Platform Web Search (Serper API)
+          </CardTitle>
+          <CardDescription>
+            Configure platform-wide Serper API for web-based parts search when internal databases have limited results.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-green-100 dark:bg-green-900 rounded-lg">
+                <Globe className="h-5 w-5 text-green-600 dark:text-green-400" />
+              </div>
+              <div>
+                <h3 className="font-medium">Serper Google Search</h3>
+                <p className="text-sm text-muted-foreground">
+                  Search the web for parts pricing, availability, and specifications
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-12">
+              <div className="space-y-2">
+                <Label>API Key</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type={showApiKeys["platform_serper"] ? "text" : "password"}
+                    value={platformSerperConfig.apiKey}
+                    onChange={(e) => setPlatformSerperConfig({ ...platformSerperConfig, apiKey: e.target.value })}
+                    placeholder="Enter Serper API key"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => toggleShowApiKey("platform_serper")}
+                  >
+                    {showApiKeys["platform_serper"] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pl-12">
+              <Button
+                onClick={() => handleSavePlatformIntegration("SERPER")}
+                disabled={savingPlatformIntegration === "SERPER" || !platformSerperConfig.apiKey}
+              >
+                {savingPlatformIntegration === "SERPER" ? (
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4 mr-2" />
+                )}
+                Save
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Separator />
 
       {/* Info Card */}
       <Card className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950">

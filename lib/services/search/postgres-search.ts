@@ -15,7 +15,7 @@ export interface PartResult {
   category?: string;
   compatibility?: any;
   score: number;
-  source: 'postgres' | 'pinecone' | 'neo4j';
+  source: 'postgres' | 'pinecone' | 'neo4j' | 'web';
   // Additional metadata from Pinecone (John Deere catalog)
   metadata?: {
     diagramTitle?: string;

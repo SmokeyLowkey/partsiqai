@@ -108,8 +108,16 @@ export class CredentialsManager {
           } as T;
         }
         break;
+
+      case 'SERPER':
+        if (process.env.SERPER_API_KEY) {
+          return {
+            apiKey: process.env.SERPER_API_KEY,
+          } as T;
+        }
+        break;
     }
-    
+
     return null;
   }
 
@@ -284,7 +292,7 @@ export class CredentialsManager {
     }
 
     // If using platform keys, add virtual entries for platform integrations
-    const platformTypes: IntegrationType[] = ['OPENROUTER', 'PINECONE', 'NEO4J', 'MISTRAL'];
+    const platformTypes: IntegrationType[] = ['OPENROUTER', 'PINECONE', 'NEO4J', 'MISTRAL', 'SERPER'];
     const platformCredentialsEntries = [];
 
     for (const type of platformTypes) {
@@ -452,6 +460,9 @@ export class CredentialsManager {
         case 'MISTRAL':
           await this.testMistral(credentials as any);
           break;
+        case 'SERPER':
+          await this.testSerper(credentials as any);
+          break;
       }
 
       // Update test status
@@ -562,6 +573,22 @@ export class CredentialsManager {
 
     // Test by listing models to verify API key
     await client.models.list();
+  }
+
+  private async testSerper(creds: { apiKey: string }) {
+    const response = await fetch('https://google.serper.dev/search', {
+      method: 'POST',
+      headers: {
+        'X-API-KEY': creds.apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ q: 'test', num: 1 }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Serper API test failed: ${response.status} ${errorText}`);
+    }
   }
 }
 

@@ -290,8 +290,8 @@ export default function QuoteRequestDetailPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-start gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-4 min-w-0">
           <Button
             variant="ghost"
             size="sm"
@@ -301,7 +301,7 @@ export default function QuoteRequestDetailPage() {
             Back
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">
+            <h1 className="text-xl sm:text-2xl font-bold">
               Quote Request {quoteRequest.quoteNumber}
             </h1>
             <p className="text-muted-foreground">
@@ -309,7 +309,7 @@ export default function QuoteRequestDetailPage() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {quoteRequest.status === 'DRAFT' && (
             <Button
               onClick={() => setShowSendDialog(true)}

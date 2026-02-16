@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Building2, Loader2, AlertCircle, ArrowLeft } from "lucide-react"
 import { toast } from "sonner"
+import { trackEvent, AnalyticsEvents } from "@/lib/analytics"
 
 export default function OrganizationPage() {
   const router = useRouter()
@@ -51,6 +52,8 @@ export default function OrganizationPage() {
         throw new Error(data.error || "Failed to complete onboarding")
       }
 
+      trackEvent(AnalyticsEvents.ONBOARDING_STEP_COMPLETED, { step: 2, stepName: 'organization' })
+      trackEvent(AnalyticsEvents.ONBOARDING_COMPLETED)
       toast.success("Setup complete! Welcome to PartsIQ")
 
       // Force session refresh so the JWT picks up the new onboardingStatus

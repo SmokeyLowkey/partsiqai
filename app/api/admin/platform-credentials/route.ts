@@ -24,7 +24,7 @@ export async function GET() {
     await ensureSystemOrganization();
 
     // Get decrypted credentials for each integration type
-    const types: IntegrationType[] = ['VAPI', 'OPENROUTER', 'PINECONE', 'NEO4J', 'MISTRAL'];
+    const types: IntegrationType[] = ['VAPI', 'OPENROUTER', 'PINECONE', 'NEO4J', 'MISTRAL', 'SERPER'];
     const credentials: any = {};
 
     for (const type of types) {
@@ -73,7 +73,7 @@ export async function POST(request: Request) {
     }
 
     // Validate integration type
-    const validTypes: IntegrationType[] = ['OPENROUTER', 'PINECONE', 'NEO4J', 'MISTRAL', 'VAPI'];
+    const validTypes: IntegrationType[] = ['OPENROUTER', 'PINECONE', 'NEO4J', 'MISTRAL', 'VAPI', 'SERPER'];
     if (!validTypes.includes(type as IntegrationType)) {
       return NextResponse.json(
         { error: "Invalid integration type" },

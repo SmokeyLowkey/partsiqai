@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Sparkles, ArrowLeft, AlertCircle, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { authToasts } from "@/lib/toast-utils"
+import { trackEvent, AnalyticsEvents } from "@/lib/analytics"
 
 const ERROR_MESSAGES: Record<string, string> = {
   "CredentialsSignin": "Invalid email or password. Please try again.",
@@ -43,6 +44,7 @@ export default function LoginPage() {
       if (result?.error) {
         const errorMessage = ERROR_MESSAGES[result.error] || ERROR_MESSAGES.Default
         setError(errorMessage)
+        trackEvent(AnalyticsEvents.LOGIN_FAILED, { error: result.error })
 
         console.log("[LOGIN] Login failed:", {
           email,
@@ -53,6 +55,7 @@ export default function LoginPage() {
         // Show error toast
         authToasts.signInError(errorMessage)
       } else if (result?.ok) {
+        trackEvent(AnalyticsEvents.LOGIN_SUCCESS)
         console.log("[LOGIN] Login successful:", {
           email,
           timestamp: new Date().toISOString(),

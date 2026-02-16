@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Sparkles, Loader2, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
+import { trackEvent, AnalyticsEvents } from "@/lib/analytics"
 
 export default function WelcomePage() {
   const router = useRouter()
@@ -46,6 +47,7 @@ export default function WelcomePage() {
         throw new Error(data.error || "Failed to save progress")
       }
 
+      trackEvent(AnalyticsEvents.ONBOARDING_STEP_COMPLETED, { step: 1, stepName: 'welcome' })
       // Go to next step
       router.push("/onboarding/organization")
     } catch (err: any) {

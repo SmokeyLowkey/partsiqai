@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,11 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sparkles, ArrowLeft, AlertCircle, Loader2, CheckCircle2 } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
+import { trackEvent, AnalyticsEvents } from "@/lib/analytics"
 
 export default function SignupPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const hasTrackedStart = useRef(false)
 
   // Form state
   const [formData, setFormData] = useState({
@@ -39,6 +41,10 @@ export default function SignupPage() {
   })
 
   const handleInputChange = (field: string, value: string) => {
+    if (!hasTrackedStart.current) {
+      trackEvent(AnalyticsEvents.SIGNUP_STARTED)
+      hasTrackedStart.current = true
+    }
     setFormData(prev => ({ ...prev, [field]: value }))
 
     // Update password strength indicators
@@ -86,9 +92,14 @@ export default function SignupPage() {
       const data = await response.json()
 
       if (!response.ok) {
+        trackEvent(AnalyticsEvents.SIGNUP_FAILED, { error: data.error || "Unknown error" })
         setError(data.error || "Failed to create account")
         toast.error(data.error || "Failed to create account")
       } else {
+        trackEvent(AnalyticsEvents.SIGNUP_COMPLETED, {
+          industry: formData.industry,
+          companySize: formData.companySize,
+        })
         // Success - show toast and redirect to verification page
         toast.success("Account created successfully! Please check your email.")
         router.push(`/signup/verify-email?email=${encodeURIComponent(formData.email)}`)

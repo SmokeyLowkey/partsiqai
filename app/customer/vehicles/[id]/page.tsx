@@ -313,9 +313,9 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
         </Button>
       </div>
 
-      <div className="flex items-start justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
             {vehicle.year} {vehicle.make} {vehicle.model}
           </h1>
           <p className="text-muted-foreground">
@@ -328,7 +328,7 @@ export default function VehicleDetailPage({ params }: { params: Promise<{ id: st
       </div>
 
       {/* Quick Stats */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Operating Hours</CardTitle>

@@ -7,6 +7,7 @@ export interface FormattedSearchResponse {
 
   // Structured data (for UI components)
   parts: FormattedPart[];
+  webParts?: FormattedPart[];
   summary: SearchSummary;
   recommendations: Recommendation[];
   filters: FilterOption[];
@@ -18,6 +19,7 @@ export interface FormattedSearchResponse {
     searchTime: number;
     sourcesUsed: string[];
     hasMoreResults: boolean;
+    queryIntent?: string;
   };
 }
 
@@ -44,6 +46,8 @@ export interface FormattedPart {
   badges: Badge[];
   callToAction: string;
   foundBy?: string[];
+  explanation?: string;
+  isWebResult?: boolean;
   // Rich metadata from Pinecone
   metadata?: {
     diagramTitle?: string;
@@ -70,6 +74,7 @@ export interface SearchSummary {
   avgConfidence?: number;
   inStockCount: number;
   categoryBreakdown: Record<string, number>;
+  webResultCount?: number;
 }
 
 export interface Recommendation {
@@ -101,7 +106,10 @@ export class ResponseFormatter {
     vehicleContext?: any
   ): FormattedSearchResponse {
     const formattedParts = this.formatParts(searchResults.results);
-    const summary = this.generateSummary(searchResults.results);
+    const formattedWebParts = searchResults.webResults
+      ? this.formatParts(searchResults.webResults)
+      : undefined;
+    const summary = this.generateSummary(searchResults.results, searchResults.webResults);
     const recommendations = this.generateRecommendations(searchResults.results);
     const filters = this.generateFilters(searchResults.results);
 
@@ -110,20 +118,23 @@ export class ResponseFormatter {
       query,
       formattedParts,
       summary,
-      vehicleContext
+      vehicleContext,
+      formattedWebParts
     );
 
     const messageHtml = this.generateMessageHtml(
       query,
       formattedParts,
       summary,
-      vehicleContext
+      vehicleContext,
+      formattedWebParts
     );
 
     return {
       messageText,
       messageHtml,
       parts: formattedParts,
+      webParts: formattedWebParts,
       summary,
       recommendations,
       filters,
@@ -131,6 +142,7 @@ export class ResponseFormatter {
       metadata: {
         ...searchResults.searchMetadata,
         hasMoreResults: searchResults.results.length > 10,
+        queryIntent: searchResults.searchMetadata.queryIntent,
       },
     };
   }
@@ -154,8 +166,10 @@ export class ResponseFormatter {
         availability: this.getAvailabilityText(stockStatus, result.stockQuantity),
         compatibility: result.compatibility,
         badges,
-        callToAction: this.getCallToAction(stockStatus, result.confidence),
+        callToAction: this.getCallToAction(stockStatus, result.confidence, result.isWebResult),
         foundBy: result.foundBy,
+        explanation: result.explanation,
+        isWebResult: result.isWebResult,
         metadata: (result as any).metadata, // Pass through rich metadata from Pinecone
       };
     });
@@ -163,6 +177,17 @@ export class ResponseFormatter {
 
   private generateBadges(result: EnrichedPartResult): Badge[] {
     const badges: Badge[] = [];
+
+    // Web result badge
+    if (result.isWebResult) {
+      badges.push({
+        text: 'From Web',
+        variant: 'info',
+        icon: '🌐',
+      });
+      // Web results get fewer badges — skip the multi-source and stock badges
+      return badges;
+    }
 
     // Multi-source badge
     if (result.foundBy.length > 1) {
@@ -240,7 +265,10 @@ export class ResponseFormatter {
     }
   }
 
-  private getCallToAction(stockStatus: string, confidence: number): string {
+  private getCallToAction(stockStatus: string, confidence: number, isWebResult?: boolean): string {
+    if (isWebResult) {
+      return 'View Source';
+    }
     if (stockStatus === 'in-stock' && confidence >= 80) {
       return 'Add to Quote Request';
     }
@@ -253,7 +281,7 @@ export class ResponseFormatter {
     return 'Check Availability';
   }
 
-  private generateSummary(results: EnrichedPartResult[]): SearchSummary {
+  private generateSummary(results: EnrichedPartResult[], webResults?: EnrichedPartResult[]): SearchSummary {
     const inStockCount = results.filter(
       (r) => r.stockQuantity && r.stockQuantity > 0
     ).length;
@@ -282,6 +310,7 @@ export class ResponseFormatter {
       avgConfidence,
       inStockCount,
       categoryBreakdown,
+      webResultCount: webResults?.length,
     };
   }
 
@@ -384,12 +413,13 @@ export class ResponseFormatter {
     query: string,
     parts: FormattedPart[],
     summary: SearchSummary,
-    vehicleContext?: any
+    vehicleContext?: any,
+    webParts?: FormattedPart[]
   ): string {
     const lines: string[] = [];
 
     // Opening line
-    if (parts.length === 0) {
+    if (parts.length === 0 && (!webParts || webParts.length === 0)) {
       lines.push(`I couldn't find any parts matching "${query}".`);
       lines.push('');
       lines.push('Try:');
@@ -423,11 +453,30 @@ export class ResponseFormatter {
     lines.push('**Top Matches:**');
     parts.slice(0, 3).forEach((part, i) => {
       lines.push(`${i + 1}. **${part.partNumber}** - ${part.description}`);
+      if (part.explanation) {
+        lines.push(`   ${part.explanation}`);
+      }
       if (part.priceFormatted) {
         lines.push(`   Price: ${part.priceFormatted} | ${part.availability}`);
       }
       lines.push('');
     });
+
+    // Web results section
+    if (webParts && webParts.length > 0) {
+      lines.push('');
+      lines.push('**From the Web** (unverified):');
+      webParts.slice(0, 3).forEach((part, i) => {
+        lines.push(`${i + 1}. **${part.partNumber}** - ${part.description}`);
+        if (part.metadata?.sourceUrl) {
+          lines.push(`   Source: ${part.metadata.sourceUrl}`);
+        }
+        if (part.priceFormatted) {
+          lines.push(`   Price: ${part.priceFormatted}`);
+        }
+        lines.push('');
+      });
+    }
 
     // Call to action
     if (summary.inStockCount > 0) {
@@ -441,9 +490,10 @@ export class ResponseFormatter {
     query: string,
     parts: FormattedPart[],
     summary: SearchSummary,
-    vehicleContext?: any
+    vehicleContext?: any,
+    webParts?: FormattedPart[]
   ): string {
-    if (parts.length === 0) {
+    if (parts.length === 0 && (!webParts || webParts.length === 0)) {
       return `
         <div class="search-results empty">
           <p>I couldn't find any parts matching <strong>"${query}"</strong>.</p>
@@ -461,7 +511,7 @@ export class ResponseFormatter {
       ? `for your ${vehicleContext.year} ${vehicleContext.make} ${vehicleContext.model}`
       : '';
 
-    return `
+    let html = `
       <div class="search-results success">
         <p>I found <strong>${summary.totalFound}</strong> part${summary.totalFound === 1 ? '' : 's'} matching <strong>"${query}"</strong> ${vehicle}.</p>
 
@@ -483,6 +533,7 @@ export class ResponseFormatter {
                 ${part.badges.map((badge) => `<span class="badge badge-${badge.variant}">${badge.icon} ${badge.text}</span>`).join('')}
               </div>
               <p class="part-description">${part.description}</p>
+              ${part.explanation ? `<p class="part-explanation">${part.explanation}</p>` : ''}
               <div class="part-meta">
                 ${part.priceFormatted ? `<span class="price">${part.priceFormatted}</span>` : ''}
                 <span class="availability ${part.stockStatus}">${part.availability}</span>
@@ -491,10 +542,40 @@ export class ResponseFormatter {
           `
             )
             .join('')}
-        </div>
+        </div>`;
 
+    // Web results section
+    if (webParts && webParts.length > 0) {
+      html += `
+        <div class="web-results">
+          <h4>From the Web <span class="badge badge-info">🌐 Unverified</span></h4>
+          ${webParts
+            .slice(0, 3)
+            .map(
+              (part, i) => `
+            <div class="part-match web-match">
+              <div class="part-header">
+                <span class="part-rank">${i + 1}</span>
+                <strong>${part.partNumber}</strong>
+                ${part.badges.map((badge) => `<span class="badge badge-${badge.variant}">${badge.icon} ${badge.text}</span>`).join('')}
+              </div>
+              <p class="part-description">${part.description}</p>
+              <div class="part-meta">
+                ${part.priceFormatted ? `<span class="price">${part.priceFormatted}</span>` : ''}
+                ${part.metadata?.sourceUrl ? `<a href="${part.metadata.sourceUrl}" target="_blank" class="source-link">View Source</a>` : ''}
+              </div>
+            </div>
+          `
+            )
+            .join('')}
+        </div>`;
+    }
+
+    html += `
         ${summary.inStockCount > 0 ? '<p class="cta">Would you like to add any of these to your quote request?</p>' : ''}
       </div>
     `;
+
+    return html;
   }
 }

@@ -168,17 +168,23 @@ Output only the email body (no subject line).
 
   // Analyze parts search query and extract intent
   ANALYZE_PARTS_QUERY: (query: string, vehicleContext?: any) => `
-Analyze this parts search query and extract structured information.
+Analyze this parts search query and extract structured information for a heavy equipment parts search system.
 
 Query: "${query}"
 ${vehicleContext ? `Vehicle: ${vehicleContext.year} ${vehicleContext.make} ${vehicleContext.model}` : ''}
 
 Extract:
-1. Part types mentioned (e.g., "filter", "belt", "gasket")
-2. Part numbers if mentioned (e.g., "123-456", "ABC789")
-3. Specific attributes (e.g., "hydraulic", "front", "left", "OEM")
-4. Urgency indicators (e.g., "urgent", "asap", "emergency")
-5. Search intent (exact_part_number, part_type, compatibility, alternatives)
+1. Part types mentioned (e.g., "filter", "belt", "gasket", "hydraulic pump")
+2. Part numbers if mentioned (e.g., "123-456", "ABC789", "RE54321", "AT-123456")
+3. Specific attributes (e.g., "hydraulic", "front", "left", "OEM", "aftermarket", "genuine")
+4. Urgency indicators (e.g., "urgent", "asap", "emergency", "machine down")
+5. Search intent: exact_part_number, part_description, compatibility_check, alternatives, general_question
+6. Expanded terms — synonyms and alternative names for the part type in heavy equipment context.
+   For example: "fuel filter" → ["fuel element", "fuel strainer", "fuel filtration element"]
+   "belt" → ["drive belt", "v-belt", "serpentine belt", "fan belt"]
+   "gasket" → ["seal", "o-ring", "packing"]
+7. shouldSearchWeb — true if the query is likely about a part not in an internal parts database
+   (e.g., asking about pricing, suppliers, specifications, or very specific/obscure part numbers)
 
 Return JSON:
 {
@@ -186,8 +192,10 @@ Return JSON:
   "partNumbers": ["string"],
   "attributes": ["string"],
   "urgent": boolean,
-  "intent": "exact_part_number" | "part_type" | "compatibility" | "alternatives",
-  "processedQuery": "cleaned and standardized query string"
+  "intent": "exact_part_number" | "part_description" | "compatibility_check" | "alternatives" | "general_question",
+  "processedQuery": "cleaned and standardized query string optimized for search",
+  "expandedTerms": ["synonym1", "synonym2"],
+  "shouldSearchWeb": boolean
 }
 `,
 
@@ -340,5 +348,93 @@ Provide actionable next steps:
 5. **Extract value from all agents** - consider insights from all three sources
 
 Return only the JSON object, nothing else.
+`,
+
+  // Extract structured parts info from web search snippets
+  EXTRACT_WEB_PARTS_INFO: (query: string, searchResults: Array<{ title: string; link: string; snippet: string }>) => `
+You are a heavy equipment parts specialist. Extract structured parts information from these web search results.
+
+Original search query: "${query}"
+
+Web search results:
+${searchResults.map((r, i) => `${i + 1}. Title: ${r.title}
+   URL: ${r.link}
+   Snippet: ${r.snippet}`).join('\n\n')}
+
+For each result that contains relevant parts information, extract:
+- partNumber: The part number mentioned (if any)
+- description: A brief description of the part
+- price: The price mentioned (if any, as a number without $ sign)
+- sourceName: The website/supplier name
+- sourceUrl: The URL
+- snippet: The most relevant snippet text
+- relevanceScore: 0-100 how relevant this result is to the query
+
+Only include results that are actually about parts. Skip irrelevant results.
+
+Return JSON:
+{
+  "extractedParts": [
+    {
+      "partNumber": "string or null",
+      "description": "string",
+      "price": number or null,
+      "sourceName": "string",
+      "sourceUrl": "string",
+      "snippet": "string",
+      "relevanceScore": number
+    }
+  ]
+}
+`,
+
+  // Smart re-ranking of search results
+  RERANK_RESULTS: (
+    originalQuery: string,
+    intent: string,
+    vehicleContext: any,
+    results: Array<{ partNumber: string; description: string; score: number; source: string; foundBy: string[]; isWebResult?: boolean }>
+  ) => `
+You are a heavy equipment parts search expert. Re-rank these search results by semantic relevance to the user's query.
+
+Query: "${originalQuery}"
+Intent: ${intent}
+${vehicleContext ? `Vehicle: ${vehicleContext.year} ${vehicleContext.make} ${vehicleContext.model}` : 'No vehicle context'}
+
+Results to re-rank (${results.length} total):
+${results.map((r, i) => `${i + 1}. [${r.source}${r.isWebResult ? ' - WEB' : ''}] ${r.partNumber}: ${r.description} (score: ${r.score}, found by: ${r.foundBy.join(', ')})`).join('\n')}
+
+For each result, evaluate:
+1. How well does the part match what the user is looking for?
+2. Is the part number relevant or just a coincidence?
+3. Does the description match the query intent?
+4. For web results: note they are unverified and may need confirmation
+
+## Scoring Guidelines
+- Exact part number match: 90-100
+- Strong description + category match: 70-89
+- Partial match (right category, wrong specifics): 50-69
+- Weak/tangential match: 30-49
+- Likely irrelevant: 0-29
+
+Return JSON:
+{
+  "rankedResults": [
+    {
+      "partNumber": "string",
+      "matchConfidence": number,
+      "explanation": "Brief human-readable explanation of why this result matches or doesn't"
+    }
+  ],
+  "suggestedFilters": ["string"],
+  "relatedQueries": ["string"]
+}
+
+Rules:
+- Return ALL results, re-ordered by matchConfidence (highest first)
+- Every result must have an explanation
+- For web results, add "Web source - may need verification" to explanation
+- Be critical — don't give high scores to irrelevant results
+- Return only the JSON object
 `,
 };

@@ -1,6 +1,9 @@
 import { PostgresSearchAgent, type VehicleContext, type PartResult } from './postgres-search';
 import { PineconeSearchAgent } from './pinecone-client';
 import { Neo4jSearchAgent } from './neo4j-client';
+import { WebSearchAgent } from './web-search-agent';
+import { QueryUnderstandingAgent, type ProcessedQuery } from './query-understanding';
+import { SmartReranker } from './smart-reranker';
 import { OpenRouterClient } from '../llm/openrouter-client';
 import { PROMPTS } from '../llm/prompt-templates';
 import { ResponseFormatter, type FormattedSearchResponse } from './response-formatter';
@@ -8,31 +11,38 @@ import { prisma } from '@/lib/prisma';
 
 export interface SearchResult {
   results: EnrichedPartResult[];
+  webResults?: EnrichedPartResult[];
   suggestedFilters: string[];
   relatedQueries: string[];
   searchMetadata: {
     totalResults: number;
     searchTime: number;
     sourcesUsed: string[];
+    queryIntent?: string;
   };
 }
 
 export interface EnrichedPartResult extends PartResult {
   confidence: number;
-  foundBy: Array<'postgres' | 'pinecone' | 'neo4j'>;
+  foundBy: Array<'postgres' | 'pinecone' | 'neo4j' | 'web'>;
   reason: string;
+  explanation?: string;
+  isWebResult?: boolean;
 }
 
 export class MultiAgentOrchestrator {
   private postgresAgent: PostgresSearchAgent;
   private pineconeAgent: PineconeSearchAgent | null = null;
   private neo4jAgent: Neo4jSearchAgent | null = null;
+  private webSearchAgent: WebSearchAgent | null = null;
   private llmClient: OpenRouterClient | null = null;
   private formatter: ResponseFormatter;
+  private reranker: SmartReranker;
 
   constructor() {
     this.postgresAgent = new PostgresSearchAgent();
     this.formatter = new ResponseFormatter();
+    this.reranker = new SmartReranker();
   }
 
   /**
@@ -93,15 +103,45 @@ export class MultiAgentOrchestrator {
         hasPinecone: !!this.pineconeAgent,
         hasNeo4j: !!this.neo4jAgent,
         hasLLM: !!this.llmClient,
+        hasWebSearch: !!this.webSearchAgent,
       });
 
-      // Run all available agents in parallel
+      // ============================================================
+      // Step 1: Query Understanding (NEW - pre-search LLM call)
+      // ============================================================
+      const processedQuery = await QueryUnderstandingAgent.analyze(
+        query,
+        vehicleContext,
+        this.llmClient,
+        2000 // 2s timeout
+      );
+
+      console.log('[MultiAgentOrchestrator] Query understanding:', {
+        intent: processedQuery.intent,
+        partNumbers: processedQuery.partNumbers,
+        partTypes: processedQuery.partTypes,
+        expandedTerms: processedQuery.expandedTerms.slice(0, 5),
+        shouldSearchWeb: processedQuery.shouldSearchWeb,
+      });
+
+      // ============================================================
+      // Step 2: Parallel internal search
+      // Use processedQuery for Postgres (expanded terms for keyword search)
+      // Pass raw query to Pinecone/Neo4j (as per plan: don't change their query generation)
+      // ============================================================
+
+      // Build the Postgres search query: include expanded terms for broader keyword matching
+      const postgresSearchQuery = processedQuery.expandedTerms.length > 0
+        ? `${processedQuery.processedQuery} ${processedQuery.expandedTerms.join(' ')}`
+        : processedQuery.processedQuery;
+
       const searchPromises: Promise<PartResult[]>[] = [
-        this.postgresAgent.search(query, organizationId, vehicleContext),
+        this.postgresAgent.search(postgresSearchQuery, organizationId, vehicleContext),
       ];
 
       if (this.pineconeAgent) {
         sourcesUsed.push('pinecone');
+        // Pinecone: use original query unchanged (per plan requirement)
         searchPromises.push(
           this.pineconeAgent.hybridSearch(query, organizationId, vehicleContext)
         );
@@ -109,6 +149,7 @@ export class MultiAgentOrchestrator {
 
       if (this.neo4jAgent) {
         sourcesUsed.push('neo4j');
+        // Neo4j: use original query unchanged (per plan requirement)
         searchPromises.push(
           this.neo4jAgent.graphSearch(query, organizationId, vehicleContext)
         );
@@ -163,26 +204,77 @@ export class MultiAgentOrchestrator {
         }))
       );
 
-      // Merge and deduplicate results
+      // ============================================================
+      // Step 3: Merge & deduplicate internal results
+      // ============================================================
       const mergedResults = this.mergeResults(results);
-
-      // Calculate confidence scores
       const rankedResults = this.calculateConfidence(mergedResults);
 
-      // LLM synthesis (optional - only if LLM is configured)
+      // ============================================================
+      // Step 4: Conditional web search (second pass — NOT every search)
+      // ============================================================
+      const internalResultCount = rankedResults.length;
+      let webResults: EnrichedPartResult[] = [];
+
+      const shouldRunWebSearch = this.webSearchAgent && (
+        internalResultCount < 3 || processedQuery.shouldSearchWeb
+      );
+
+      if (shouldRunWebSearch && this.webSearchAgent) {
+        sourcesUsed.push('web');
+        console.log('[MultiAgentOrchestrator] Triggering web search (internal results:', internalResultCount, ')');
+
+        try {
+          const rawWebResults = await this.webSearchAgent.search(
+            processedQuery,
+            vehicleContext,
+            this.llmClient
+          );
+
+          // Convert web results to EnrichedPartResult
+          webResults = rawWebResults.map(r => ({
+            ...r,
+            confidence: r.score,
+            foundBy: ['web'] as Array<'postgres' | 'pinecone' | 'neo4j' | 'web'>,
+            reason: 'Found via web search — unverified',
+            isWebResult: true,
+          }));
+
+          console.log('[MultiAgentOrchestrator] Web search returned', webResults.length, 'results');
+        } catch (error: any) {
+          console.warn('[MultiAgentOrchestrator] Web search failed:', error.message);
+        }
+      }
+
+      // ============================================================
+      // Step 5: Smart re-ranking (replaces llmSynthesis)
+      // ============================================================
       let finalResults = rankedResults;
+      let finalWebResults = webResults;
       let suggestedFilters: string[] = [];
       let relatedQueries: string[] = [];
 
-      if (this.llmClient && rankedResults.length > 0) {
+      if (this.llmClient && (rankedResults.length > 0 || webResults.length > 0)) {
         try {
-          const synthesis = await this.llmSynthesis(query, results, rankedResults);
-          finalResults = synthesis.rankedResults;
-          suggestedFilters = synthesis.suggestedFilters;
-          relatedQueries = synthesis.relatedQueries;
+          // Combine internal + web results for re-ranking
+          const allResults = [...rankedResults, ...webResults];
+
+          const rerankResult = await this.reranker.rerank(
+            query,
+            processedQuery,
+            allResults,
+            this.llmClient,
+            vehicleContext
+          );
+
+          // Separate internal and web results after re-ranking
+          finalResults = rerankResult.results.filter(r => !r.isWebResult);
+          finalWebResults = rerankResult.results.filter(r => r.isWebResult);
+          suggestedFilters = rerankResult.suggestedFilters;
+          relatedQueries = rerankResult.relatedQueries;
         } catch (error) {
-          console.warn('LLM synthesis failed, using ranked results:', error);
-          // Fall back to ranked results without LLM synthesis
+          console.warn('[MultiAgentOrchestrator] Smart re-ranking failed, using ranked results:', error);
+          // Fall back to ranked results without re-ranking
         }
       }
 
@@ -190,18 +282,22 @@ export class MultiAgentOrchestrator {
 
       console.log('[MultiAgentOrchestrator] Search complete:', {
         totalResults: finalResults.length,
+        webResults: finalWebResults.length,
         searchTime: `${searchTime}ms`,
         sourcesUsed,
+        queryIntent: processedQuery.intent,
       });
 
       return {
-        results: finalResults.slice(0, 20), // Top 20 results
+        results: finalResults.slice(0, 20), // Top 20 internal results
+        webResults: finalWebResults.length > 0 ? finalWebResults.slice(0, 10) : undefined,
         suggestedFilters,
         relatedQueries,
         searchMetadata: {
-          totalResults: finalResults.length,
+          totalResults: finalResults.length + finalWebResults.length,
           searchTime,
           sourcesUsed,
+          queryIntent: processedQuery.intent,
         },
       };
     } catch (error: any) {
@@ -236,6 +332,13 @@ export class MultiAgentOrchestrator {
       console.warn('OpenRouter not configured for this organization');
       this.llmClient = null;
     }
+
+    try {
+      this.webSearchAgent = await WebSearchAgent.fromOrganization(organizationId);
+    } catch (error) {
+      console.warn('Serper not configured for this organization');
+      this.webSearchAgent = null;
+    }
   }
 
   private mergeResults(results: {
@@ -260,7 +363,7 @@ export class MultiAgentOrchestrator {
         existing.sources.push(source);
         // Use highest score
         existing.score = Math.max(existing.score, result.score);
-        
+
         // Merge compatibility data - combine all fields
         if (result.compatibility) {
           existing.compatibility = {
@@ -293,7 +396,7 @@ export class MultiAgentOrchestrator {
             ],
           };
         }
-        
+
         // Merge metadata - prefer non-empty values
         if (result.metadata) {
           existing.metadata = {
@@ -365,154 +468,5 @@ export class MultiAgentOrchestrator {
 
     // Sort by confidence descending
     return results.sort((a, b) => b.confidence - a.confidence);
-  }
-
-  private async llmSynthesis(
-    query: string,
-    results: {
-      postgres: PartResult[];
-      pinecone: PartResult[];
-      neo4j: PartResult[];
-    },
-    mergedRankedResults: EnrichedPartResult[]
-  ): Promise<{
-    rankedResults: EnrichedPartResult[];
-    suggestedFilters: string[];
-    relatedQueries: string[];
-  }> {
-    if (!this.llmClient) {
-      throw new Error('LLM client not available');
-    }
-
-    console.log('[MultiAgentOrchestrator] Starting LLM synthesis...');
-
-    // Build comprehensive prompt with agent responses
-    const agentResponses = {
-      database: {
-        answer: results.postgres.length > 0
-          ? `Found ${results.postgres.length} parts from database`
-          : 'No parts found in database',
-        results: results.postgres.map(p => ({
-          partNumber: p.partNumber,
-          description: p.description,
-          price: p.price,
-          category: p.category,
-          score: p.score
-        })),
-        metadata: {
-          confidence: results.postgres.length > 0 ? 0.8 : 0.3,
-          result_count: results.postgres.length
-        }
-      },
-      graph_rag: {
-        answer: results.neo4j.length > 0
-          ? `Found ${results.neo4j.length} parts with relationship data`
-          : 'No relationship data found',
-        related_parts: results.neo4j.map(p => ({
-          partNumber: p.partNumber,
-          description: p.description,
-          relationships: p.compatibility?.relationships || []
-        })),
-        metadata: {
-          confidence: results.neo4j.length > 0 ? 0.7 : 0.3,
-          has_relationships: results.neo4j.some(p => p.compatibility?.relationships?.length)
-        }
-      },
-      hybrid_rag: {
-        answer: results.pinecone.length > 0
-          ? `Found ${results.pinecone.length} semantically similar parts`
-          : 'No semantic matches found',
-        similar_parts: results.pinecone.map(p => ({
-          partNumber: p.partNumber,
-          description: p.description,
-          score: p.score
-        })),
-        metadata: {
-          confidence: results.pinecone.length > 0 ? 0.75 : 0.3,
-          result_count: results.pinecone.length
-        }
-      }
-    };
-
-    // Build chat input matching n8n workflow structure
-    const chatInput = {
-      originalQuery: query,
-      agentResponses: agentResponses,
-      totalPartsFound: results.postgres.length + results.pinecone.length + results.neo4j.length
-    };
-
-    const prompt = PROMPTS.SYNTHESIZE_SEARCH_RESULTS(chatInput);
-
-    const synthesis = await this.llmClient.generateStructuredOutput<{
-      results: Array<{
-        partNumber: string;
-        description: string;
-        matchConfidence: number;
-        price?: number;
-        availability?: string;
-        compatibility?: string[];
-      }>;
-      suggestedFilters: Array<{
-        type: string;
-        value: string;
-        count: number;
-      }>;
-      relatedQueries: string[];
-      conversationNextSteps: string[];
-    }>(prompt, {
-      results: [
-        {
-          partNumber: 'string',
-          description: 'string',
-          matchConfidence: 0,
-          price: 0,
-          availability: 'string',
-          compatibility: ['string']
-        }
-      ],
-      suggestedFilters: [
-        {
-          type: 'string',
-          value: 'string',
-          count: 0
-        }
-      ],
-      relatedQueries: ['string'],
-      conversationNextSteps: ['string']
-    });
-
-    console.log('[MultiAgentOrchestrator] LLM synthesis complete:', {
-      resultsCount: synthesis.results.length,
-      avgConfidence: synthesis.results.reduce((sum, r) => sum + r.matchConfidence, 0) / synthesis.results.length
-    });
-
-    // Map LLM results back to EnrichedPartResult format
-    // Use mergedRankedResults (which have properly combined metadata from all sources)
-    // instead of raw per-source results to avoid losing metadata
-    const enrichedResults: EnrichedPartResult[] = synthesis.results.map((r) => {
-      // Find from the already-merged results which have combined metadata/compatibility
-      const merged = mergedRankedResults.find((m) => m.partNumber === r.partNumber);
-
-      return {
-        partNumber: r.partNumber,
-        description: r.description,
-        price: r.price || merged?.price,
-        stockQuantity: merged?.stockQuantity,
-        category: merged?.category,
-        compatibility: merged?.compatibility,
-        score: merged?.score || 50,
-        source: merged?.source || 'postgres',
-        confidence: r.matchConfidence,
-        foundBy: merged?.foundBy || ['postgres'],
-        reason: `LLM evaluated match confidence: ${r.matchConfidence}%`,
-        metadata: merged?.metadata,
-      };
-    });
-
-    return {
-      rankedResults: enrichedResults,
-      suggestedFilters: synthesis.suggestedFilters.map(f => f.value),
-      relatedQueries: synthesis.relatedQueries,
-    };
   }
 }

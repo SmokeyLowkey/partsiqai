@@ -6,7 +6,7 @@ import { z } from 'zod';
 const credentialsManager = new CredentialsManager();
 
 const IntegrationCredentialSchema = z.object({
-  integrationType: z.enum(['OPENROUTER', 'GMAIL', 'PINECONE', 'NEO4J', 'REDIS', 'SMTP', 'MISTRAL']),
+  integrationType: z.enum(['OPENROUTER', 'GMAIL', 'PINECONE', 'NEO4J', 'REDIS', 'SMTP', 'MISTRAL', 'SERPER']),
   credentials: z.any(),
   config: z.any().optional(),
   name: z.string().optional(),
