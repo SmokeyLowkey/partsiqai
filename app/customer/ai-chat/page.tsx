@@ -92,6 +92,7 @@ interface FormattedSearchResponse {
     sourcesUsed: string[];
     hasMoreResults: boolean;
   };
+  webSearchOnly?: boolean;
 }
 
 interface FormattedPart {
@@ -663,6 +664,13 @@ export default function AIChatPage() {
     return (
       <div className="space-y-3">
         <p className="text-sm">{formattedResponse.messageText}</p>
+
+        {/* Web Search Only Banner */}
+        {formattedResponse.webSearchOnly && (
+          <div className="text-xs bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 p-2 rounded text-yellow-800 dark:text-yellow-200">
+            This vehicle is still being configured. Showing web search results only — results are unverified.
+          </div>
+        )}
 
         {/* Search Summary */}
         {formattedResponse.summary && (

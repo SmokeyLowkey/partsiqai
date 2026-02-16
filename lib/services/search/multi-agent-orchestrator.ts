@@ -58,7 +58,9 @@ export class MultiAgentOrchestrator {
     const formatted = this.formatter.formatSearchResults(rawResults, query, vehicleContext);
     if (options?.webSearchOnly) {
       formatted.webSearchOnly = true;
-      formatted.messageText = `🔍 **Web Search Results** — This vehicle is still being configured by your administrator. Showing web search results only.\n\n${formatted.messageText}`;
+      // Prepend a note but keep the standard formatted message (which now includes the web parts as main results)
+      const note = `This vehicle is still being configured by your administrator. Showing web search results only.`;
+      formatted.messageText = `${note}\n\n${formatted.messageText}`;
     }
     return formatted;
   }
@@ -107,9 +109,9 @@ export class MultiAgentOrchestrator {
             isWebResult: true,
           }));
 
+          // Put web results into main results array so they render as proper part cards
           return {
-            results: [],
-            webResults: webResults.slice(0, 10),
+            results: webResults.slice(0, 10),
             suggestedFilters: [],
             relatedQueries: [],
             searchMetadata: {
