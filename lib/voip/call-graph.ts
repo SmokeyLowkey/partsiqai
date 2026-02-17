@@ -25,6 +25,7 @@ import {
   generateScreeningResponse,
   hasPricingForAllParts,
   detectSubstitute,
+  detectFitmentRejection,
 } from './helpers';
 
 // ============================================================================
@@ -78,6 +79,12 @@ export function greetingNode(state: CallState): CallState {
  */
 export function quoteRequestNode(state: CallState): CallState {
   const lastSupplierMsg = getLastSupplierResponse(state);
+
+  // Guard: if we've already given all parts and recapped, don't repeat the recap.
+  // Produce a brief, contextual acknowledgment instead.
+  if (state.allPartsRequested) {
+    return addMessage(state, 'ai', "Yes, that's right. Take your time.");
+  }
 
   // If supplier is asking us to repeat, use phonetic alphabet
   if (isAskingToRepeat(lastSupplierMsg)) {
@@ -153,14 +160,17 @@ export function quoteRequestNode(state: CallState): CallState {
     return addMessage(state, 'ai', request);
   }
 
-  // All part numbers given - recap
+  // All part numbers given - recap (only sent once)
   const allParts = state.parts
     .map(p => formatPartNumberForSpeech(p.partNumber))
     .join('... and ');
 
-  return addMessage(state, 'ai',
-    `So those were: ${allParts}. Can you check pricing and availability on all of those?`
-  );
+  return {
+    ...addMessage(state, 'ai',
+      `So those were: ${allParts}. Can you check pricing and availability on all of those?`
+    ),
+    allPartsRequested: true,
+  };
 }
 
 /**
@@ -449,7 +459,13 @@ ${conversationContext}
 
 Supplier just said: "${lastResponse}"
 
-Respond in a single sentence. Be specific about the part numbers if they ask. Don't add "Here's my response" or other meta-commentary - just give the direct response.`;
+IMPORTANT RULES:
+- If the supplier says a part number is wrong, doesn't fit, or needs to be purchased separately — accept their correction gracefully ("Okay, no problem") and ask for the correct part numbers or individual parts instead. Do NOT re-request the original part number.
+- If the supplier is looking something up or asks you to wait, acknowledge patiently ("Sure, take your time").
+- If the supplier is giving you pricing or part information, acknowledge it and ask for the next item.
+- Be specific about part numbers if they ask.
+
+Respond in 1-2 sentences. Don't add meta-commentary — just give the direct response.`;
 
   try {
     let response = await llmClient.generateCompletion(prompt, {
@@ -583,6 +599,11 @@ export async function routeFromQuoteRequest(
     return 'conversational_response'; // Answer their question, don't end
   }
 
+  // Check if supplier says the part doesn't fit, is wrong, or must be purchased differently
+  if (detectFitmentRejection(lastResponse)) {
+    return 'conversational_response'; // LLM will ask for correct part/alternatives
+  }
+
   // Check if the response likely contains pricing info (quick heuristic).
   // Supplier may give a price AND ask a question in the same message
   // (e.g., "$130.58 each. Do you have an account?"). We must capture
@@ -670,7 +691,14 @@ export async function routeFromQuoteRequest(
     }
   }
 
-  // Didn't understand
+  // If all parts have been requested, the supplier is likely engaged but
+  // saying something we can't neatly categorize. Use conversational response
+  // instead of clarification to avoid sounding confused.
+  if (state.allPartsRequested) {
+    return 'conversational_response';
+  }
+
+  // Didn't understand and still early in conversation
   if (state.clarificationAttempts < 2) {
     return 'clarification';
   }
@@ -917,8 +945,21 @@ export async function processCallTurn(
         break;
       }
 
-      if (isQuestion && newState.conversationHistory.length > 14) {
-        // Only end after many exchanges (14+), not 8
+      // If supplier says part doesn't fit, stay conversational to get alternatives
+      if (detectFitmentRejection(lastSupplierMsg)) {
+        nextNode = 'conversational_response';
+        break;
+      }
+
+      // If supplier is actively offering help or looking something up, NEVER end
+      const stillEngaged = /\b(let me|i('ll| will) (give|get|look|check|pull)|give you|here('s| is)|look(ing)? (it |that )?up|one moment|give me a (sec|moment|minute)|checking|pulling (it |that )?up|hold on|just a (sec|moment|minute))\b/i.test(lastSupplierMsg);
+      if (stillEngaged) {
+        nextNode = 'conversational_response';
+        break;
+      }
+
+      if (isQuestion && newState.conversationHistory.length > 24) {
+        // Only end after many exchanges (24+), not 14
         nextNode = 'polite_end';
         break;
       }
@@ -1008,6 +1049,7 @@ export function initializeCallState(params: {
     botScreeningDetected: false,
     botScreeningAttempts: 0,
     botScreeningMaxAttempts: 3,
+    allPartsRequested: false,
     hasMiscCosts: params.hasMiscCosts ?? false,
     miscCostsAsked: false,
     waitingForTransfer: false,

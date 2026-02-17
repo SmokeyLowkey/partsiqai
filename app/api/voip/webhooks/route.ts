@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCallState, saveCallState, deleteCallState } from '@/lib/voip/state-manager';
 import { initializeCallState } from '@/lib/voip/call-graph';
-import { getLastAIMessage, determineOutcome } from '@/lib/voip/helpers';
+import { getLastAIMessage, determineOutcome, addMessage } from '@/lib/voip/helpers';
 import { workerLogger } from '@/lib/logger';
 
 const logger = workerLogger.child({ module: 'voip-webhooks' });
@@ -172,8 +172,12 @@ async function handleCallStarted(callId: string, vapiCallId: string | undefined,
     customInstructions: customInstructions,
   });
 
+  // Seed the first message into state so greetingNode knows it was already said
+  const firstMessage = `Hi, good morning! Could I speak to someone in your parts department?`;
+  const stateWithGreeting = addMessage(initialState, 'ai', firstMessage);
+
   // Save initial state to Redis
-  await saveCallState(call.id, initialState);
+  await saveCallState(call.id, stateWithGreeting);
 
   logger.info(
     { 

@@ -53,6 +53,9 @@ export interface CallState {
   botScreeningAttempts: number;
   botScreeningMaxAttempts: number;
 
+  // Part delivery tracking
+  allPartsRequested: boolean;
+
   // Misc costs tracking
   hasMiscCosts: boolean;
   miscCostsAsked: boolean;

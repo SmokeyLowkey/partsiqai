@@ -9,6 +9,7 @@ import { trackOverageUsage } from '@/lib/billing/overage-billing';
 import { CredentialsManager } from '@/lib/services/credentials/credentials-manager';
 import { initializeCallState } from '@/lib/voip/call-graph';
 import { saveCallState } from '@/lib/voip/state-manager';
+import { addMessage } from '@/lib/voip/helpers';
 
 interface VapiCredentials {
   apiKey: string;
@@ -354,15 +355,18 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
       hasMiscCosts,
     });
 
+    // Seed the first message into state so greetingNode knows it was already said
+    const stateWithGreeting = addMessage(initialCallState, 'ai', firstMessage);
+
     try {
-      await saveCallState(callLog.id, initialCallState);
-      
+      await saveCallState(callLog.id, stateWithGreeting);
+
       logger.info(
-        { 
-          callLogId: callLog.id, 
+        {
+          callLogId: callLog.id,
           partsCount: parts.length,
           hasCustomContext: !!(customContext || customInstructions),
-          currentNode: initialCallState.currentNode 
+          currentNode: stateWithGreeting.currentNode
         },
         'Call state successfully saved to Redis before VAPI API call'
       );

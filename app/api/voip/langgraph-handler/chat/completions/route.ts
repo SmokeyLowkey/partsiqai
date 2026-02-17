@@ -312,13 +312,15 @@ export async function POST(req: NextRequest) {
     // (e.g., if Vapi sends two messages before the first finishes)
     let lockAcquired = await acquireCallLock(callId);
     if (!lockAcquired) {
-      // Another request is processing — wait briefly and retry once
-      logger.warn({ callId }, 'Call lock busy, waiting 300ms to retry');
-      await new Promise(resolve => setTimeout(resolve, 300));
-      lockAcquired = await acquireCallLock(callId);
+      // Another request is processing — retry up to 3 times at 500ms intervals
+      for (let i = 0; i < 3 && !lockAcquired; i++) {
+        logger.warn({ callId, attempt: i + 1 }, 'Call lock busy, retrying in 500ms');
+        await new Promise(resolve => setTimeout(resolve, 500));
+        lockAcquired = await acquireCallLock(callId);
+      }
       if (!lockAcquired) {
-        logger.warn({ callId }, 'Could not acquire lock after retry — returning hold message');
-        const busyContent = "One moment please.";
+        logger.warn({ callId }, 'Could not acquire lock after 3 retries — returning minimal ack');
+        const busyContent = "Mhm.";
         if (isStreaming) return buildStreamingResponse(busyContent);
         return NextResponse.json(buildChatCompletionResponse(busyContent));
       }

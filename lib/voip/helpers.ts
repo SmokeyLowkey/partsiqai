@@ -346,6 +346,28 @@ export function detectSubstitute(response: string): boolean {
 }
 
 /**
+ * Detect fitment rejection — supplier says the part doesn't fit, is wrong,
+ * or needs to be purchased differently (e.g., individual filters vs pack)
+ */
+export function detectFitmentRejection(response: string): boolean {
+  const patterns = [
+    "doesn't fit", 'does not fit', "won't fit", 'will not fit',
+    'wrong part', 'part number is wrong', 'part is wrong', 'number is wrong',
+    "doesn't work", 'does not work', "won't work",
+    'not for that', 'not for your', 'not compatible',
+    "doesn't coincide", 'does not coincide',
+    "doesn't match", 'does not match',
+    "can't look up", 'cannot look up', "can't find",
+    'not in my system', 'not in the system', 'not showing',
+    'discontinued', 'no longer available',
+    'buy .* separate', 'have to .* individual',
+    'purchase .* separate', 'sold separate',
+  ];
+  const lower = response.toLowerCase();
+  return patterns.some(p => new RegExp(p).test(lower));
+}
+
+/**
  * Detect hold music, automated hold messages, or ads heard during a transfer
  * These should be ignored — the agent should stay silent and wait
  */
