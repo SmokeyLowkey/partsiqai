@@ -332,6 +332,39 @@ export function detectSubstitute(response: string): boolean {
 }
 
 /**
+ * Check if supplier is asking to repeat part numbers
+ */
+export function isAskingToRepeat(response: string): boolean {
+  const patterns = [
+    'repeat', 'say that again', 'one more time', 'spell that',
+    'say again', 'didn\'t catch', 'didn\'t get that', 'come again',
+    'what was that', 'say those again', 'those numbers again',
+    'part number again', 'can you spell', 'read that back',
+  ];
+  const lower = response.toLowerCase();
+  return patterns.some(p => lower.includes(p));
+}
+
+/**
+ * Check if supplier is asking a verification/fitment question
+ * (serial number, machine model, year, application)
+ */
+export function isVerificationQuestion(response: string): boolean {
+  const patterns = [
+    'serial number', 'serial #', 'vin', 'model number',
+    'what year', 'what model', 'what machine', 'what equipment',
+    'what unit', 'which machine', 'which model', 'which unit',
+    'fit on', 'fits on', 'fit for', 'fit the', 'fits the',
+    'application', 'what\'s it for', 'what is it for',
+    'what\'s it going on', 'what is it going on',
+    'going in', 'going on', 'does it go on',
+    'compatible', 'work with', 'work for',
+  ];
+  const lower = response.toLowerCase();
+  return patterns.some(p => lower.includes(p));
+}
+
+/**
  * Check if response contains a question
  */
 export async function detectQuestion(response: string): Promise<boolean> {
@@ -359,8 +392,8 @@ export function containsRefusal(response: string): boolean {
  */
 /**
  * Format part numbers for better TTS pronunciation using SSML
- * Splits alphanumeric codes into letter and number segments
- * Example: "MIA883029" → "<say-as interpret-as='characters'>MIA</say-as>-<say-as interpret-as='digits'>883029</say-as>"
+ * Splits alphanumeric codes into letter and number segments with pauses
+ * Example: "AM141585" → "<say-as ...>AM</say-as><break time='300ms'/><say-as ...>141585</say-as>"
  */
 export function formatPartNumberForSpeech(partNumber: string): string {
   // Replace hyphens/dashes with spoken "dash" so TTS doesn't say "minus"
@@ -370,20 +403,59 @@ export function formatPartNumberForSpeech(partNumber: string): string {
   const segments = formatted.match(/[A-Za-z]+|[0-9]+|[^A-Za-z0-9]+/g);
   if (!segments) return formatted;
 
+  const ssmlParts = segments.map(seg => {
+    if (/^[A-Za-z]+$/.test(seg)) {
+      // Spell out letter segments
+      return `<say-as interpret-as="characters">${seg}</say-as>`;
+    }
+    if (/^[0-9]+$/.test(seg)) {
+      // Read digit segments as individual digits
+      return `<say-as interpret-as="digits">${seg}</say-as>`;
+    }
+    // Whitespace/punctuation — pass through (includes " dash ")
+    return seg;
+  });
+
+  // Join with short pauses between letter/digit segments for clarity
+  return ssmlParts.join('<break time="300ms"/>');
+}
+
+/**
+ * Format a part number using NATO phonetic alphabet for maximum clarity
+ * Used when supplier asks to repeat or has trouble hearing
+ * Example: "AT308568" → "Alpha Tango <break/> 3 0 8 5 6 8"
+ */
+const NATO_ALPHABET: Record<string, string> = {
+  A: 'Alpha', B: 'Bravo', C: 'Charlie', D: 'Delta', E: 'Echo',
+  F: 'Foxtrot', G: 'Golf', H: 'Hotel', I: 'India', J: 'Juliet',
+  K: 'Kilo', L: 'Lima', M: 'Mike', N: 'November', O: 'Oscar',
+  P: 'Papa', Q: 'Quebec', R: 'Romeo', S: 'Sierra', T: 'Tango',
+  U: 'Uniform', V: 'Victor', W: 'Whiskey', X: 'X-ray', Y: 'Yankee',
+  Z: 'Zulu',
+};
+
+export function formatPartNumberPhonetic(partNumber: string): string {
+  let formatted = partNumber.replace(/-/g, ' dash ');
+  const segments = formatted.match(/[A-Za-z]+|[0-9]+|[^A-Za-z0-9]+/g);
+  if (!segments) return formatted;
+
   return segments
     .map(seg => {
       if (/^[A-Za-z]+$/.test(seg)) {
-        // Spell out letter segments
-        return `<say-as interpret-as="characters">${seg}</say-as>`;
+        // Spell out each letter using NATO alphabet
+        return seg
+          .toUpperCase()
+          .split('')
+          .map(ch => NATO_ALPHABET[ch] || ch)
+          .join(', <break time="200ms"/>');
       }
       if (/^[0-9]+$/.test(seg)) {
-        // Read digit segments as individual digits
-        return `<say-as interpret-as="digits">${seg}</say-as>`;
+        // Read each digit slowly with pauses
+        return seg.split('').join(', <break time="150ms"/>');
       }
-      // Whitespace/punctuation — pass through (includes " dash ")
       return seg;
     })
-    .join('');
+    .join(' <break time="400ms"/> ');
 }
 
 export async function generateClarification(

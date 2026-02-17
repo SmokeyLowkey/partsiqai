@@ -17,6 +17,9 @@ import {
   generateClarification,
   determineOutcome,
   formatPartNumberForSpeech,
+  formatPartNumberPhonetic,
+  isAskingToRepeat,
+  isVerificationQuestion,
   detectBotScreening,
   generateScreeningResponse,
   hasPricingForAllParts,
@@ -40,10 +43,34 @@ export function greetingNode(state: CallState): CallState {
 
 /**
  * Quote Request Node - Ask for pricing on specific parts
- * First mentions what they're looking for (descriptions only),
- * then provides part numbers when supplier is ready
+ * Delivers parts one at a time for clarity:
+ * 1st visit: mention descriptions naturally
+ * 2nd visit: give first part number
+ * 3rd+ visit: give next part number (or recap if all given)
  */
 export function quoteRequestNode(state: CallState): CallState {
+  const lastSupplierMsg = getLastSupplierResponse(state);
+
+  // If supplier is asking us to repeat, use phonetic alphabet
+  if (isAskingToRepeat(lastSupplierMsg)) {
+    // Find the last part number we mentioned
+    const lastPartMsg = [...state.conversationHistory]
+      .reverse()
+      .find(msg => msg.speaker === 'ai' && state.parts.some(p =>
+        msg.text.toLowerCase().includes(p.partNumber.toLowerCase().slice(0, 4))
+      ));
+
+    // Find which part was being discussed
+    const currentPart = state.parts.find(p =>
+      lastPartMsg?.text.toLowerCase().includes(p.partNumber.toLowerCase().slice(0, 4))
+    ) || state.parts[0];
+
+    const phonetic = formatPartNumberPhonetic(currentPart.partNumber);
+    return addMessage(state, 'ai',
+      `Sure, let me spell that out for you. <break time="400ms"/> ${phonetic}. <break time="300ms"/> That's for the ${currentPart.description}.`
+    );
+  }
+
   // Check if we've already mentioned what we're looking for
   const alreadyMentionedParts = state.conversationHistory.some(
     msg => msg.speaker === 'ai' && msg.text.toLowerCase().includes("i'm looking for")
@@ -57,15 +84,43 @@ export function quoteRequestNode(state: CallState): CallState {
 
     const request = `Great, thanks! I'm looking for ${descriptions}. Whenever you're ready, I have the part numbers.`;
     return addMessage(state, 'ai', request);
-  } else {
-    // Second time - provide the actual part numbers
-    const partNumbers = state.parts
-      .map(p => `${formatPartNumberForSpeech(p.partNumber)} for the ${p.description}`)
-      .join(', and ');
+  }
 
-    const request = `Sure! The part numbers are: ${partNumbers}. Can you check pricing and availability on those?`;
+  // Determine how many part numbers we've already given
+  const givenPartNumbers = state.parts.filter(p =>
+    state.conversationHistory.some(
+      msg => msg.speaker === 'ai' && msg.text.includes(formatPartNumberForSpeech(p.partNumber))
+    )
+  );
+
+  const nextPart = state.parts.find(p => !givenPartNumbers.includes(p));
+
+  if (nextPart) {
+    const partNum = formatPartNumberForSpeech(nextPart.partNumber);
+    const isFirst = givenPartNumbers.length === 0;
+    const remaining = state.parts.length - givenPartNumbers.length - 1;
+
+    let request: string;
+    if (isFirst) {
+      request = `Sure! The first part number is <break time="300ms"/> ${partNum} <break time="300ms"/> — that's the ${nextPart.description}.`;
+      if (remaining > 0) {
+        request += ` I have ${remaining} more after this one.`;
+      }
+    } else {
+      request = `Next one is <break time="300ms"/> ${partNum} <break time="300ms"/> — ${nextPart.description}.`;
+    }
+
     return addMessage(state, 'ai', request);
   }
+
+  // All part numbers given - recap
+  const allParts = state.parts
+    .map(p => `${formatPartNumberForSpeech(p.partNumber)}`)
+    .join(', <break time="500ms"/> ');
+
+  return addMessage(state, 'ai',
+    `So those were: <break time="300ms"/> ${allParts}. <break time="300ms"/> Can you check pricing and availability on all of those?`
+  );
 }
 
 /**
@@ -441,13 +496,23 @@ export async function routeFromQuoteRequest(
     return 'callback';
   }
 
+  // Check if supplier is asking to repeat part numbers
+  if (isAskingToRepeat(lastResponse)) {
+    return 'quote_request'; // Will trigger phonetic spelling
+  }
+
+  // Check if supplier is asking a verification question (serial number, machine, fitment)
+  if (isVerificationQuestion(lastResponse)) {
+    return 'conversational_response'; // Answer their question, don't end
+  }
+
   // Check for questions
   const hasQuestion = await detectQuestion(lastResponse);
   if (hasQuestion) {
     if (state.clarificationAttempts >= 2) {
       return 'human_escalation';
     }
-    return 'clarification';
+    return 'conversational_response'; // Use conversational response for questions
   }
 
   // Try to extract pricing
@@ -465,11 +530,31 @@ export async function routeFromQuoteRequest(
     return nextNodeAfterPricing(state);
   }
 
-  // Check for unavailable/out of stock
-  if (lastResponse.toLowerCase().includes('don\'t have') ||
-      lastResponse.toLowerCase().includes('out of stock') ||
-      lastResponse.toLowerCase().includes('unavailable')) {
+  // Check for unavailable/out of stock — but only end if supplier is NOT still
+  // checking (e.g., asking for serial number to verify fitment)
+  const lowerResponse = lastResponse.toLowerCase();
+  if (lowerResponse.includes('don\'t have') ||
+      lowerResponse.includes('out of stock') ||
+      lowerResponse.includes('unavailable')) {
+    // If the same message also contains a question, they're still engaged
+    if (await detectQuestion(lastResponse)) {
+      return 'conversational_response';
+    }
     return nextNodeAfterPricing(state);
+  }
+
+  // Check if supplier wants us to give the next part number
+  const readyForNext = /\b(next|go ahead|ready|okay|got it|next one|what else|another)\b/i.test(lastResponse);
+  if (readyForNext) {
+    // Check if there are more parts to give
+    const givenParts = state.parts.filter(p =>
+      state.conversationHistory.some(
+        msg => msg.speaker === 'ai' && msg.text.includes(formatPartNumberForSpeech(p.partNumber))
+      )
+    );
+    if (givenParts.length < state.parts.length) {
+      return 'quote_request'; // Give next part number
+    }
   }
 
   // Didn't understand
@@ -641,8 +726,22 @@ export async function processCallTurn(
       }
 
       const isQuestion = await detectQuestion(lastSupplierMsg);
-      if (isQuestion && newState.conversationHistory.length > 8) {
-        // Many exchanges already, likely wrapping up
+
+      // If supplier is asking a verification question (serial number, fitment),
+      // always stay in conversation regardless of turn count
+      if (isVerificationQuestion(lastSupplierMsg)) {
+        nextNode = 'conversational_response';
+        break;
+      }
+
+      // If supplier is asking to repeat, go back to quote_request for phonetic spelling
+      if (isAskingToRepeat(lastSupplierMsg)) {
+        nextNode = 'quote_request';
+        break;
+      }
+
+      if (isQuestion && newState.conversationHistory.length > 14) {
+        // Only end after many exchanges (14+), not 8
         nextNode = 'polite_end';
         break;
       }

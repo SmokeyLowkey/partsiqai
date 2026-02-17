@@ -260,7 +260,7 @@ export const quoteExtractionWorker = new Worker<QuoteExtractionJobData>(
     const { organizationId, emailThreadId, emailMessageId, userId, emailData, attachments } = job.data;
 
     try {
-      await job.updateProgress(10);
+
 
       // Try to get LLM client from org credentials
       let llmClient: OpenRouterClient | null = null;
@@ -292,7 +292,7 @@ export const quoteExtractionWorker = new Worker<QuoteExtractionJobData>(
       // Get email client for downloading attachments using that user's credentials (supports Gmail and Microsoft)
       const emailClient = await getEmailClientForUser(emailUserId);
 
-      await job.updateProgress(15);
+
 
       // Get email thread with supplier info and linked quote request
       const thread = await prisma.emailThread.findUnique({
@@ -329,7 +329,7 @@ export const quoteExtractionWorker = new Worker<QuoteExtractionJobData>(
       
       workerLogger.debug({ requestedPartNumbers, quoteRequestEmailThreadCount: quoteRequestEmailThread ? 1 : 0 }, 'Quote request context loaded');
 
-      await job.updateProgress(20);
+
 
       // Process attachments - download, upload to S3, and extract text from PDFs
       let attachmentText = '';
@@ -378,7 +378,7 @@ export const quoteExtractionWorker = new Worker<QuoteExtractionJobData>(
               attachment.gmailAttachmentId
             );
 
-            await job.updateProgress(30);
+
 
             // Upload to S3
             const { key: s3Key } = await uploadEmailAttachment(
@@ -522,7 +522,7 @@ export const quoteExtractionWorker = new Worker<QuoteExtractionJobData>(
         workerLogger.debug({ extractedData }, 'Basic extraction found');
       }
 
-      await job.updateProgress(70);
+
 
       // Find any existing quote request for this thread/supplier to update
       // Only look for existing quote request if we have a supplierId
@@ -865,7 +865,7 @@ export const quoteExtractionWorker = new Worker<QuoteExtractionJobData>(
           }
         }
 
-        await job.updateProgress(90);
+
 
         // Update email thread status
         await prisma.emailThread.update({

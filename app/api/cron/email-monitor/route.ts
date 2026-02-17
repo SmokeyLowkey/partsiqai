@@ -7,14 +7,14 @@ import { cronLogger } from '@/lib/logger';
  * Cron Job: Email Monitor
  *
  * This endpoint triggers email monitoring for all organizations with Gmail configured.
- * Schedule: Every 5 minutes
+ * Schedule: Every 15 minutes
  *
  * Setup with Vercel Cron:
  * Add to vercel.json:
  * {
  *   "crons": [{
  *     "path": "/api/cron/email-monitor",
- *     "schedule": "0/5 * * * *"
+ *     "schedule": "*/15 * * * *"
  *   }]
  * }
  *

@@ -1,41 +1,31 @@
-import Redis from 'ioredis';
 import { CallState } from './types';
 import { workerLogger } from '@/lib/logger';
+import { redisConnection } from '@/lib/queue/connection';
 
 const logger = workerLogger.child({ module: 'voip-state-manager' });
-
-let redis: Redis | null = null;
 
 // In-memory fallback for development (NOT for production!)
 const inMemoryStore = new Map<string, { state: CallState; expires: number }>();
 
+// Index key: maps quoteRequestId → set of callIds
+function quoteIndexKey(quoteRequestId: string): string {
+  return `voip:quote-calls:${quoteRequestId}`;
+}
+
+function callStateKey(callId: string): string {
+  return `voip:call:${callId}`;
+}
+
 function getRedisClient() {
-  if (!redis && process.env.UPSTASH_REDIS_REST_URL) {
-    logger.info('Initializing Redis connection for VOIP state management');
-    redis = new Redis(process.env.UPSTASH_REDIS_REST_URL, {
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-      lazyConnect: false, // Connect immediately
-      family: 0, // Use IPv4 and IPv6
-      tls: {
-        // Ensure TLS is enabled for rediss:// protocol
-      },
-    });
-
-    redis.on('connect', () => {
-      logger.info('VOIP state manager connected to Redis');
-    });
-
-    redis.on('error', (err) => {
-      logger.error({ err: err.message }, 'VOIP state manager Redis connection error');
-    });
+  if (!redisConnection) {
+    return null;
   }
-  return redis;
+  return redisConnection;
 }
 
 /**
- * Save call state to Redis with 1 hour TTL
- * Falls back to in-memory storage if Redis is not configured
+ * Save call state to Redis with 1 hour TTL.
+ * Also maintains a per-quote Set index for efficient lookups.
  */
 export async function saveCallState(
   callId: string,
@@ -43,29 +33,28 @@ export async function saveCallState(
 ): Promise<void> {
   const client = getRedisClient();
   if (!client) {
-    const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
-    logger.warn(
-      { 
-        hasRedisUrl: !!redisUrl,
-        redisUrlPreview: redisUrl ? redisUrl.substring(0, 20) + '...' : 'undefined'
-      }, 
-      'Redis not configured, using in-memory fallback (NOT FOR PRODUCTION!)'
-    );
-    // Fall back to in-memory storage
-    inMemoryStore.set(`voip:call:${callId}`, {
+    logger.warn('Redis not configured, using in-memory fallback (NOT FOR PRODUCTION!)');
+    inMemoryStore.set(callStateKey(callId), {
       state,
-      expires: Date.now() + 3600 * 1000 // 1 hour from now
+      expires: Date.now() + 3600 * 1000,
     });
     return;
   }
 
   try {
-    await client.set(
-      `voip:call:${callId}`,
-      JSON.stringify(state),
-      'EX',
-      3600 // 1 hour TTL
-    );
+    const pipeline = client.pipeline();
+
+    // Save the call state with TTL
+    pipeline.set(callStateKey(callId), JSON.stringify(state), 'EX', 3600);
+
+    // Add callId to the per-quote index set (if we have a quoteRequestId)
+    if (state.quoteRequestId) {
+      const indexKey = quoteIndexKey(state.quoteRequestId);
+      pipeline.sadd(indexKey, callId);
+      pipeline.expire(indexKey, 3600);
+    }
+
+    await pipeline.exec();
     logger.debug({ callId, currentNode: state.currentNode }, 'Call state saved to Redis');
   } catch (error: any) {
     logger.error(
@@ -78,7 +67,6 @@ export async function saveCallState(
 
 /**
  * Get call state from Redis
- * Falls back to in-memory storage if Redis is not configured
  */
 export async function getCallState(
   callId: string
@@ -86,26 +74,19 @@ export async function getCallState(
   const client = getRedisClient();
   if (!client) {
     logger.warn({ callId }, 'Using in-memory fallback to get call state');
-    // Use in-memory fallback
-    const stored = inMemoryStore.get(`voip:call:${callId}`);
+    const stored = inMemoryStore.get(callStateKey(callId));
     if (!stored) {
-      logger.warn({ callId }, 'Call state not found in in-memory store');
       return null;
     }
-    
-    // Check if expired
     if (Date.now() > stored.expires) {
-      inMemoryStore.delete(`voip:call:${callId}`);
-      logger.warn({ callId }, 'Call state expired in in-memory store');
+      inMemoryStore.delete(callStateKey(callId));
       return null;
     }
-    
-    logger.debug({ callId, currentNode: stored.state.currentNode }, 'Call state retrieved from in-memory store');
     return stored.state;
   }
 
   try {
-    const data = await client.get(`voip:call:${callId}`);
+    const data = await client.get(callStateKey(callId));
     if (!data) {
       logger.warn({ callId }, 'Call state not found in Redis');
       return null;
@@ -124,18 +105,33 @@ export async function getCallState(
 }
 
 /**
- * Delete call state from Redis
- * Falls back to in-memory storage if Redis is not configured
+ * Delete call state from Redis and remove from quote index
  */
 export async function deleteCallState(callId: string): Promise<void> {
   const client = getRedisClient();
   if (!client) {
-    // Use in-memory fallback
-    inMemoryStore.delete(`voip:call:${callId}`);
+    inMemoryStore.delete(callStateKey(callId));
     return;
   }
 
-  await client.del(`voip:call:${callId}`);
+  // Get state first so we can clean up the index
+  const data = await client.get(callStateKey(callId));
+  if (data) {
+    try {
+      const state = JSON.parse(data) as CallState;
+      if (state.quoteRequestId) {
+        const pipeline = client.pipeline();
+        pipeline.del(callStateKey(callId));
+        pipeline.srem(quoteIndexKey(state.quoteRequestId), callId);
+        await pipeline.exec();
+        return;
+      }
+    } catch {
+      // Fall through to simple delete
+    }
+  }
+
+  await client.del(callStateKey(callId));
 }
 
 /**
@@ -160,7 +156,8 @@ export async function updateCallState(
 }
 
 /**
- * Get all active calls for a quote request
+ * Get all active calls for a quote request using the Set index.
+ * O(M) where M = calls for this quote, instead of O(N) scanning all keys.
  */
 export async function getActiveCallsForQuote(
   quoteRequestId: string
@@ -170,18 +167,44 @@ export async function getActiveCallsForQuote(
     return [];
   }
 
-  const keys = await client.keys('voip:call:*');
-  const states: CallState[] = [];
+  try {
+    // Get call IDs from the per-quote index (1 SMEMBERS command)
+    const callIds = await client.smembers(quoteIndexKey(quoteRequestId));
+    if (callIds.length === 0) {
+      return [];
+    }
 
-  for (const key of keys) {
-    const data = await client.get(key);
-    if (data) {
-      const state = JSON.parse(data);
-      if (state.quoteRequestId === quoteRequestId && state.status === 'in_progress') {
+    // Batch-fetch all call states (1 MGET command)
+    const keys = callIds.map((id) => callStateKey(id));
+    const results = await client.mget(...keys);
+
+    const states: CallState[] = [];
+    const expiredCallIds: string[] = [];
+
+    for (let i = 0; i < results.length; i++) {
+      const data = results[i];
+      if (!data) {
+        // Call state expired but still in index — mark for cleanup
+        expiredCallIds.push(callIds[i]);
+        continue;
+      }
+      const state = JSON.parse(data) as CallState;
+      if (state.status === 'in_progress') {
         states.push(state);
       }
     }
-  }
 
-  return states;
+    // Clean up expired entries from the index
+    if (expiredCallIds.length > 0) {
+      await client.srem(quoteIndexKey(quoteRequestId), ...expiredCallIds);
+    }
+
+    return states;
+  } catch (error: any) {
+    logger.error(
+      { quoteRequestId, error: error.message },
+      'Failed to get active calls for quote'
+    );
+    return [];
+  }
 }

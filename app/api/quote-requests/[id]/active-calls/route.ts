@@ -56,19 +56,18 @@ export async function GET(
       orderBy: { startedAt: 'desc' },
     });
 
-    // Enrich with Redis state if available
-    const callsWithState = await Promise.all(
-      activeCalls.map(async (call) => {
-        const states = await getActiveCallsForQuote(id);
-        const state = states.find((s) => s.callId === call.id);
+    // Fetch all active call states once, then enrich
+    const activeStates = await getActiveCallsForQuote(id);
+    const statesByCallId = new Map(activeStates.map((s) => [s.callId, s]));
 
-        return {
-          ...call,
-          currentNode: state?.currentNode,
-          conversationTurns: state?.conversationHistory.length || 0,
-        };
-      })
-    );
+    const callsWithState = activeCalls.map((call) => {
+      const state = statesByCallId.get(call.id);
+      return {
+        ...call,
+        currentNode: state?.currentNode,
+        conversationTurns: state?.conversationHistory.length || 0,
+      };
+    });
 
     return NextResponse.json({ calls: callsWithState });
   } catch (error) {

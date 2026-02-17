@@ -124,7 +124,7 @@ export const analyticsCollectionWorker = new Worker<AnalyticsCollectionJobData>(
     const { orderId } = job.data;
 
     try {
-      await job.updateProgress(10);
+
 
       // Fetch order with all related data
       const order = await prisma.order.findUnique({
@@ -155,7 +155,7 @@ export const analyticsCollectionWorker = new Worker<AnalyticsCollectionJobData>(
         throw new Error(`Order ${orderId} has no completion timestamp`);
       }
 
-      await job.updateProgress(20);
+
 
       // Calculate delivery metrics
       const deliveryMetrics = calculateDeliveryMetrics(
@@ -169,7 +169,7 @@ export const analyticsCollectionWorker = new Worker<AnalyticsCollectionJobData>(
         'Calculated delivery metrics'
       );
 
-      await job.updateProgress(40);
+
 
       // Calculate cost savings (moved from order creation to delivery)
       const costSavings = await finalizeOrderCostSavings(orderId);
@@ -186,7 +186,7 @@ export const analyticsCollectionWorker = new Worker<AnalyticsCollectionJobData>(
         'Calculated cost savings'
       );
 
-      await job.updateProgress(60);
+
 
       // Calculate fulfillment metrics
       const itemsFulfilled = order.orderItems.filter(item => item.isReceived).length;
@@ -220,7 +220,7 @@ export const analyticsCollectionWorker = new Worker<AnalyticsCollectionJobData>(
 
       workerLogger.info({ orderId }, 'Created OrderAnalytics record');
 
-      await job.updateProgress(80);
+
 
       // Update supplier performance aggregates
       await updateSupplierPerformance(

@@ -262,9 +262,9 @@ describe('VOIP Call Flow - Quote Request Node', () => {
     state = quoteRequestNode(state);
 
     const lastAiMsg = state.conversationHistory.filter(m => m.speaker === 'ai').pop();
-    // Second mention should include SSML-formatted part number (split into segments)
+    // Second mention should include SSML-formatted part number (one at a time)
     expect(lastAiMsg?.text).toContain('478319');
-    expect(lastAiMsg?.text).toContain('part numbers');
+    expect(lastAiMsg?.text).toContain('part number');
   });
 });
 
@@ -336,7 +336,8 @@ describe('VOIP Call Flow - Routing from Quote Request', () => {
     state = addMessage(state, 'supplier', 'What machine is this for?');
 
     const nextNode = await routeFromQuoteRequest(mockLLM, state);
-    expect(nextNode).toBe('clarification');
+    // "What machine" is a verification question → conversational_response
+    expect(nextNode).toBe('conversational_response');
   });
 });
 

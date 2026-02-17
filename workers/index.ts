@@ -36,7 +36,7 @@ const voipCallInitiationWorker = startVoipCallInitiationWorker();
 const voipFallbackWorker = startVoipFallbackWorker();
 // const voipCallRetryWorker = startVoipCallRetryWorker();
 
-// Email monitoring is handled by Vercel cron (/api/cron/email-monitor) every 5 minutes.
+// Email monitoring is handled by Vercel cron (/api/cron/email-monitor) every 15 minutes.
 // No duplicate scheduler needed here — this avoids excessive Redis commands.
 
 // Track active workers

@@ -19,13 +19,8 @@ export const partsSearchWorker = new Worker<PartsSearchJobData>(
     const { organizationId, conversationId, query, vehicleContext } = job.data;
 
     try {
-      // Update job progress
-      await job.updateProgress(10);
-
       // Initialize multi-agent orchestrator
       const orchestrator = new MultiAgentOrchestrator();
-
-      await job.updateProgress(20);
 
       // Execute search with formatting
       workerLogger.info({ query }, 'Executing multi-agent search');
@@ -34,8 +29,6 @@ export const partsSearchWorker = new Worker<PartsSearchJobData>(
         organizationId,
         vehicleContext
       );
-
-      await job.updateProgress(80);
 
       // Save results to conversation if exists
       if (conversationId && conversationId !== `temp-${Date.now()}`) {

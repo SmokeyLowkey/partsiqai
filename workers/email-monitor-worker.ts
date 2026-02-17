@@ -45,8 +45,6 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
     const { organizationId } = job.data;
 
     try {
-      await job.updateProgress(10);
-
       // Find ALL users with email integration configured for this organization
       const usersWithEmail = await prisma.userEmailIntegration.findMany({
         where: {
@@ -62,8 +60,6 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
       }
 
       workerLogger.info({ userCount: usersWithEmail.length, organizationId }, 'Found users with email integrations');
-
-      await job.updateProgress(20);
 
       let totalProcessedCount = 0;
       let totalSkippedCount = 0;
@@ -632,8 +628,6 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
           // Continue processing other users - don't let one user's error block the others
         }
       }
-
-      await job.updateProgress(90);
 
       // Also update the legacy EmailSyncState for backward compatibility
       await prisma.emailSyncState.upsert({

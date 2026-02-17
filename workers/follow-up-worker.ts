@@ -32,8 +32,6 @@ export const followUpWorker = new Worker<FollowUpJobData>(
     } = job.data;
 
     try {
-      await job.updateProgress(10);
-
       // Validate supplier has email
       if (!supplierEmail) {
         throw new Error(`Supplier ${supplierName} does not have an email address`);
@@ -52,8 +50,6 @@ export const followUpWorker = new Worker<FollowUpJobData>(
       if (!emailThread) {
         throw new Error(`Email thread ${emailThreadId} not found`);
       }
-
-      await job.updateProgress(20);
 
       // Get quote request details for context
       const quoteRequest = await prisma.quoteRequest.findUnique({
@@ -80,8 +76,6 @@ export const followUpWorker = new Worker<FollowUpJobData>(
         throw new Error(`Quote request ${quoteRequestId} not found`);
       }
 
-      await job.updateProgress(30);
-
       // Calculate days since original email
       const originalMessage = emailThread.messages.find((m) => m.direction === 'OUTBOUND');
       const daysSinceOriginal = originalMessage?.sentAt
@@ -103,8 +97,6 @@ export const followUpWorker = new Worker<FollowUpJobData>(
         subject = subject || generated.subject;
         body = body || generated.body;
       }
-
-      await job.updateProgress(50);
 
       // Find a user with email integration configured for this organization
       const userWithEmail = await prisma.userEmailIntegration.findFirst({
@@ -130,7 +122,7 @@ export const followUpWorker = new Worker<FollowUpJobData>(
         .replace(/>/g, '&gt;')
         .replace(/\n/g, '<br>');
 
-      await job.updateProgress(60);
+
 
       // Send the follow-up email as a reply in the same thread
       const { messageId } = await emailClient.sendEmail(
@@ -149,7 +141,7 @@ export const followUpWorker = new Worker<FollowUpJobData>(
 
       workerLogger.info({ supplierEmail, messageId }, 'Follow-up email sent');
 
-      await job.updateProgress(80);
+
 
       // Get from email
       const fromEmail =
