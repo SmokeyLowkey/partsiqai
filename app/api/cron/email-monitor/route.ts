@@ -11,12 +11,7 @@ import { cronLogger } from '@/lib/logger';
  *
  * Setup with Vercel Cron:
  * Add to vercel.json:
- * {
- *   "crons": [{
- *     "path": "/api/cron/email-monitor",
- *     "schedule": "*/15 * * * *"
- *   }]
- * }
+ *   crons: [{ path: "/api/cron/email-monitor", schedule: "every 15 min" }]
  *
  * Or use an external cron service (cron-job.org, EasyCron, etc.)
  */
