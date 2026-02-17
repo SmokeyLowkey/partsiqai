@@ -66,6 +66,33 @@ export async function saveCallState(
 }
 
 /**
+ * Acquire a per-call mutex lock using Redis SETNX.
+ * Prevents concurrent processing of the same call (e.g., if Vapi
+ * sends two messages rapidly before the first finishes processing).
+ * @param callId  The call to lock
+ * @param ttlMs   Auto-expire in milliseconds (safety net if process crashes)
+ * @returns true if lock acquired, false if already locked
+ */
+export async function acquireCallLock(callId: string, ttlMs: number = 15000): Promise<boolean> {
+  const client = getRedisClient();
+  if (!client) return true; // No Redis = no lock needed (dev mode)
+
+  const lockKey = `voip:lock:${callId}`;
+  const result = await client.set(lockKey, Date.now().toString(), 'PX', ttlMs, 'NX');
+  return result === 'OK';
+}
+
+/**
+ * Release the per-call mutex lock.
+ */
+export async function releaseCallLock(callId: string): Promise<void> {
+  const client = getRedisClient();
+  if (!client) return;
+
+  await client.del(`voip:lock:${callId}`);
+}
+
+/**
  * Get call state from Redis
  */
 export async function getCallState(

@@ -219,6 +219,7 @@ export async function POST(req: NextRequest) {
                 ? Number(item.estimatedPrice) * item.quantity
                 : null,
               notes: item.notes,
+              source: item.source,
             })),
             // Always add MISC item for additional costs
             {

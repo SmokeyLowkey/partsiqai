@@ -299,6 +299,7 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
       description: item.description || '',
       quantity: item.quantity,
       budgetMax: undefined,
+      source: item.source as 'CATALOG' | 'WEB_SEARCH' | 'MANUAL',
     }));
 
     // Fetch human-readable values for voice output

@@ -135,6 +135,7 @@ interface FormattedPart {
     }>;
   };
   callToAction: string;
+  isWebResult?: boolean;
 }
 
 interface Badge {
@@ -185,6 +186,7 @@ interface PickListItem {
   quantity: number;
   price?: number;
   supplier?: string;
+  isWebResult?: boolean;
 }
 
 // --- Pick list localStorage helpers ---
@@ -582,6 +584,7 @@ export default function AIChatPage() {
         quantity: 1,
         price: part.price,
         supplier: part.supplier,
+        isWebResult: part.isWebResult,
       };
       setPickList((prev) => [...prev, newItem]);
       setShowMobilePickList(true);

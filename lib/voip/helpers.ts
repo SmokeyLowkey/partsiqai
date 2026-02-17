@@ -107,7 +107,8 @@ Return ONLY the intent name (e.g., "yes_can_help"), nothing else.`;
 export async function extractPricing(
   llmClient: OpenRouterClient,
   supplierResponse: string,
-  partsContext: CallState['parts']
+  partsContext: CallState['parts'],
+  recentHistory?: Array<{ speaker: string; text: string }>
 ): Promise<Array<{
   partNumber: string;
   price?: number;
@@ -119,9 +120,21 @@ export async function extractPricing(
     .map(p => `- ${p.partNumber}: ${p.description}`)
     .join('\n');
 
-  const prompt = `Extract pricing from this supplier response. Return ONLY valid JSON, no markdown, no explanation.
+  // Include recent conversation history for context (availability may have been
+  // mentioned in an earlier turn, e.g., "we have a couple in stock" then later "$130 each")
+  let conversationContext = '';
+  if (recentHistory && recentHistory.length > 0) {
+    conversationContext = '\nRecent conversation for context:\n' +
+      recentHistory
+        .slice(-6)
+        .map(m => `${m.speaker === 'ai' ? 'You' : 'Supplier'}: ${m.text}`)
+        .join('\n') +
+      '\n';
+  }
 
-Supplier: "${supplierResponse}"
+  const prompt = `Extract pricing from this supplier response. Return ONLY valid JSON, no markdown, no explanation.
+${conversationContext}
+Supplier's latest response: "${supplierResponse}"
 
 Parts requested:
 ${partsDescription}
@@ -140,6 +153,7 @@ Return JSON array:
 ]
 
 If no pricing mentioned, return []. Match part numbers carefully (e.g., "a t five one four seven nine nine" = "AT514799").
+If supplier said "in stock", "have them", "on hand", "couple in stock" etc. in ANY recent message, availability MUST be "in_stock".
 If supplier says a part has been superseded or replaced, set isSubstitute=true and originalPartNumber to the requested part.`;
 
   try {

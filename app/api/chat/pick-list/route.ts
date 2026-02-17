@@ -9,6 +9,7 @@ const PickListItemSchema = z.object({
   quantity: z.number().int().positive(),
   price: z.number().optional(),
   supplier: z.string().optional(),
+  isWebResult: z.boolean().optional(),
 });
 
 const PickListSchema = z.object({
@@ -70,6 +71,7 @@ export async function POST(req: NextRequest) {
             quantity: item.quantity,
             estimatedPrice: item.price,
             notes: item.supplier ? `Supplier: ${item.supplier}` : undefined,
+            source: item.isWebResult ? 'WEB_SEARCH' : 'CATALOG',
           })),
         },
       },

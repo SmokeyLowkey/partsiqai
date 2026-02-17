@@ -751,6 +751,7 @@ model ChatPickListItem {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   notes          String?
+  source         ItemSource   @default(CATALOG)
   message        ChatMessage? @relation(fields: [messageId], references: [id])
   pickList       ChatPickList @relation(fields: [pickListId], references: [id], onDelete: Cascade)
 
@@ -974,6 +975,7 @@ model QuoteRequestItem {
   supersessionNotes          String?
   supplierNotes              String?
   supplierId                 String?
+  source                     ItemSource          @default(CATALOG)
   part                       Part?               @relation(fields: [partId], references: [id])
   quoteRequest               QuoteRequest        @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
   supplier                   Supplier?           @relation(fields: [supplierId], references: [id])
@@ -1541,6 +1543,12 @@ enum ItemAvailability {
   BACKORDERED
   SPECIAL_ORDER
   UNKNOWN
+}
+
+enum ItemSource {
+  CATALOG
+  WEB_SEARCH
+  MANUAL
 }
 
 enum EmailThreadStatus {

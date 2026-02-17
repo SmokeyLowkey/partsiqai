@@ -110,7 +110,12 @@ export function quoteRequestNode(state: CallState): CallState {
       .map(p => describePartNaturally(p.description, p.quantity))
       .join(', and ');
 
-    const request = `Great, thanks! I'm looking for ${descriptions}. Whenever you're ready, I have the part numbers.`;
+    const hasUnverifiedParts = state.parts.some(p => p.source === 'WEB_SEARCH');
+
+    let request = `Great, thanks! I'm looking for ${descriptions}. Whenever you're ready, I have the part numbers.`;
+    if (hasUnverifiedParts) {
+      request += ` I should mention, I found some of these part numbers online so I'll need to verify they're correct for my machine.`;
+    }
     return addMessage(state, 'ai', request);
   }
 
@@ -127,15 +132,22 @@ export function quoteRequestNode(state: CallState): CallState {
     const partNum = formatPartNumberForSpeech(nextPart.partNumber);
     const isFirst = givenPartNumbers.length === 0;
     const remaining = state.parts.length - givenPartNumbers.length - 1;
+    const isUnverified = nextPart.source === 'WEB_SEARCH';
 
     let request: string;
     if (isFirst) {
       request = `Sure! The first part number is... ${partNum}. That's the ${nextPart.description}.`;
+      if (isUnverified) {
+        request += ` Now, I found this one online so could you verify it's the right fit for my machine?`;
+      }
       if (remaining > 0) {
         request += ` I have ${remaining} more after this one.`;
       }
     } else {
       request = `Next one is... ${partNum}. That's the ${nextPart.description}.`;
+      if (isUnverified) {
+        request += ` This one also needs to be verified for my machine.`;
+      }
     }
 
     return addMessage(state, 'ai', request);
@@ -210,29 +222,28 @@ export function negotiateNode(state: CallState): CallState {
 
 /**
  * Confirmation Node - Confirm the quote details
+ * Does NOT set status to 'completed' — waits for supplier acknowledgment.
+ * If supplier corrects, routeFromConfirmation will re-extract pricing.
  */
 export function confirmationNode(state: CallState): CallState {
   const quotes = state.quotes.filter(q => q.price);
 
   if (quotes.length === 0) {
-    return addMessage(
-      state,
-      'ai',
-      "Thank you for your time. We'll follow up via email with the details."
-    );
+    return {
+      ...addMessage(state, 'ai',
+        "Thank you for your time. We'll follow up via email with the details."
+      ),
+      status: 'completed',
+    };
   }
 
   const quotesSummary = quotes
-    .map(q => `${q.partNumber} at $${q.price}, ${q.availability}`)
-    .join(', ');
+    .map(q => `${q.partNumber} at $${q.price?.toFixed(2)}, ${q.availability === 'in_stock' ? 'in stock' : q.availability}`)
+    .join(', and ');
 
-  const message = `Perfect. Just to confirm: ${quotesSummary}. 
-We'll send a formal quote request via email to finalize. Thank you!`;
-
-  return {
-    ...addMessage(state, 'ai', message),
-    status: 'completed',
-  };
+  return addMessage(state, 'ai',
+    `Perfect. Just to confirm: ${quotesSummary}. Does that all sound right?`
+  );
 }
 
 /**
@@ -326,9 +337,13 @@ If we don't hear back by end of day, we'll give you a follow-up call. Thank you!
 
 /**
  * Polite End Node - End call gracefully
+ * This is the only node that sets status to 'completed' (besides no-quotes confirmation).
  */
 export function politeEndNode(state: CallState): CallState {
-  const message = `I understand. Thank you for your time. Have a great day!`;
+  const hasQuotes = state.quotes.some(q => q.price);
+  const message = hasQuotes
+    ? "Great! We'll send a formal quote request via email to finalize. Thank you so much for your help, have a great day!"
+    : "I understand. Thank you for your time. Have a great day!";
 
   return {
     ...addMessage(state, 'ai', message),
@@ -568,28 +583,64 @@ export async function routeFromQuoteRequest(
     return 'conversational_response'; // Answer their question, don't end
   }
 
-  // Check for questions
+  // Check if the response likely contains pricing info (quick heuristic).
+  // Supplier may give a price AND ask a question in the same message
+  // (e.g., "$130.58 each. Do you have an account?"). We must capture
+  // the price even when a question is present. But if there's no pricing
+  // hint, check questions first — "Do you have an account?" is a normal
+  // pre-pricing question the agent needs to answer.
+  const looksLikePricing = /\$|\d+\.\d{2}|\b(each|per unit|per piece|apiece|a piece|price is|cost is|that'?s? going to be|that'?ll be|runs? about|looking at)\b/i.test(lastResponse);
+
+  if (looksLikePricing) {
+    // Response likely has pricing — try to extract before handling questions
+    const recentHistory = state.conversationHistory.slice(-6);
+    const extractedQuotes = await extractPricing(llmClient, lastResponse, state.parts, recentHistory);
+
+    if (extractedQuotes.length > 0 && extractedQuotes.some(q => q.price)) {
+      // Got pricing, check if negotiation needed
+      const needsNegotiation = extractedQuotes.some(
+        (q, idx) => q.price && state.parts[idx]?.budgetMax && q.price > state.parts[idx].budgetMax!
+      );
+
+      if (needsNegotiation && state.negotiationAttempts < state.maxNegotiationAttempts) {
+        return 'negotiate';
+      }
+
+      // If supplier also asked a question, answer it conversationally
+      // (pricing already captured in extractedQuotes, will be saved via price_extract)
+      const hasQuestion = await detectQuestion(lastResponse);
+      if (hasQuestion) {
+        return 'conversational_response';
+      }
+
+      return nextNodeAfterPricing(state);
+    }
+  }
+
+  // Check for questions (when no pricing was found or response doesn't look like pricing)
   const hasQuestion = await detectQuestion(lastResponse);
   if (hasQuestion) {
     if (state.clarificationAttempts >= 2) {
       return 'human_escalation';
     }
-    return 'conversational_response'; // Use conversational response for questions
+    return 'conversational_response';
   }
 
-  // Try to extract pricing
-  const extractedQuotes = await extractPricing(llmClient, lastResponse, state.parts);
+  // No question and no pricing hint — try extractPricing as fallback
+  // (supplier may describe availability or pricing without obvious markers)
+  if (!looksLikePricing) {
+    const recentHistory = state.conversationHistory.slice(-6);
+    const extractedQuotes = await extractPricing(llmClient, lastResponse, state.parts, recentHistory);
 
-  if (extractedQuotes.length > 0 && extractedQuotes.some(q => q.price)) {
-    // Got pricing, check if negotiation needed
-    const needsNegotiation = extractedQuotes.some(
-      (q, idx) => q.price && state.parts[idx]?.budgetMax && q.price > state.parts[idx].budgetMax!
-    );
-
-    if (needsNegotiation && state.negotiationAttempts < state.maxNegotiationAttempts) {
-      return 'negotiate';
+    if (extractedQuotes.length > 0 && extractedQuotes.some(q => q.price)) {
+      const needsNegotiation = extractedQuotes.some(
+        (q, idx) => q.price && state.parts[idx]?.budgetMax && q.price > state.parts[idx].budgetMax!
+      );
+      if (needsNegotiation && state.negotiationAttempts < state.maxNegotiationAttempts) {
+        return 'negotiate';
+      }
+      return nextNodeAfterPricing(state);
     }
-    return nextNodeAfterPricing(state);
   }
 
   // Check for unavailable/out of stock — but only end if supplier is NOT still
@@ -645,12 +696,66 @@ export async function routeFromNegotiation(
   }
 
   // Check if they came down in price
-  const extractedQuotes = await extractPricing(llmClient, lastResponse, state.parts);
+  const extractedQuotes = await extractPricing(llmClient, lastResponse, state.parts,
+    state.conversationHistory.slice(-6));
   if (extractedQuotes.length > 0 && extractedQuotes.some(q => q.price)) {
     return 'confirmation';
   }
 
   return 'negotiate'; // Try again
+}
+
+/**
+ * Route from confirmation - detect agreement vs correction
+ * If supplier corrects info, re-extract pricing. If they agree, wrap up.
+ */
+export async function routeFromConfirmation(
+  _llmClient: OpenRouterClient,
+  state: CallState
+): Promise<string> {
+  const lastResponse = getLastSupplierResponse(state);
+  const lower = lastResponse.toLowerCase();
+
+  // Correction patterns — supplier disagrees or corrects
+  const correctionPatterns = [
+    'that\'s wrong', 'that\'s not right', 'incorrect', 'actually',
+    'i said', 'they are available', 'it is available', 'in stock',
+    'not unavailable', 'we have them', 'i have them', 'they\'re available',
+    'let me correct', 'that\'s not correct',
+  ];
+
+  if (correctionPatterns.some(p => lower.includes(p))) {
+    // Clear stale quotes so we can re-extract with full context
+    return 'price_extract';
+  }
+
+  // "No" at the start likely means disagreement with the confirmation
+  if (/^no[\s,.]/.test(lower) || lower === 'no') {
+    return 'price_extract';
+  }
+
+  // Agreement patterns
+  const agreePatterns = [
+    'yes', 'yeah', 'yep', 'correct', 'that\'s right', 'sounds good',
+    'that\'s it', 'perfect', 'mhm', 'uh-huh', 'you got it',
+  ];
+
+  if (agreePatterns.some(p => lower.includes(p))) {
+    return 'polite_end';
+  }
+
+  // "Anything else?" type question from supplier — they want to wrap up too
+  if (/anything else|is that (all|it|everything)/i.test(lower)) {
+    return 'polite_end';
+  }
+
+  // Supplier asked a question
+  if (await detectQuestion(lastResponse)) {
+    return 'conversational_response';
+  }
+
+  // Default: assume acknowledgment and wrap up
+  return 'polite_end';
 }
 
 /**
@@ -747,6 +852,9 @@ export async function processCallTurn(
     case 'bot_screening':
       nextNode = await routeFromBotScreening(llmClient, newState);
       break;
+    case 'confirmation':
+      nextNode = await routeFromConfirmation(llmClient, newState);
+      break;
     case 'misc_costs_inquiry':
       // After asking about misc costs, try to extract any amounts then confirm
       nextNode = 'confirmation';
@@ -774,8 +882,9 @@ export async function processCallTurn(
         break;
       }
 
-      // Try to extract pricing from current response
-      const convQuotes = await extractPricing(llmClient, lastSupplierMsg, newState.parts);
+      // Try to extract pricing from current response (with conversation context)
+      const convQuotes = await extractPricing(llmClient, lastSupplierMsg, newState.parts,
+        newState.conversationHistory.slice(-6));
       if (convQuotes.length > 0) {
         nextNode = 'price_extract';
         break;

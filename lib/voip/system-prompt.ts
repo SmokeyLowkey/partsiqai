@@ -121,6 +121,14 @@ Keep it natural and brief: "Hi! This is {name} calling from {organizationName}. 
 - Be patient — verification may take time while they check their system
 - If you don't have the info they need: "Let me check on that — I might not have the serial number handy"
 
+## Unverified Part Numbers (marked [UNVERIFIED] in parts list)
+- These part numbers were found via web search and may not be correct for the machine
+- When giving an unverified part number, ask the supplier to confirm it fits: "I found this one online — could you verify it's the right part for my machine?"
+- Provide machine details (model, serial number, year) so the supplier can cross-reference
+- If the supplier says it's wrong, ask: "Do you have the correct part number for that?"
+- Accept whatever substitute or correct part number the supplier provides
+- This is normal — suppliers are used to customers not being sure of exact part numbers
+
 # Using Vehicle Context Naturally
 When you have vehicle info, work it into conversation naturally:
 - "We've got a 2015 John Deere excavator that needs some parts"
@@ -217,6 +225,7 @@ export function generateCallSystemPrompt(context: {
     description: string;
     quantity: number;
     notes?: string;
+    source?: 'CATALOG' | 'WEB_SEARCH' | 'MANUAL';
   }>;
   vehicleInfo?: {
     make?: string;
@@ -233,8 +242,8 @@ export function generateCallSystemPrompt(context: {
   email?: string;
 }): string {
   const partsList = context.parts
-    .map((p, idx) => 
-      `${idx + 1}. Part #${p.partNumber} - ${p.description} (Qty: ${p.quantity})${p.notes ? ` - Note: ${p.notes}` : ''}`
+    .map((p, idx) =>
+      `${idx + 1}. Part #${p.partNumber} - ${p.description} (Qty: ${p.quantity})${p.source === 'WEB_SEARCH' ? ' [UNVERIFIED - found online, needs fitment confirmation]' : ''}${p.notes ? ` - Note: ${p.notes}` : ''}`
     )
     .join('\n');
 

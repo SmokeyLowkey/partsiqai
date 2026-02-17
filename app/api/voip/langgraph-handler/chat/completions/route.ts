@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCallState, saveCallState } from '@/lib/voip/state-manager';
+import { getCallState, saveCallState, acquireCallLock, releaseCallLock } from '@/lib/voip/state-manager';
 import { processCallTurn } from '@/lib/voip/call-graph';
 import { getLastAIMessage, addMessage } from '@/lib/voip/helpers';
 import { OpenRouterClient } from '@/lib/services/llm/openrouter-client';
@@ -308,103 +308,123 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(buildChatCompletionResponse(errorContent));
     }
 
-    // Get current call state from Redis
-    let state;
+    // Acquire per-call lock to prevent concurrent processing
+    // (e.g., if Vapi sends two messages before the first finishes)
+    let lockAcquired = await acquireCallLock(callId);
+    if (!lockAcquired) {
+      // Another request is processing — wait briefly and retry once
+      logger.warn({ callId }, 'Call lock busy, waiting 300ms to retry');
+      await new Promise(resolve => setTimeout(resolve, 300));
+      lockAcquired = await acquireCallLock(callId);
+      if (!lockAcquired) {
+        logger.warn({ callId }, 'Could not acquire lock after retry — returning hold message');
+        const busyContent = "One moment please.";
+        if (isStreaming) return buildStreamingResponse(busyContent);
+        return NextResponse.json(buildChatCompletionResponse(busyContent));
+      }
+    }
+
     try {
-      state = await getCallState(callId);
+      // Get current call state from Redis
+      let state;
+      try {
+        state = await getCallState(callId);
+        logger.info(
+          {
+            callId,
+            stateFound: !!state,
+            stateNode: state?.currentNode,
+          },
+          'Call state retrieval result'
+        );
+      } catch (redisError: any) {
+        logger.error(
+          {
+            callId,
+            error: redisError.message,
+            stack: redisError.stack
+          },
+          'Redis error when retrieving call state'
+        );
+        const errorContent = "I apologize, I'm having a technical issue. Let me have someone call you right back.";
+        if (isStreaming) return buildStreamingResponse(errorContent);
+        return NextResponse.json(buildChatCompletionResponse(errorContent));
+      }
+
+      if (!state) {
+        logger.error({ callId }, 'Call state not found in Redis after retrieval attempt');
+        const errorContent = "I apologize, I'm having a technical issue. Let me have someone call you right back.";
+        if (isStreaming) return buildStreamingResponse(errorContent);
+        return NextResponse.json(buildChatCompletionResponse(errorContent));
+      }
+
+      // Early exit: if call is already completed or escalated, send goodbye + endCall
+      if (state.status === 'completed' || state.status === 'escalated') {
+        logger.info(
+          { callId, status: state.status },
+          'Call already completed/escalated - returning endCall without processing new turn'
+        );
+        const goodbyeContent = "Thank you, goodbye!";
+        if (isStreaming) return buildStreamingResponse(goodbyeContent, { endCall: true });
+        return NextResponse.json(buildChatCompletionResponse(goodbyeContent, { endCall: true }));
+      }
+
       logger.info(
-        { 
-          callId, 
-          stateFound: !!state,
-          stateNode: state?.currentNode,
+        {
+          callId,
+          currentNode: state.currentNode,
+          userMessageLength: userMessage.length,
+          userMessagePreview: userMessage.substring(0, 100),
         },
-        'Call state retrieval result'
+        'Processing supplier response through LangGraph'
       );
-    } catch (redisError: any) {
-      logger.error(
-        { 
-          callId, 
-          error: redisError.message, 
-          stack: redisError.stack 
+
+      // Create LLM client for the organization
+      const llmClient = await OpenRouterClient.fromOrganization(state.organizationId);
+
+      // Add supplier's message to conversation history
+      const stateWithMessage = addMessage(state, 'supplier', userMessage);
+
+      // Process through LangGraph state machine
+      const newState = await processCallTurn(llmClient, stateWithMessage);
+
+      // Save updated state back to Redis
+      await saveCallState(callId, newState);
+
+      // Get the AI's response from the new state
+      const aiResponse = getLastAIMessage(newState);
+
+      logger.info(
+        {
+          callId,
+          previousNode: state.currentNode,
+          newNode: newState.currentNode,
+          status: newState.status,
+          responseLength: aiResponse.length,
+          responsePreview: aiResponse.substring(0, 100),
         },
-        'Redis error when retrieving call state'
+        'LangGraph processing complete'
       );
-      const errorContent = "I apologize, I'm having a technical issue. Let me have someone call you right back.";
-      if (isStreaming) return buildStreamingResponse(errorContent);
-      return NextResponse.json(buildChatCompletionResponse(errorContent));
+
+      // Check if call should end - when status is 'completed' or 'escalated', tell VAPI to hang up
+      const shouldEndCall = newState.status === 'completed' || newState.status === 'escalated';
+
+      if (shouldEndCall) {
+        logger.info(
+          { callId, status: newState.status, outcome: newState.outcome },
+          'Call completed - sending endCall tool_call to VAPI'
+        );
+      }
+
+      // Return response in OpenAI Chat Completions format
+      if (isStreaming) {
+        return buildStreamingResponse(aiResponse, { endCall: shouldEndCall });
+      }
+
+      return NextResponse.json(buildChatCompletionResponse(aiResponse, { endCall: shouldEndCall }));
+    } finally {
+      await releaseCallLock(callId);
     }
-
-    if (!state) {
-      logger.error({ callId }, 'Call state not found in Redis after retrieval attempt');
-      const errorContent = "I apologize, I'm having a technical issue. Let me have someone call you right back.";
-      if (isStreaming) return buildStreamingResponse(errorContent);
-      return NextResponse.json(buildChatCompletionResponse(errorContent));
-    }
-
-    // Early exit: if call is already completed or escalated, send goodbye + endCall
-    if (state.status === 'completed' || state.status === 'escalated') {
-      logger.info(
-        { callId, status: state.status },
-        'Call already completed/escalated - returning endCall without processing new turn'
-      );
-      const goodbyeContent = "Thank you, goodbye!";
-      if (isStreaming) return buildStreamingResponse(goodbyeContent, { endCall: true });
-      return NextResponse.json(buildChatCompletionResponse(goodbyeContent, { endCall: true }));
-    }
-
-    logger.info(
-      {
-        callId,
-        currentNode: state.currentNode,
-        userMessageLength: userMessage.length,
-        userMessagePreview: userMessage.substring(0, 100),
-      },
-      'Processing supplier response through LangGraph'
-    );
-
-    // Create LLM client for the organization
-    const llmClient = await OpenRouterClient.fromOrganization(state.organizationId);
-
-    // Add supplier's message to conversation history
-    const stateWithMessage = addMessage(state, 'supplier', userMessage);
-
-    // Process through LangGraph state machine
-    const newState = await processCallTurn(llmClient, stateWithMessage);
-
-    // Save updated state back to Redis
-    await saveCallState(callId, newState);
-
-    // Get the AI's response from the new state
-    const aiResponse = getLastAIMessage(newState);
-
-    logger.info(
-      {
-        callId,
-        previousNode: state.currentNode,
-        newNode: newState.currentNode,
-        status: newState.status,
-        responseLength: aiResponse.length,
-        responsePreview: aiResponse.substring(0, 100),
-      },
-      'LangGraph processing complete'
-    );
-
-    // Check if call should end - when status is 'completed' or 'escalated', tell VAPI to hang up
-    const shouldEndCall = newState.status === 'completed' || newState.status === 'escalated';
-
-    if (shouldEndCall) {
-      logger.info(
-        { callId, status: newState.status, outcome: newState.outcome },
-        'Call completed - sending endCall tool_call to VAPI'
-      );
-    }
-
-    // Return response in OpenAI Chat Completions format
-    if (isStreaming) {
-      return buildStreamingResponse(aiResponse, { endCall: shouldEndCall });
-    }
-
-    return NextResponse.json(buildChatCompletionResponse(aiResponse, { endCall: shouldEndCall }));
 
   } catch (error: any) {
     logger.error({ error: error.message, stack: error.stack }, 'LangGraph handler error');

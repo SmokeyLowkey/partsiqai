@@ -76,7 +76,7 @@ describe('LangGraph Integration - End-to-End', () => {
 
   describe('State Machine Flow', () => {
     it('should progress through greeting -> quote_request -> confirmation', async () => {
-      const { greetingNode, quoteRequestNode, confirmationNode } = await import('@/lib/voip/call-graph');
+      const { greetingNode, quoteRequestNode, confirmationNode, politeEndNode } = await import('@/lib/voip/call-graph');
       const { addMessage } = await import('@/lib/voip/helpers');
 
       // Start with greeting
@@ -132,12 +132,19 @@ describe('LangGraph Integration - End-to-End', () => {
         { partNumber: 'ABC123', price: 450, availability: 'in_stock', leadTimeDays: 3 },
       ];
 
-      // Step 5: Confirmation
+      // Step 5: Confirmation — asks supplier to verify, does NOT auto-complete
       state.currentNode = 'confirmation';
       state = confirmationNode(state);
       expect(state.conversationHistory).toHaveLength(5);
-      expect(state.status).toBe('completed');
+      expect(state.status).toBe('in_progress'); // Waits for supplier acknowledgment
       expect(state.conversationHistory[4].text).toContain('$450');
+      expect(state.conversationHistory[4].text).toContain('sound right');
+
+      // Step 6: Supplier confirms → politeEndNode completes the call
+      state = addMessage(state, 'supplier', 'Yeah that sounds right');
+      state.currentNode = 'polite_end';
+      state = politeEndNode(state);
+      expect(state.status).toBe('completed');
     });
 
     it('should handle negotiation flow', async () => {

@@ -67,10 +67,12 @@ export async function POST(
     const regularItems = quoteRequest.items.filter(item => item.partNumber !== 'MISC-COSTS');
     const miscCostsItem = quoteRequest.items.find(item => item.partNumber === 'MISC-COSTS');
     
+    const hasUnverifiedParts = regularItems.some(item => item.source === 'WEB_SEARCH');
+
     const partsList = regularItems
       .map(
         (item, index) =>
-          `${index + 1}. Part Number: ${item.partNumber}\n   Description: ${item.description}\n   Quantity: ${item.quantity}`
+          `${index + 1}. Part Number: ${item.partNumber}\n   Description: ${item.description}\n   Quantity: ${item.quantity}${item.source === 'WEB_SEARCH' ? '\n   ⚠️ Note: This part number was found via web search and may need verification for fitment' : ''}`
       )
       .join('\n\n');
     
@@ -113,7 +115,7 @@ REQUIREMENTS:
    - Lists all the parts needed with quantities
    - Mentions the vehicle context if provided
    - Requests pricing, availability, and estimated lead times
-   - Asks about any alternatives for parts that may be out of stock${miscCostsItem ? '\n   - Asks about additional costs like shipping, freight, handling fees, or other charges' : ''}
+   - Asks about any alternatives for parts that may be out of stock${miscCostsItem ? '\n   - Asks about additional costs like shipping, freight, handling fees, or other charges' : ''}${hasUnverifiedParts ? '\n   - For parts marked with ⚠️, politely ask the supplier to verify the part number is correct for the specified vehicle/machine before quoting' : ''}
    - Thanks them for their time
    - Includes a professional signature
 
@@ -154,7 +156,7 @@ Please provide:
 - Unit pricing for each part
 - Current availability
 - Estimated lead times
-- Any alternative parts if items are not available${miscCostsItem ? '\n- Additional costs (shipping, freight, handling fees, etc.)' : ''}
+- Any alternative parts if items are not available${miscCostsItem ? '\n- Additional costs (shipping, freight, handling fees, etc.)' : ''}${hasUnverifiedParts ? '\n\nNote: Some part numbers listed above were sourced from an online search and may need verification. Please confirm they are correct for the specified vehicle before quoting.' : ''}
 
 Quote Reference: ${quoteRequest.quoteNumber}
 

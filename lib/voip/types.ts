@@ -18,6 +18,7 @@ export interface CallState {
     description: string;
     quantity: number;
     budgetMax?: number;
+    source?: 'CATALOG' | 'WEB_SEARCH' | 'MANUAL';
   }>;
   
   // Background facts for the AI (vehicle info, parts details, etc.) - NOT spoken directly

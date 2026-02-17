@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCallState, saveCallState, deleteCallState } from '@/lib/voip/state-manager';
-import { processCallTurn, initializeCallState } from '@/lib/voip/call-graph';
-import { getLastAIMessage, determineOutcome, addMessage } from '@/lib/voip/helpers';
-import { OpenRouterClient } from '@/lib/services/llm/openrouter-client';
+import { initializeCallState } from '@/lib/voip/call-graph';
+import { getLastAIMessage, determineOutcome } from '@/lib/voip/helpers';
 import { workerLogger } from '@/lib/logger';
 
 const logger = workerLogger.child({ module: 'voip-webhooks' });
@@ -57,9 +56,15 @@ export async function POST(req: NextRequest) {
         break;
 
       case 'transcript':
-        if (event.transcript?.role === 'user') {
-          await handleSupplierResponse(callId, event.transcript.text);
-        }
+        // Intentionally NOT processed here.
+        // The langgraph-handler (/api/voip/langgraph-handler/chat/completions)
+        // is the single source of truth for conversation processing.
+        // Processing transcripts here caused a race condition: both handlers
+        // would read/write Redis state concurrently, corrupting call state.
+        logger.debug(
+          { callId, text: event.transcript?.text?.substring(0, 50) },
+          'Transcript event received (handled by langgraph-handler, not webhook)'
+        );
         break;
 
       case 'call-ended':
@@ -144,7 +149,8 @@ async function handleCallStarted(callId: string, vapiCallId: string | undefined,
     partNumber: item.partNumber,
     description: item.description || '',
     quantity: item.quantity,
-    budgetMax: undefined, // Could add budget tracking later
+    budgetMax: undefined,
+    source: item.source as 'CATALOG' | 'WEB_SEARCH' | 'MANUAL',
   })) || [];
 
   // Extract custom context from conversationLog if available
@@ -194,65 +200,6 @@ async function handleCallStarted(callId: string, vapiCallId: string | undefined,
     where: { id: callId },
     data: updateData,
   });
-}
-
-async function handleSupplierResponse(callId: string, text: string) {
-  // Get current state
-  const state = await getCallState(callId);
-  if (!state) {
-    console.error(`Call state not found for ${callId}`);
-    return;
-  }
-
-  // Create LLM client for organization
-  const llmClient = await OpenRouterClient.fromOrganization(state.organizationId);
-
-  // Add supplier response to conversation
-  const stateWithResponse = addMessage(state, 'supplier', text);
-
-  // Process through graph to get next AI response
-  const newState = await processCallTurn(llmClient, stateWithResponse);
-
-  // Save updated state
-  await saveCallState(callId, newState);
-
-  // Get existing call record to preserve context data
-  const existingCall = await prisma.supplierCall.findUnique({
-    where: { id: callId },
-    select: { conversationLog: true },
-  });
-  
-  const existingLog = (existingCall?.conversationLog as any) || {};
-
-  // Update database with conversation log - preserve context, add conversationHistory
-  await prisma.supplierCall.update({
-    where: { id: callId },
-    data: {
-      conversationLog: {
-        ...existingLog,
-        conversationHistory: newState.conversationHistory,
-        currentNode: newState.currentNode,
-        status: newState.status,
-        negotiationAttempts: newState.negotiationAttempts,
-        clarificationAttempts: newState.clarificationAttempts,
-      },
-      status: newState.status === 'escalated' ? 'HUMAN_ESCALATED' : 'IN_PROGRESS',
-    },
-  });
-
-  // Return next AI message to Vapi
-  const nextMessage = getLastAIMessage(newState);
-  
-  // Check if call should end
-  if (newState.status === 'completed' || newState.status === 'escalated') {
-    // Let Vapi know to end the call after this message
-    return NextResponse.json({
-      say: nextMessage,
-      endCall: true,
-    });
-  }
-
-  return NextResponse.json({ say: nextMessage });
 }
 
 async function handleCallEnded(callId: string, vapiCallId: string | undefined, event: any) {
