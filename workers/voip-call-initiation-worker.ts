@@ -466,10 +466,14 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
     if (vapiAssistantId) {
       callPayload.assistantId = vapiAssistantId;
       // Pass custom values via direct field overrides (NOT variableValues,
-      // which only works if the Vapi dashboard template uses {{}} syntax)
+      // which only works if the Vapi dashboard template uses {{}} syntax).
+      // model override MUST include provider/model/url or Vapi returns 400.
       callPayload.assistantOverrides = {
         firstMessage: firstMessage,
         model: {
+          provider: 'custom-llm',
+          model: 'langgraph-state-machine',
+          url: `${appUrl}/api/voip/langgraph-handler`,
           messages: [{ role: 'system', content: systemInstructions }],
         },
         // VAPI rejects `tools` in assistantOverrides, so endCall tool must be

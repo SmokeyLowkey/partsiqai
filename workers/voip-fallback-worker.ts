@@ -4,7 +4,7 @@ import { QUEUE_NAMES } from '@/lib/queue/queues';
 import { VoipFallbackJobData } from '@/lib/queue/types';
 import { workerLogger } from '@/lib/logger';
 import { prisma } from '@/lib/prisma';
-import { sendEmail } from '@/lib/email/resend';
+import { getEmailClientForUser } from '@/lib/services/email/email-client-factory';
 
 const logger = workerLogger.child({ worker: 'voip-fallback' });
 
@@ -14,8 +14,6 @@ async function processVoipFallback(job: Job<VoipFallbackJobData>) {
     supplierId,
     supplierName,
     supplierEmail,
-    callId,
-    failureReason,
     context,
     metadata,
   } = job.data;
@@ -45,10 +43,13 @@ async function processVoipFallback(job: Job<VoipFallbackJobData>) {
       throw new Error(`Quote request not found: ${quoteRequestId}`);
     }
 
+    // Filter out MISC-COSTS from parts list
+    const regularParts = context.parts.filter(part => part.partNumber !== 'MISC-COSTS');
+
     // Generate email content
     const subject = `Quote Request ${quoteRequest.quoteNumber} - Automated Followup`;
-    
-    const partsList = context.parts
+
+    const partsList = regularParts
       .map(
         (part, idx) =>
           `${idx + 1}. ${part.partNumber} - ${part.description}\n   Quantity: ${part.quantity}${part.notes ? `\n   Notes: ${part.notes}` : ''}`
@@ -69,16 +70,13 @@ async function processVoipFallback(job: Job<VoipFallbackJobData>) {
 
     const body = `Dear ${supplierName},
 
-We recently attempted to reach you by phone regarding Quote Request #${quoteRequest.quoteNumber}, but were unable to connect. 
-
-${callId ? `Previous call attempt failed: ${failureReason}` : `Automated call system: ${failureReason}`}
+We recently attempted to reach you by phone regarding Quote Request #${quoteRequest.quoteNumber}, but were unable to connect.
 
 We're following up via email to ensure you receive our quote request for the following parts:
 
 ${partsList}${vehicleInfo}${priorityInfo}${dueDateInfo}
 
-${context.notes ? `\nAdditional Notes:\n${context.notes}\n` : ''}
-Please provide your best pricing and availability for these items at your earliest convenience.
+${context.notes ? `\nAdditional Notes:\n${context.notes}\n` : ''}Please provide your best pricing and availability for these items at your earliest convenience.
 
 You can reply directly to this email or contact us at:
 ${quoteRequest.createdBy?.email || 'N/A'}
@@ -93,20 +91,58 @@ Quote Request #${quoteRequest.quoteNumber}
 ${new Date().toLocaleString()}
 `;
 
-    // Send email
-    await sendEmail({
-      to: supplierEmail,
+    // Send email via the user's Gmail/Outlook integration (same as quote request emails)
+    const emailClient = await getEmailClientForUser(metadata.userId);
+    const htmlBody = body
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br>');
+
+    const { messageId, threadId } = await emailClient.sendEmail(
+      supplierEmail,
       subject,
-      html: body.replace(/\n/g, '<br>'),
+      `<div style="font-family: Arial, sans-serif; line-height: 1.6;">${htmlBody}</div>`,
+    );
+
+    // Create email thread and message records for tracking
+    const emailThread = await prisma.emailThread.create({
+      data: {
+        organizationId: metadata.organizationId,
+        createdById: metadata.userId,
+        supplierId,
+        subject,
+        status: 'WAITING_RESPONSE',
+        externalThreadId: threadId,
+      },
     });
 
-    // Note: Communication logging removed - EmailMessage requires EmailThread
-    // The email send is tracked via Resend and the SupplierCall record exists
-    // TODO: Implement full EmailThread/EmailMessage logging if needed
+    await prisma.emailMessage.create({
+      data: {
+        threadId: emailThread.id,
+        direction: 'OUTBOUND',
+        from: quoteRequest.createdBy?.email || '',
+        to: supplierEmail,
+        subject,
+        body,
+        bodyHtml: htmlBody,
+        externalMessageId: messageId,
+        sentAt: new Date(),
+      },
+    });
+
+    // Link email thread to quote request
+    await prisma.quoteRequestEmailThread.create({
+      data: {
+        quoteRequestId,
+        emailThreadId: emailThread.id,
+        supplierId,
+      },
+    });
 
     logger.info(
-      { quoteRequestId, supplierId, email: supplierEmail },
-      'VOIP fallback email sent successfully'
+      { quoteRequestId, supplierId, email: supplierEmail, messageId, threadId },
+      'VOIP fallback email sent successfully via Gmail'
     );
 
     return {
@@ -120,10 +156,6 @@ ${new Date().toLocaleString()}
       { error: error.message, quoteRequestId, supplierId },
       'Error sending VOIP fallback email'
     );
-
-    // Note: Communication logging removed - EmailMessage requires EmailThread
-    // The failure is logged via the logger above
-    // TODO: Implement full EmailThread/EmailMessage logging if needed
 
     return {
       success: false,
@@ -155,7 +187,7 @@ export function startVoipFallbackWorker() {
     },
     {
       connection: redisConnection,
-      concurrency: 3, // Process 3 fallback emails concurrently
+      concurrency: 3,
       removeOnComplete: {
         count: 100,
       },
