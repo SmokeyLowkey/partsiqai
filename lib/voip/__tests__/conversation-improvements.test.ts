@@ -56,16 +56,18 @@ function makeState(overrides: Partial<CallState> = {}): CallState {
 describe('formatPartNumberForSpeech', () => {
   it('spells letter segments and reads digit segments', () => {
     const result = formatPartNumberForSpeech('AT514799');
-    expect(result).toContain('<say-as interpret-as="characters">AT</say-as>');
-    expect(result).toContain('<say-as interpret-as="digits">514799</say-as>');
+    // Letters spelled out individually: "A T"
+    expect(result).toContain('A T');
+    // Digits read individually: "5 1 4 7 9 9"
+    expect(result).toContain('5 1 4 7 9 9');
   });
 
   it('converts hyphens to spoken "dash"', () => {
     const result = formatPartNumberForSpeech('AHC-18598');
-    // "dash" gets wrapped in SSML characters tag since it's all letters
     expect(result).toContain('dash');
-    // The original hyphen character should be replaced (SSML attributes have hyphens, that's fine)
-    expect(result.replace(/<[^>]*>/g, '')).not.toContain('-');
+    // No hyphens or SSML tags remain
+    expect(result).not.toContain('-');
+    expect(result).not.toContain('<');
   });
 
   it('handles multiple hyphens', () => {
@@ -76,23 +78,29 @@ describe('formatPartNumberForSpeech', () => {
 
   it('handles pure letter part numbers', () => {
     const result = formatPartNumberForSpeech('ABC');
-    expect(result).toContain('<say-as interpret-as="characters">ABC</say-as>');
+    expect(result).toContain('A B C');
   });
 
   it('handles pure numeric part numbers', () => {
     const result = formatPartNumberForSpeech('12345');
-    expect(result).toContain('<say-as interpret-as="digits">12345</say-as>');
+    expect(result).toContain('1 2 3 4 5');
   });
 
   it('handles part number with no special chars', () => {
     const result = formatPartNumberForSpeech('MIA883029');
-    expect(result).toContain('<say-as interpret-as="characters">MIA</say-as>');
-    expect(result).toContain('<say-as interpret-as="digits">883029</say-as>');
+    expect(result).toContain('M I A');
+    expect(result).toContain('8 8 3 0 2 9');
   });
 
   it('does not say "minus" anywhere', () => {
     const result = formatPartNumberForSpeech('X-100-Y');
     expect(result.toLowerCase()).not.toContain('minus');
+  });
+
+  it('produces no SSML tags', () => {
+    const result = formatPartNumberForSpeech('AT514799');
+    expect(result).not.toContain('<');
+    expect(result).not.toContain('>');
   });
 });
 

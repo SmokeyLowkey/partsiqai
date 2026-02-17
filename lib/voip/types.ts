@@ -56,6 +56,9 @@ export interface CallState {
   hasMiscCosts: boolean;
   miscCostsAsked: boolean;
 
+  // Transfer/hold tracking
+  waitingForTransfer: boolean;
+
   // Call outcome
   status: 'in_progress' | 'completed' | 'failed' | 'needs_callback' | 'escalated';
   outcome?: string;

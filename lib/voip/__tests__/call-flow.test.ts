@@ -171,7 +171,8 @@ describe('VOIP Call Flow - Routing from Greeting', () => {
     state = addMessage(state, 'supplier', "Hold on, let me transfer you to parts.");
 
     const nextNode = await routeFromGreeting(mockLLM, state);
-    expect(nextNode).toBe('transfer');
+    // Supplier is already transferring — acknowledge and wait, don't ask to be transferred
+    expect(nextNode).toBe('hold_acknowledgment');
   });
 
   it('should route to voicemail when detected', async () => {
@@ -262,8 +263,8 @@ describe('VOIP Call Flow - Quote Request Node', () => {
     state = quoteRequestNode(state);
 
     const lastAiMsg = state.conversationHistory.filter(m => m.speaker === 'ai').pop();
-    // Second mention should include SSML-formatted part number (one at a time)
-    expect(lastAiMsg?.text).toContain('478319');
+    // Second mention should include spelled-out part number (one at a time)
+    expect(lastAiMsg?.text).toContain('4 7 8 3 1 9');
     expect(lastAiMsg?.text).toContain('part number');
   });
 });

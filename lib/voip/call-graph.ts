@@ -20,6 +20,7 @@ import {
   formatPartNumberPhonetic,
   isAskingToRepeat,
   isVerificationQuestion,
+  isHoldAudio,
   detectBotScreening,
   generateScreeningResponse,
   hasPricingForAllParts,
@@ -32,13 +33,40 @@ import {
 
 /**
  * Greeting Node - Initial message to supplier
- * Always uses a natural greeting - context is provided separately to LLM
+ * If this is the first greeting, ask for parts department.
+ * If we've already greeted (e.g., after a transfer), re-introduce briefly.
+ * If we're waiting for a transfer and hear hold audio, stay silent.
  */
 export function greetingNode(state: CallState): CallState {
-  // Always use natural greeting - don't speak the context verbatim!
-  const greeting = `Hi, good morning! Could I speak to someone in your parts department?`;
+  // If waiting for transfer, check if we're hearing hold music/ads
+  if (state.waitingForTransfer) {
+    const lastResponse = getLastSupplierResponse(state);
+    if (isHoldAudio(lastResponse)) {
+      // Stay silent — don't greet the hold music. Keep waiting.
+      return state;
+    }
+    // Real person picked up — clear the flag and re-introduce
+    return {
+      ...addMessage({ ...state, waitingForTransfer: false }, 'ai',
+        `Hi there! Thanks for taking my call. I'm looking to get pricing on some parts.`
+      ),
+    };
+  }
 
-  return addMessage(state, 'ai', greeting);
+  const alreadyGreeted = state.conversationHistory.some(
+    msg => msg.speaker === 'ai' && msg.text.includes('parts department')
+  );
+
+  if (!alreadyGreeted) {
+    return addMessage(state, 'ai',
+      `Hi, good morning! Could I speak to someone in your parts department?`
+    );
+  }
+
+  // After transfer — re-introduce, don't repeat the same greeting
+  return addMessage(state, 'ai',
+    `Hi there! Thanks for taking my call. I'm looking to get pricing on some parts.`
+  );
 }
 
 /**
@@ -67,7 +95,7 @@ export function quoteRequestNode(state: CallState): CallState {
 
     const phonetic = formatPartNumberPhonetic(currentPart.partNumber);
     return addMessage(state, 'ai',
-      `Sure, let me spell that out for you. <break time="400ms"/> ${phonetic}. <break time="300ms"/> That's for the ${currentPart.description}.`
+      `Sure, let me spell that out for you. ${phonetic}. That's for the ${currentPart.description}.`
     );
   }
 
@@ -102,12 +130,12 @@ export function quoteRequestNode(state: CallState): CallState {
 
     let request: string;
     if (isFirst) {
-      request = `Sure! The first part number is <break time="300ms"/> ${partNum} <break time="300ms"/> — that's the ${nextPart.description}.`;
+      request = `Sure! The first part number is... ${partNum}. That's the ${nextPart.description}.`;
       if (remaining > 0) {
         request += ` I have ${remaining} more after this one.`;
       }
     } else {
-      request = `Next one is <break time="300ms"/> ${partNum} <break time="300ms"/> — ${nextPart.description}.`;
+      request = `Next one is... ${partNum}. That's the ${nextPart.description}.`;
     }
 
     return addMessage(state, 'ai', request);
@@ -115,11 +143,11 @@ export function quoteRequestNode(state: CallState): CallState {
 
   // All part numbers given - recap
   const allParts = state.parts
-    .map(p => `${formatPartNumberForSpeech(p.partNumber)}`)
-    .join(', <break time="500ms"/> ');
+    .map(p => formatPartNumberForSpeech(p.partNumber))
+    .join('... and ');
 
   return addMessage(state, 'ai',
-    `So those were: <break time="300ms"/> ${allParts}. <break time="300ms"/> Can you check pricing and availability on all of those?`
+    `So those were: ${allParts}. Can you check pricing and availability on all of those?`
   );
 }
 
@@ -226,6 +254,7 @@ Please call us back or we'll follow up via email with the full details. Thank yo
 
 /**
  * Transfer Node - Ask to be transferred to right person
+ * Used when we need to REQUEST a transfer (e.g., wrong department)
  */
 export function transferNode(state: CallState): CallState {
   const message = `I understand. Could you transfer me to someone who handles parts pricing, or provide their direct number?`;
@@ -233,6 +262,17 @@ export function transferNode(state: CallState): CallState {
   return {
     ...addMessage(state, 'ai', message),
     needsTransfer: true,
+  };
+}
+
+/**
+ * Hold Acknowledgment Node - Supplier is transferring us or putting us on hold
+ * Brief acknowledgment, then wait silently for the next person
+ */
+export function holdAcknowledgmentNode(state: CallState): CallState {
+  return {
+    ...addMessage(state, 'ai', `Sure, no problem! Take your time.`),
+    waitingForTransfer: true,
   };
 }
 
@@ -432,10 +472,32 @@ export async function routeFromGreeting(
   state: CallState
 ): Promise<string> {
   const lastResponse = getLastSupplierResponse(state);
+  const lower = lastResponse.toLowerCase();
 
   // Check for bot screening BEFORE the LLM call
   const screeningType = detectBotScreening(lastResponse);
   if (screeningType) return 'bot_screening';
+
+  // Fast path: supplier is ALREADY transferring — just acknowledge and wait
+  const holdPatterns = [
+    'one moment', 'just a moment', 'hold on', 'hold please',
+    'let me transfer', 'i\'ll transfer', 'i will transfer',
+    'transferring you', 'putting you through', 'one second',
+    'just a sec', 'hang on', 'one sec',
+  ];
+  if (holdPatterns.some(p => lower.includes(p))) {
+    return 'hold_acknowledgment';
+  }
+
+  // Fast path: obvious engagement patterns — skip LLM classification
+  const engagementPatterns = [
+    'speaking', 'this is parts', 'parts department', 'how can i help',
+    'what do you need', 'go ahead', 'what can i do for you',
+    'yes this is', 'yeah this is',
+  ];
+  if (engagementPatterns.some(p => lower.includes(p))) {
+    return 'quote_request';
+  }
 
   const intent = await classifyIntent(llmClient, lastResponse, [
     'yes_can_help',
@@ -630,6 +692,9 @@ export async function processCallTurn(
     case 'transfer':
       newState = transferNode(state);
       break;
+    case 'hold_acknowledgment':
+      newState = holdAcknowledgmentNode(state);
+      break;
     case 'human_escalation':
       newState = humanEscalationNode(state);
       break;
@@ -687,7 +752,10 @@ export async function processCallTurn(
       nextNode = 'confirmation';
       break;
     case 'transfer':
-      nextNode = 'greeting'; // Back to greeting after transfer
+      nextNode = 'greeting'; // Back to greeting after requesting transfer
+      break;
+    case 'hold_acknowledgment':
+      nextNode = 'greeting'; // Wait for the new person after transfer
       break;
     case 'conversational_response': {
       // After a conversational response, detect what to do next
@@ -833,6 +901,7 @@ export function initializeCallState(params: {
     botScreeningMaxAttempts: 3,
     hasMiscCosts: params.hasMiscCosts ?? false,
     miscCostsAsked: false,
+    waitingForTransfer: false,
     status: 'in_progress',
   };
 }

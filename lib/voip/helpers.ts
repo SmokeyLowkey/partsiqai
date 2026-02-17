@@ -48,7 +48,7 @@ export async function classifyIntent(
 ): Promise<string> {
   // Provide context for better classification
   const intentDescriptions: Record<string, string> = {
-    'yes_can_help': 'Person confirms they can help, they\'re the right department, or they\'re ready to listen (e.g., "Yes", "Speaking", "This is parts", "Go ahead")',
+    'yes_can_help': 'Person confirms they can help, they\'re the right department, they\'re ready to listen, or they greet you and ask what you need (e.g., "Yes", "Speaking", "This is parts", "Go ahead", "How can I help you?", "What do you need?")',
     'transfer_needed': 'Person says they need to transfer you or you\'re not speaking to the right person (e.g., "Let me transfer you", "Wrong department", "Hold on")',
     'not_interested': 'Person clearly declines or is not interested (e.g., "Not interested", "Don\'t call again", "No thanks")',
     'voicemail': 'You reached voicemail, answering machine, or no human answered',
@@ -85,7 +85,7 @@ Return ONLY the intent name (e.g., "yes_can_help"), nothing else.`;
     const responseLower = response.toLowerCase();
     if (intent === 'voicemail') {
       // If classified as voicemail but response has engagement words, override to yes_can_help
-      const engagementWords = ['yeah', 'yes', 'speaking', 'this is', 'go ahead', 'sure'];
+      const engagementWords = ['yeah', 'yes', 'speaking', 'this is', 'go ahead', 'sure', 'how can i help', 'what do you need', 'what can i do'];
       if (engagementWords.some(word => responseLower.includes(word))) {
         console.log(`Intent override: "${response}" classified as voicemail, but contains engagement words. Changing to yes_can_help.`);
         return possibleIntents.includes('yes_can_help') ? 'yes_can_help' : possibleIntents[0];
@@ -332,6 +332,52 @@ export function detectSubstitute(response: string): boolean {
 }
 
 /**
+ * Detect hold music, automated hold messages, or ads heard during a transfer
+ * These should be ignored — the agent should stay silent and wait
+ */
+export function isHoldAudio(response: string): boolean {
+  const lower = response.toLowerCase();
+
+  // Common automated hold messages
+  const holdPatterns = [
+    'your call is important',
+    'please continue to hold',
+    'please hold',
+    'thank you for holding',
+    'thanks for holding',
+    'thank you for waiting',
+    'thanks for waiting',
+    'please stay on the line',
+    'someone will be with you',
+    'you are caller number',
+    'estimated wait time',
+    'your call will be answered',
+    'in the order it was received',
+    'all of our representatives',
+    'all of our agents',
+    'currently assisting other',
+    'high call volume',
+    'next available',
+    'for quality assurance',
+    'this call may be recorded',
+    'this call may be monitored',
+    'press one', 'press two', 'press zero',
+    'para español',
+    'visit us at', 'visit our website',
+    'did you know',
+    'check out our',
+  ];
+
+  if (holdPatterns.some(p => lower.includes(p))) return true;
+
+  // Very short responses during hold (garbled music transcription)
+  // Single words or fragments that aren't meaningful engagement
+  if (response.trim().length < 4) return true;
+
+  return false;
+}
+
+/**
  * Check if supplier is asking to repeat part numbers
  */
 export function isAskingToRepeat(response: string): boolean {
@@ -391,39 +437,37 @@ export function containsRefusal(response: string): boolean {
  * Generate a clarification message based on confused supplier response
  */
 /**
- * Format part numbers for better TTS pronunciation using SSML
- * Splits alphanumeric codes into letter and number segments with pauses
- * Example: "AM141585" → "<say-as ...>AM</say-as><break time='300ms'/><say-as ...>141585</say-as>"
+ * Format part numbers for clear TTS pronunciation (plain text, no SSML)
+ * Spells out letters individually and reads digits one by one
+ * Example: "AT535106" → "A T, 5 3 5 1 0 6"
  */
 export function formatPartNumberForSpeech(partNumber: string): string {
-  // Replace hyphens/dashes with spoken "dash" so TTS doesn't say "minus"
-  let formatted = partNumber.replace(/-/g, ' dash ');
+  // Split into segments: letters, digits, hyphens, and other chars
+  const segments = partNumber.match(/[A-Za-z]+|[0-9]+|-|[^A-Za-z0-9-]+/g);
+  if (!segments) return partNumber;
 
-  // Split into segments of consecutive letters and consecutive digits
-  const segments = formatted.match(/[A-Za-z]+|[0-9]+|[^A-Za-z0-9]+/g);
-  if (!segments) return formatted;
-
-  const ssmlParts = segments.map(seg => {
-    if (/^[A-Za-z]+$/.test(seg)) {
-      // Spell out letter segments
-      return `<say-as interpret-as="characters">${seg}</say-as>`;
-    }
-    if (/^[0-9]+$/.test(seg)) {
-      // Read digit segments as individual digits
-      return `<say-as interpret-as="digits">${seg}</say-as>`;
-    }
-    // Whitespace/punctuation — pass through (includes " dash ")
-    return seg;
-  });
-
-  // Join with short pauses between letter/digit segments for clarity
-  return ssmlParts.join('<break time="300ms"/>');
+  return segments
+    .map(seg => {
+      if (seg === '-') {
+        return 'dash';
+      }
+      if (/^[A-Za-z]+$/.test(seg)) {
+        // Spell out each letter: "AT" → "A T"
+        return seg.toUpperCase().split('').join(' ');
+      }
+      if (/^[0-9]+$/.test(seg)) {
+        // Read each digit individually: "535106" → "5 3 5 1 0 6"
+        return seg.split('').join(' ');
+      }
+      return seg;
+    })
+    .join(', ');
 }
 
 /**
  * Format a part number using NATO phonetic alphabet for maximum clarity
  * Used when supplier asks to repeat or has trouble hearing
- * Example: "AT308568" → "Alpha Tango <break/> 3 0 8 5 6 8"
+ * Example: "AT308568" → "Alpha Tango ... 3, 0, 8, 5, 6, 8"
  */
 const NATO_ALPHABET: Record<string, string> = {
   A: 'Alpha', B: 'Bravo', C: 'Charlie', D: 'Delta', E: 'Echo',
@@ -435,27 +479,29 @@ const NATO_ALPHABET: Record<string, string> = {
 };
 
 export function formatPartNumberPhonetic(partNumber: string): string {
-  let formatted = partNumber.replace(/-/g, ' dash ');
-  const segments = formatted.match(/[A-Za-z]+|[0-9]+|[^A-Za-z0-9]+/g);
-  if (!segments) return formatted;
+  const segments = partNumber.match(/[A-Za-z]+|[0-9]+|-|[^A-Za-z0-9-]+/g);
+  if (!segments) return partNumber;
 
   return segments
     .map(seg => {
+      if (seg === '-') {
+        return 'dash';
+      }
       if (/^[A-Za-z]+$/.test(seg)) {
         // Spell out each letter using NATO alphabet
         return seg
           .toUpperCase()
           .split('')
           .map(ch => NATO_ALPHABET[ch] || ch)
-          .join(', <break time="200ms"/>');
+          .join(', ');
       }
       if (/^[0-9]+$/.test(seg)) {
-        // Read each digit slowly with pauses
-        return seg.split('').join(', <break time="150ms"/>');
+        // Read each digit clearly
+        return seg.split('').join(', ');
       }
       return seg;
     })
-    .join(' <break time="400ms"/> ');
+    .join(' ... ');
 }
 
 export async function generateClarification(
