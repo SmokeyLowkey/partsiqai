@@ -441,6 +441,12 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
       );
     }
 
+    // Filter MISC-COSTS from metadata context so it doesn't appear in call logs
+    const cleanedContext = {
+      ...context,
+      items: (context as any).items?.filter((item: any) => item.partNumber !== 'MISC-COSTS'),
+    };
+
     const callPayload: any = {
       phoneNumberId: vapiPhoneNumber,
       customer: {
@@ -451,7 +457,7 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
         supplierId,
         organizationId: metadata.organizationId,
         callLogId: callLog.id,
-        context: JSON.stringify(context),
+        context: JSON.stringify(cleanedContext),
         hasCustomSettings: !!(customContext || customInstructions),
       },
     };
@@ -459,12 +465,12 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
     // Use assistant ID if provided, otherwise inline config
     if (vapiAssistantId) {
       callPayload.assistantId = vapiAssistantId;
-      // Pass custom values via assistant overrides
+      // Pass custom values via direct field overrides (NOT variableValues,
+      // which only works if the Vapi dashboard template uses {{}} syntax)
       callPayload.assistantOverrides = {
-        variableValues: {
-          firstMessage,
-          systemContext: systemInstructions,
-          callId: callLog.id,
+        firstMessage: firstMessage,
+        model: {
+          messages: [{ role: 'system', content: systemInstructions }],
         },
         // VAPI rejects `tools` in assistantOverrides, so endCall tool must be
         // configured in VAPI dashboard. As a reliable fallback, use endCallPhrases
