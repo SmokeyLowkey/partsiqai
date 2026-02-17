@@ -101,6 +101,11 @@ describe('LangGraph Integration - End-to-End', () => {
         negotiationAttempts: 0,
         maxNegotiationAttempts: 2,
         clarificationAttempts: 0,
+        botScreeningDetected: false,
+        botScreeningAttempts: 0,
+        botScreeningMaxAttempts: 3,
+        hasMiscCosts: false,
+        miscCostsAsked: false,
         status: 'in_progress' as const,
       };
 
@@ -118,7 +123,8 @@ describe('LangGraph Integration - End-to-End', () => {
       state.currentNode = 'quote_request';
       state = quoteRequestNode(state);
       expect(state.conversationHistory).toHaveLength(3);
-      expect(state.conversationHistory[2].text).toContain('ABC123');
+      // First mention uses natural description, not part numbers
+      expect(state.conversationHistory[2].text).toContain('Test Part');
 
       // Step 4: Supplier provides quote
       state = addMessage(state, 'supplier', 'ABC123 is $450, in stock, ships in 3 days');
@@ -160,6 +166,11 @@ describe('LangGraph Integration - End-to-End', () => {
         negotiationAttempts: 0,
         maxNegotiationAttempts: 2,
         clarificationAttempts: 0,
+        botScreeningDetected: false,
+        botScreeningAttempts: 0,
+        botScreeningMaxAttempts: 3,
+        hasMiscCosts: false,
+        miscCostsAsked: false,
         status: 'in_progress' as const,
       };
 
@@ -197,6 +208,11 @@ describe('LangGraph Integration - End-to-End', () => {
         negotiationAttempts: 0,
         maxNegotiationAttempts: 2,
         clarificationAttempts: 3,
+        botScreeningDetected: false,
+        botScreeningAttempts: 0,
+        botScreeningMaxAttempts: 3,
+        hasMiscCosts: false,
+        miscCostsAsked: false,
         status: 'in_progress' as const,
       };
 
@@ -229,6 +245,11 @@ describe('LangGraph Integration - End-to-End', () => {
         negotiationAttempts: 0,
         maxNegotiationAttempts: 2,
         clarificationAttempts: 0,
+        botScreeningDetected: false,
+        botScreeningAttempts: 0,
+        botScreeningMaxAttempts: 3,
+        hasMiscCosts: false,
+        miscCostsAsked: false,
         status: 'in_progress' as const,
       };
 
@@ -297,6 +318,11 @@ describe('LangGraph Integration - End-to-End', () => {
         negotiationAttempts: 0,
         maxNegotiationAttempts: 2,
         clarificationAttempts: 0,
+        botScreeningDetected: false,
+        botScreeningAttempts: 0,
+        botScreeningMaxAttempts: 3,
+        hasMiscCosts: false,
+        miscCostsAsked: false,
         status: 'in_progress' as const,
       };
 

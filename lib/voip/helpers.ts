@@ -129,15 +129,18 @@ ${partsDescription}
 Return JSON array:
 [
   {
-    "partNumber": "exact part number",
+    "partNumber": "exact part number (use substitute number if supplier offered one)",
     "price": number or null,
     "availability": "in_stock" or "backorder" or "unavailable",
     "leadTimeDays": number or null,
-    "notes": "string or null"
+    "notes": "string or null",
+    "isSubstitute": true if this is a substitute/superseded/replacement part (false otherwise),
+    "originalPartNumber": "the originally requested part number if this is a substitute, or null"
   }
 ]
 
-If no pricing mentioned, return []. Match part numbers carefully (e.g., "a t five one four seven nine nine" = "AT514799").`;
+If no pricing mentioned, return []. Match part numbers carefully (e.g., "a t five one four seven nine nine" = "AT514799").
+If supplier says a part has been superseded or replaced, set isSubstitute=true and originalPartNumber to the requested part.`;
 
   try {
     const result = await llmClient.generateCompletion(prompt, {
@@ -162,6 +165,170 @@ If no pricing mentioned, return []. Match part numbers carefully (e.g., "a t fiv
     console.error('Price extraction error:', error);
     return [];
   }
+}
+
+// ============================================================================
+// BOT SCREENING DETECTION & RESPONSE
+// ============================================================================
+
+export type ScreeningType = 'call_screen' | 'captcha' | 'urgency_check' | 'spam_rejection';
+
+const CALL_SCREEN_PATTERNS = [
+  'screening service',
+  'screen your call',
+  'screening your call',
+  'say your name and why',
+  'who is calling',
+  'state your name and the reason',
+  'google assistant',
+  'the person you are calling',
+  "the person you're calling",
+  'go ahead and say your name',
+  'please say your name',
+];
+
+const CAPTCHA_PATTERNS = [
+  /what is \d+\s*(?:plus|minus|times|multiplied by|divided by|added to|\+|-|\*|x)\s*\d+/i,
+  'solve this',
+  'to connect your call',
+  'verify you are human',
+  "verify you're human",
+  'are you a real person',
+  'prove you are not a robot',
+];
+
+const URGENCY_PATTERNS = [
+  'is this urgent',
+  'do you need to get a hold of them urgently',
+  'is it urgent',
+  'is this an emergency',
+  'can this wait',
+];
+
+const SPAM_REJECTION_PATTERNS = [
+  'remove this number',
+  'do not call',
+  'stop calling',
+  'mailing list',
+  'this call has been rejected',
+  'this call has been declined',
+  'does not wish to speak',
+  'not accepting calls',
+];
+
+/**
+ * Detect if a response is from a bot screening system
+ * Pattern-based (no LLM cost)
+ */
+export function detectBotScreening(response: string): ScreeningType | null {
+  const lower = response.toLowerCase();
+
+  // Check spam rejection first (highest priority — should end call)
+  for (const pattern of SPAM_REJECTION_PATTERNS) {
+    if (lower.includes(pattern)) return 'spam_rejection';
+  }
+
+  // Check CAPTCHA patterns (mix of string and regex)
+  for (const pattern of CAPTCHA_PATTERNS) {
+    if (pattern instanceof RegExp) {
+      if (pattern.test(lower)) return 'captcha';
+    } else {
+      if (lower.includes(pattern)) return 'captcha';
+    }
+  }
+
+  // Check urgency patterns
+  for (const pattern of URGENCY_PATTERNS) {
+    if (lower.includes(pattern)) return 'urgency_check';
+  }
+
+  // Check call screen patterns
+  for (const pattern of CALL_SCREEN_PATTERNS) {
+    if (lower.includes(pattern)) return 'call_screen';
+  }
+
+  return null;
+}
+
+/**
+ * Solve simple math CAPTCHAs from bot screening
+ * Handles "what is X plus/minus/times Y" style questions
+ */
+export function solveCaptcha(response: string): string | null {
+  const match = response.match(
+    /what is (\d+)\s*(?:plus|added to|\+)\s*(\d+)/i
+  );
+  if (match) return String(Number(match[1]) + Number(match[2]));
+
+  const subMatch = response.match(
+    /what is (\d+)\s*(?:minus|-)\s*(\d+)/i
+  );
+  if (subMatch) return String(Number(subMatch[1]) - Number(subMatch[2]));
+
+  const mulMatch = response.match(
+    /what is (\d+)\s*(?:times|multiplied by|\*|x)\s*(\d+)/i
+  );
+  if (mulMatch) return String(Number(mulMatch[1]) * Number(mulMatch[2]));
+
+  const divMatch = response.match(
+    /what is (\d+)\s*(?:divided by|\/)\s*(\d+)/i
+  );
+  if (divMatch && Number(divMatch[2]) !== 0) {
+    return String(Math.round(Number(divMatch[1]) / Number(divMatch[2])));
+  }
+
+  return null;
+}
+
+/**
+ * Generate a deterministic response for bot screening scenarios
+ */
+export function generateScreeningResponse(
+  type: ScreeningType,
+  state: CallState
+): string {
+  switch (type) {
+    case 'call_screen':
+      return `Hi, this is ${state.organizationName} calling about a parts inquiry. We're looking to get pricing on some equipment parts.`;
+    case 'captcha': {
+      const lastResponse = getLastSupplierResponse(state);
+      const answer = solveCaptcha(lastResponse);
+      if (answer) return answer;
+      // Fallback if we can't solve it
+      return `Hi, this is ${state.organizationName} calling about a parts inquiry.`;
+    }
+    case 'urgency_check':
+      return "It's not urgent, but we would appreciate speaking with someone in the parts department when they're available.";
+    case 'spam_rejection':
+      return 'I understand, thank you for your time. Goodbye.';
+  }
+}
+
+/**
+ * Check if we have pricing for all requested parts
+ * Accounts for substitute parts (matched via originalPartNumber)
+ */
+export function hasPricingForAllParts(state: CallState): boolean {
+  if (state.parts.length === 0) return false;
+  return state.parts.every(part =>
+    state.quotes.some(q =>
+      (q.partNumber === part.partNumber || q.originalPartNumber === part.partNumber)
+      && q.price != null
+    )
+  );
+}
+
+/**
+ * Detect if a supplier response mentions a substitute or superseded part
+ */
+export function detectSubstitute(response: string): boolean {
+  const patterns = [
+    'substitute', 'supersed', 'replaced by', 'replacement',
+    'alternate', 'alternative', 'equivalent', 'updated part',
+    'new number', 'new part number', 'changed to',
+  ];
+  const lower = response.toLowerCase();
+  return patterns.some(p => lower.includes(p));
 }
 
 /**
@@ -196,27 +363,27 @@ export function containsRefusal(response: string): boolean {
  * Example: "MIA883029" → "<say-as interpret-as='characters'>MIA</say-as>-<say-as interpret-as='digits'>883029</say-as>"
  */
 export function formatPartNumberForSpeech(partNumber: string): string {
-  // Check if part number has mix of letters and numbers
-  const hasLetters = /[A-Za-z]/.test(partNumber);
-  const hasNumbers = /[0-9]/.test(partNumber);
-  
-  if (hasLetters && hasNumbers) {
-    // Split into letter prefix and number suffix
-    const match = partNumber.match(/^([A-Za-z]+)([0-9]+)$/);
-    if (match) {
-      const [, letters, numbers] = match;
-      // Use SSML to spell out letters, then say numbers as digits
-      return `<say-as interpret-as="characters">${letters}</say-as>-<say-as interpret-as="digits">${numbers}</say-as>`;
-    }
-  }
-  
-  // Fallback: for part numbers with complex patterns, add hyphens between letters
-  if (hasLetters && !hasNumbers) {
-    return partNumber.split('').join('-');
-  }
-  
-  // Just numbers or complex pattern - return as-is
-  return partNumber;
+  // Replace hyphens/dashes with spoken "dash" so TTS doesn't say "minus"
+  let formatted = partNumber.replace(/-/g, ' dash ');
+
+  // Split into segments of consecutive letters and consecutive digits
+  const segments = formatted.match(/[A-Za-z]+|[0-9]+|[^A-Za-z0-9]+/g);
+  if (!segments) return formatted;
+
+  return segments
+    .map(seg => {
+      if (/^[A-Za-z]+$/.test(seg)) {
+        // Spell out letter segments
+        return `<say-as interpret-as="characters">${seg}</say-as>`;
+      }
+      if (/^[0-9]+$/.test(seg)) {
+        // Read digit segments as individual digits
+        return `<say-as interpret-as="digits">${seg}</say-as>`;
+      }
+      // Whitespace/punctuation — pass through (includes " dash ")
+      return seg;
+    })
+    .join('');
 }
 
 export async function generateClarification(

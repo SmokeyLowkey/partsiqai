@@ -290,7 +290,11 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
       throw new Error(`Quote request not found: ${quoteRequestId}`);
     }
 
-    const parts = quoteRequestData.items.map(item => ({
+    // Filter out MISC-COSTS placeholder — it's not a real part number
+    const regularItems = quoteRequestData.items.filter(item => item.partNumber !== 'MISC-COSTS');
+    const hasMiscCosts = quoteRequestData.items.some(item => item.partNumber === 'MISC-COSTS');
+
+    const parts = regularItems.map(item => ({
       partNumber: item.partNumber,
       description: item.description || '',
       quantity: item.quantity,
@@ -326,6 +330,14 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
       );
     }
 
+    // Include org's primary location address if available
+    const primaryLocation = await prisma.organizationLocation.findFirst({
+      where: { organizationId: metadata.organizationId, isPrimary: true },
+    });
+    if (primaryLocation) {
+      finalCustomContext += `\nShipping Address: ${primaryLocation.address}, ${primaryLocation.city}, ${primaryLocation.state} ${primaryLocation.zipCode}`;
+    }
+
     // Initialize LangGraph state and save to Redis
     const initialCallState = initializeCallState({
       callId: callLog.id,
@@ -338,6 +350,7 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
       parts,
       customContext: finalCustomContext.trim(),
       customInstructions: customInstructions,
+      hasMiscCosts,
     });
 
     try {

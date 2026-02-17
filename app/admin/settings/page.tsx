@@ -41,6 +41,7 @@ import {
   Plus,
   Edit,
   Database,
+  MapPin,
   Shield,
   Bell,
   Palette,
@@ -133,6 +134,31 @@ export default function SettingsPage() {
     description: "",
   });
 
+  // Location settings state
+  const [locations, setLocations] = useState<Array<{
+    id: string;
+    name: string;
+    address: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    country: string;
+    isPrimary: boolean;
+    phone: string | null;
+  }>>([]);
+  const [showLocationDialog, setShowLocationDialog] = useState(false);
+  const [editingLocation, setEditingLocation] = useState<any>(null);
+  const [locationFormData, setLocationFormData] = useState({
+    name: "",
+    address: "",
+    city: "",
+    state: "",
+    zipCode: "",
+    phone: "",
+    isPrimary: false,
+  });
+  const [savingLocation, setSavingLocation] = useState(false);
+
   // Integration settings state
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [showApiKeys, setShowApiKeys] = useState<Record<string, boolean>>({});
@@ -201,6 +227,7 @@ export default function SettingsPage() {
   useEffect(() => {
     if (status === "authenticated" && isAdmin) {
       fetchOrgSettings();
+      fetchLocations();
       if (isMasterAdmin) {
         fetchSystemSettings();
         fetchPlatformIntegrations();
@@ -230,6 +257,115 @@ export default function SettingsPage() {
       console.error("Error fetching org settings:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchLocations = async () => {
+    try {
+      const res = await fetch("/api/admin/organization/locations");
+      if (res.ok) {
+        const data = await res.json();
+        setLocations(data.locations);
+      }
+    } catch (error) {
+      console.error("Error fetching locations:", error);
+    }
+  };
+
+  const handleAddLocation = () => {
+    setEditingLocation(null);
+    setLocationFormData({
+      name: "",
+      address: "",
+      city: "",
+      state: "",
+      zipCode: "",
+      phone: "",
+      isPrimary: false,
+    });
+    setShowLocationDialog(true);
+  };
+
+  const handleEditLocation = (location: any) => {
+    setEditingLocation(location);
+    setLocationFormData({
+      name: location.name,
+      address: location.address,
+      city: location.city,
+      state: location.state,
+      zipCode: location.zipCode,
+      phone: location.phone || "",
+      isPrimary: location.isPrimary,
+    });
+    setShowLocationDialog(true);
+  };
+
+  const handleSaveLocation = async () => {
+    try {
+      setSavingLocation(true);
+      const url = editingLocation
+        ? `/api/admin/organization/locations/${editingLocation.id}`
+        : "/api/admin/organization/locations";
+      const method = editingLocation ? "PUT" : "POST";
+
+      const response = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(locationFormData),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to save location");
+      }
+
+      toast({
+        title: "Success",
+        description: editingLocation
+          ? "Location updated successfully"
+          : "Location added successfully",
+      });
+
+      setShowLocationDialog(false);
+      setEditingLocation(null);
+      fetchLocations();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setSavingLocation(false);
+    }
+  };
+
+  const handleDeleteLocation = async (locationId: string) => {
+    if (!confirm("Are you sure you want to delete this location?")) return;
+
+    try {
+      const response = await fetch(
+        `/api/admin/organization/locations/${locationId}`,
+        { method: "DELETE" }
+      );
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to delete location");
+      }
+
+      toast({
+        title: "Success",
+        description: "Location deleted successfully",
+      });
+
+      fetchLocations();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
     }
   };
 
@@ -881,6 +1017,84 @@ export default function SettingsPage() {
               <Badge variant="outline">
                 {orgSettings.maxVehicles} vehicles max
               </Badge>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Locations */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <MapPin className="h-5 w-5" />
+                Locations
+              </CardTitle>
+              <CardDescription>
+                Manage your shop locations and shipping addresses
+              </CardDescription>
+            </div>
+            <Button onClick={handleAddLocation} size="sm">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Location
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {locations.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <MapPin className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p>No locations added yet</p>
+              <p className="text-sm">Add your first shop location to get started</p>
+            </div>
+          ) : (
+            <div className="rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Address</TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead>Primary</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {locations.map((location) => (
+                    <TableRow key={location.id}>
+                      <TableCell className="font-medium">{location.name}</TableCell>
+                      <TableCell>
+                        {location.address}, {location.city}, {location.state} {location.zipCode}
+                      </TableCell>
+                      <TableCell>{location.phone || "-"}</TableCell>
+                      <TableCell>
+                        {location.isPrimary && (
+                          <Badge className="bg-green-600">Primary</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleEditLocation(location)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDeleteLocation(location.id)}
+                          >
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           )}
         </CardContent>
@@ -2107,6 +2321,122 @@ export default function SettingsPage() {
             </Button>
             <Button onClick={handleSaveSystemSetting}>
               {editingSetting ? "Update" : "Create"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add/Edit Location Dialog */}
+      <Dialog open={showLocationDialog} onOpenChange={setShowLocationDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {editingLocation ? "Edit Location" : "Add Location"}
+            </DialogTitle>
+            <DialogDescription>
+              {editingLocation
+                ? "Update the location details"
+                : "Add a new shop location or shipping address"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Name</Label>
+              <Input
+                value={locationFormData.name}
+                onChange={(e) =>
+                  setLocationFormData({ ...locationFormData, name: e.target.value })
+                }
+                placeholder="e.g., Main Shop, Warehouse"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Address</Label>
+              <Input
+                value={locationFormData.address}
+                onChange={(e) =>
+                  setLocationFormData({ ...locationFormData, address: e.target.value })
+                }
+                placeholder="Street address"
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-2">
+                <Label>City</Label>
+                <Input
+                  value={locationFormData.city}
+                  onChange={(e) =>
+                    setLocationFormData({ ...locationFormData, city: e.target.value })
+                  }
+                  placeholder="City"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>State</Label>
+                <Input
+                  value={locationFormData.state}
+                  onChange={(e) =>
+                    setLocationFormData({ ...locationFormData, state: e.target.value })
+                  }
+                  placeholder="State"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Zip Code</Label>
+                <Input
+                  value={locationFormData.zipCode}
+                  onChange={(e) =>
+                    setLocationFormData({ ...locationFormData, zipCode: e.target.value })
+                  }
+                  placeholder="Zip"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Phone</Label>
+              <Input
+                value={locationFormData.phone}
+                onChange={(e) =>
+                  setLocationFormData({ ...locationFormData, phone: e.target.value })
+                }
+                placeholder="(555) 123-4567"
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>Set as primary location</Label>
+                <p className="text-sm text-muted-foreground">
+                  Used as the default shipping address
+                </p>
+              </div>
+              <Switch
+                checked={locationFormData.isPrimary}
+                onCheckedChange={(checked) =>
+                  setLocationFormData({ ...locationFormData, isPrimary: checked })
+                }
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowLocationDialog(false);
+                setEditingLocation(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveLocation}
+              disabled={savingLocation || !locationFormData.name || !locationFormData.address}
+            >
+              {savingLocation ? (
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4 mr-2" />
+              )}
+              {editingLocation ? "Update" : "Add"} Location
             </Button>
           </DialogFooter>
         </DialogContent>

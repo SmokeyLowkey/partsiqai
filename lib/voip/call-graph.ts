@@ -17,6 +17,10 @@ import {
   generateClarification,
   determineOutcome,
   formatPartNumberForSpeech,
+  detectBotScreening,
+  generateScreeningResponse,
+  hasPricingForAllParts,
+  detectSubstitute,
 } from './helpers';
 
 // ============================================================================
@@ -44,24 +48,36 @@ export function quoteRequestNode(state: CallState): CallState {
   const alreadyMentionedParts = state.conversationHistory.some(
     msg => msg.speaker === 'ai' && msg.text.toLowerCase().includes("i'm looking for")
   );
-  
+
   if (!alreadyMentionedParts) {
-    // First time - just mention descriptions, not part numbers
+    // First time - just mention descriptions naturally, no part numbers
     const descriptions = state.parts
-      .map(p => `${p.description}, quantity ${p.quantity}`)
+      .map(p => describePartNaturally(p.description, p.quantity))
       .join(', and ');
-    
-    const request = `Great, thanks! I'm looking for: ${descriptions}. Whenever you're ready, I have the part numbers.`;
+
+    const request = `Great, thanks! I'm looking for ${descriptions}. Whenever you're ready, I have the part numbers.`;
     return addMessage(state, 'ai', request);
   } else {
     // Second time - provide the actual part numbers
     const partNumbers = state.parts
       .map(p => `${formatPartNumberForSpeech(p.partNumber)} for the ${p.description}`)
       .join(', and ');
-    
+
     const request = `Sure! The part numbers are: ${partNumbers}. Can you check pricing and availability on those?`;
     return addMessage(state, 'ai', request);
   }
+}
+
+/**
+ * Describe a part with natural quantity phrasing
+ * qty 1 → "a boom hydraulic cylinder"
+ * qty 2 → "a couple of boom hydraulic cylinders"
+ * qty 3+ → "3 boom hydraulic cylinders"
+ */
+function describePartNaturally(description: string, quantity: number): string {
+  if (quantity === 1) return `a ${description}`;
+  if (quantity === 2) return `a couple of ${description}s`;
+  return `${quantity} ${description}s`;
 }
 
 /**
@@ -226,6 +242,69 @@ export function politeEndNode(state: CallState): CallState {
 }
 
 /**
+ * Bot Screening Node - Respond to automated call screening bots
+ */
+export function botScreeningNode(state: CallState): CallState {
+  const lastResponse = getLastSupplierResponse(state);
+  const screeningType = detectBotScreening(lastResponse);
+
+  if (!screeningType) {
+    // No bot detected — shouldn't reach here, but safe fallback
+    return state;
+  }
+
+  // Spam rejection → end the call
+  if (screeningType === 'spam_rejection') {
+    const response = generateScreeningResponse(screeningType, state);
+    return {
+      ...addMessage(state, 'ai', response),
+      botScreeningDetected: true,
+      botScreeningAttempts: state.botScreeningAttempts + 1,
+      outcome: 'BOT_REJECTED',
+      nextAction: 'email_fallback',
+    };
+  }
+
+  const response = generateScreeningResponse(screeningType, state);
+  return {
+    ...addMessage(state, 'ai', response),
+    botScreeningDetected: true,
+    botScreeningAttempts: state.botScreeningAttempts + 1,
+  };
+}
+
+/**
+ * Misc Costs Inquiry Node - Ask about shipping/freight after main quotes collected
+ * Only triggered when parts are backordered/being shipped
+ */
+export function miscCostsInquiryNode(state: CallState): CallState {
+  const message = "One more thing — would the parts need to be shipped out, and if so, are there any freight or shipping costs we should know about?";
+  return {
+    ...addMessage(state, 'ai', message),
+    miscCostsAsked: true,
+  };
+}
+
+/**
+ * Check if we should ask about misc costs (shipping/freight)
+ * Only relevant when parts need shipping (not in-stock at branch)
+ */
+function shouldAskMiscCosts(state: CallState): boolean {
+  if (!state.hasMiscCosts || state.miscCostsAsked) return false;
+  return state.quotes.some(q =>
+    q.availability === 'backorder' || q.availability === 'unavailable'
+  );
+}
+
+/**
+ * Determine next node when pricing is complete
+ */
+function nextNodeAfterPricing(state: CallState): string {
+  if (shouldAskMiscCosts(state)) return 'misc_costs_inquiry';
+  return 'confirmation';
+}
+
+/**
  * Conversational Response Node - Handle follow-up questions and clarifications
  * Uses LLM to generate contextually appropriate responses based on conversation history
  */
@@ -298,6 +377,11 @@ export async function routeFromGreeting(
   state: CallState
 ): Promise<string> {
   const lastResponse = getLastSupplierResponse(state);
+
+  // Check for bot screening BEFORE the LLM call
+  const screeningType = detectBotScreening(lastResponse);
+  if (screeningType) return 'bot_screening';
+
   const intent = await classifyIntent(llmClient, lastResponse, [
     'yes_can_help',
     'transfer_needed',
@@ -317,6 +401,29 @@ export async function routeFromGreeting(
     default:
       return 'clarification';
   }
+}
+
+/**
+ * Route from bot screening based on next supplier response
+ */
+export async function routeFromBotScreening(
+  llmClient: OpenRouterClient,
+  state: CallState
+): Promise<string> {
+  // Check if the last response was a spam rejection (already handled in node)
+  if (state.outcome === 'BOT_REJECTED') return 'polite_end';
+
+  // Max attempts exceeded — give up
+  if (state.botScreeningAttempts >= state.botScreeningMaxAttempts) return 'polite_end';
+
+  const lastResponse = getLastSupplierResponse(state);
+  const screeningType = detectBotScreening(lastResponse);
+
+  // Still being screened → loop back
+  if (screeningType) return 'bot_screening';
+
+  // No bot pattern → human is now on the line, delegate to normal routing
+  return routeFromGreeting(llmClient, state);
 }
 
 /**
@@ -355,14 +462,14 @@ export async function routeFromQuoteRequest(
     if (needsNegotiation && state.negotiationAttempts < state.maxNegotiationAttempts) {
       return 'negotiate';
     }
-    return 'confirmation';
+    return nextNodeAfterPricing(state);
   }
 
   // Check for unavailable/out of stock
   if (lastResponse.toLowerCase().includes('don\'t have') ||
       lastResponse.toLowerCase().includes('out of stock') ||
       lastResponse.toLowerCase().includes('unavailable')) {
-    return 'confirmation'; // Still end gracefully
+    return nextNodeAfterPricing(state);
   }
 
   // Didn't understand
@@ -450,6 +557,12 @@ export async function processCallTurn(
     case 'polite_end':
       newState = politeEndNode(state);
       break;
+    case 'bot_screening':
+      newState = botScreeningNode(state);
+      break;
+    case 'misc_costs_inquiry':
+      newState = miscCostsInquiryNode(state);
+      break;
     case 'conversational_response':
       newState = await conversationalResponseNode(llmClient, state);
       break;
@@ -481,44 +594,68 @@ export async function processCallTurn(
       // After clarification, route to conversational_response instead of repeating full quote
       nextNode = 'conversational_response';
       break;
+    case 'bot_screening':
+      nextNode = await routeFromBotScreening(llmClient, newState);
+      break;
+    case 'misc_costs_inquiry':
+      // After asking about misc costs, try to extract any amounts then confirm
+      nextNode = 'confirmation';
+      break;
     case 'transfer':
       nextNode = 'greeting'; // Back to greeting after transfer
       break;
-    case 'conversational_response':
+    case 'conversational_response': {
       // After a conversational response, detect what to do next
       const lastSupplierMsg = getLastSupplierResponse(newState);
-      const isQuestion = await detectQuestion(lastSupplierMsg);
-      
+
       // Check if supplier is wrapping up the call
       const isWrappingUp = /\b(bye|goodbye|thanks|thank you|have a (good|great|nice) day)\b/i.test(lastSupplierMsg);
       if (isWrappingUp) {
         nextNode = 'polite_end';
         break;
       }
-      
+
+      // If we already have pricing for all parts, move forward — don't loop
+      if (hasPricingForAllParts(newState)) {
+        nextNode = nextNodeAfterPricing(newState);
+        break;
+      }
+
+      // Try to extract pricing from current response
+      const convQuotes = await extractPricing(llmClient, lastSupplierMsg, newState.parts);
+      if (convQuotes.length > 0) {
+        nextNode = 'price_extract';
+        break;
+      }
+
+      // Only go back to quote_request if early AND no pricing collected yet
+      if (newState.conversationHistory.length <= 4 && newState.quotes.length === 0) {
+        nextNode = 'quote_request';
+        break;
+      }
+
+      // If supplier mentioned a substitute, stay conversational to capture details
+      if (detectSubstitute(lastSupplierMsg)) {
+        nextNode = 'conversational_response';
+        break;
+      }
+
+      const isQuestion = await detectQuestion(lastSupplierMsg);
       if (isQuestion && newState.conversationHistory.length > 8) {
         // Many exchanges already, likely wrapping up
         nextNode = 'polite_end';
-      } else if (newState.conversationHistory.length <= 4) {
-        // Still early - try to get back on track with quote request
-        nextNode = 'quote_request';
+        break;
+      }
+
+      // Check if supplier seems stuck/confused
+      const seemsStuck = /\b(what|huh|repeat|again|didn'?t (catch|hear|get) that)\b/i.test(lastSupplierMsg);
+      if (seemsStuck && newState.clarificationAttempts < 2) {
+        nextNode = 'clarification';
       } else {
-        // Mid-conversation - check if they gave pricing info
-        const quotes = await extractPricing(llmClient, lastSupplierMsg, newState.parts);
-        if (quotes.length > 0) {
-          nextNode = 'price_extract';
-        } else {
-          // Don't repeat full quote - just stay conversational unless they seem stuck
-          const seemsStuck = /\b(what|huh|repeat|again|didn'?t (catch|hear|get) that)\b/i.test(lastSupplierMsg);
-          if (seemsStuck && newState.clarificationAttempts < 2) {
-            nextNode = 'clarification';
-          } else {
-            // Keep it conversational, wait for pricing
-            nextNode = 'conversational_response';
-          }
-        }
+        nextNode = 'conversational_response';
       }
       break;
+    }
     case 'voicemail':
       // If we're in voicemail node, the call should end
       // (If supplier responds after voicemail message, they'll trigger a new turn and routing will handle it)
@@ -576,9 +713,10 @@ export function initializeCallState(params: {
   }>;
   customContext?: string;
   customInstructions?: string;
+  hasMiscCosts?: boolean;
 }): CallState {
   const { organizationName, quoteReference } = parseContextValues(params.customContext);
-  
+
   return {
     ...params,
     organizationName,
@@ -591,6 +729,11 @@ export function initializeCallState(params: {
     negotiationAttempts: 0,
     maxNegotiationAttempts: 2,
     clarificationAttempts: 0,
+    botScreeningDetected: false,
+    botScreeningAttempts: 0,
+    botScreeningMaxAttempts: 3,
+    hasMiscCosts: params.hasMiscCosts ?? false,
+    miscCostsAsked: false,
     status: 'in_progress',
   };
 }

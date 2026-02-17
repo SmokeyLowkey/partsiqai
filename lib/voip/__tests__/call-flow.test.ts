@@ -1,61 +1,84 @@
 /**
  * VOIP Call Flow Tests
- * 
+ *
  * Tests the LangGraph state machine conversation flow without making actual calls.
- * Simulates different supplier responses and validates AI behavior.
+ * Tests individual nodes and routing functions directly for reliability.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { initializeCallState, processCallTurn } from '../call-graph';
+import {
+  initializeCallState,
+  greetingNode,
+  quoteRequestNode,
+  confirmationNode,
+  routeFromGreeting,
+  routeFromQuoteRequest,
+} from '../call-graph';
 import { addMessage } from '../helpers';
 import { CallState } from '../types';
-import { OpenRouterClient } from '@/lib/services/llm/openrouter-client';
 
-// Mock OpenRouter client
-vi.mock('@/lib/services/llm/openrouter-client', () => ({
-  OpenRouterClient: {
-    fromOrganization: vi.fn(() => ({
-      complete: vi.fn((messages) => {
-        // Mock LLM responses based on the conversation context
-        const lastMessage = messages[messages.length - 1]?.content || '';
-        
-        // Intent classification
-        if (lastMessage.includes('classify the intent')) {
-          if (lastMessage.includes('speaking to parts')) return 'yes_can_help';
-          if (lastMessage.includes('hold on')) return 'transfer_needed';
-          if (lastMessage.includes('not interested')) return 'not_interested';
-          return 'yes_can_help';
-        }
-        
-        // Price extraction
-        if (lastMessage.includes('extract pricing')) {
-          return JSON.stringify([{
-            partNumber: 'T478319',
-            price: 245.50,
-            availability: 'in_stock',
-            leadTimeDays: 0,
-            notes: 'OEM part'
-          }]);
-        }
-        
-        // Question detection
-        if (lastMessage.includes('Does this contain a question')) {
-          return lastMessage.includes('what') || lastMessage.includes('which') ? 'yes' : 'no';
-        }
-        
-        return 'yes_can_help';
-      }),
-    })),
-  },
-}));
+// Create a mock LLM client
+function createMockLLM(overrides?: Partial<Record<string, (prompt: string) => string>>) {
+  const defaultHandler = (prompt: string): string => {
+    // Intent classification — extract the supplier response from the prompt
+    if (prompt.includes('Classify this supplier phone response')) {
+      // Extract just the supplier's response text from the prompt
+      const match = prompt.match(/Supplier said: "([^"]+)"/);
+      const response = match ? match[1].toLowerCase() : '';
 
-describe('VOIP Call Flow - Happy Path', () => {
-  let initialState: CallState;
-  let mockLLM: any;
+      if (response.includes('voicemail') || response.includes('leave a message')) return 'voicemail';
+      if (response.includes('hold on') || response.includes('let me transfer')) return 'transfer_needed';
+      if (response.includes('not interested')) return 'not_interested';
+      if (response.includes('speaking to parts') || response.includes('this is parts') || response.includes('can help')) return 'yes_can_help';
+      return 'yes_can_help';
+    }
 
-  beforeEach(async () => {
-    // Initialize a test call
-    initialState = initializeCallState({
+    // Price extraction
+    if (prompt.includes('Extract pricing from this supplier response')) {
+      if (prompt.includes('$245.50')) {
+        return JSON.stringify([{
+          partNumber: 'T478319',
+          price: 245.50,
+          availability: 'in_stock',
+          leadTimeDays: 0,
+          notes: 'OEM part'
+        }]);
+      }
+      if (prompt.includes('$350')) {
+        return JSON.stringify([{
+          partNumber: 'EXPENSIVE-001',
+          price: 350,
+          availability: 'in_stock',
+        }]);
+      }
+      return '[]';
+    }
+
+    // Question detection
+    if (prompt.includes('Does this contain a question')) {
+      return prompt.includes('?') ? 'yes' : 'no';
+    }
+
+    if (prompt.includes('Generate a natural')) {
+      return 'Thank you for that information.';
+    }
+
+    return 'yes_can_help';
+  };
+
+  return {
+    generateCompletion: vi.fn((prompt: string) => {
+      if (overrides?.generateCompletion) {
+        return overrides.generateCompletion(prompt);
+      }
+      return defaultHandler(prompt);
+    }),
+  } as any;
+}
+
+describe('VOIP Call Flow - Initialization', () => {
+  it('should start with greeting node', () => {
+    const state = initializeCallState({
       callId: 'test-call-123',
       quoteRequestId: 'qr-123',
       supplierId: 'supplier-456',
@@ -63,175 +86,290 @@ describe('VOIP Call Flow - Happy Path', () => {
       supplierPhone: '+12345678900',
       organizationId: 'org-789',
       callerId: 'user-001',
-      parts: [
-        {
-          partNumber: 'T478319',
-          description: 'Cab door window pane',
-          quantity: 1,
-          budgetMax: 300,
-        },
-      ],
-      customContext: `Company: ACME Construction
-Quote Request: #REQ-123
-Vehicle: 2022 John Deere 333 (Serial: F4215444)
-
-Parts Needed (1 part):
-1. T478319 - Cab door window pane`,
-      customInstructions: `Be natural and friendly. Ask for parts department first.`,
+      parts: [{ partNumber: 'T478319', description: 'Cab door window pane', quantity: 1 }],
     });
 
-    mockLLM = await OpenRouterClient.fromOrganization('org-789');
-  });
-
-  it('should start with greeting node', () => {
-    expect(initialState.currentNode).toBe('greeting');
-    expect(initialState.conversationHistory).toHaveLength(0);
-  });
-
-  it('should flow: greeting → quote_request → price_extract → confirmation', async () => {
-    // Turn 1: AI sends greeting
-    let state = await processCallTurn(mockLLM, initialState);
     expect(state.currentNode).toBe('greeting');
-    expect(state.conversationHistory).toHaveLength(1);
-    expect(state.conversationHistory[0].speaker).toBe('ai');
-    expect(state.conversationHistory[0].text).toContain('parts department');
-
-    // Turn 2: Supplier confirms they're in parts dept
-    state = addMessage(state, 'supplier', "Yes, you're speaking to parts. How can I help you?");
-    state = await processCallTurn(mockLLM, state);
-    
-    // Should route to quote_request
-    expect(state.currentNode).toBe('quote_request');
-    expect(state.conversationHistory).toHaveLength(3);
-    const quoteRequestMsg = state.conversationHistory[2].text;
-    expect(quoteRequestMsg).toContain('T478319');
-    expect(quoteRequestMsg).toContain('Cab door window pane');
-
-    // Turn 3: Supplier provides pricing
-    state = addMessage(
-      state,
-      'supplier',
-      "Sure! Part number T478319, the cab door window pane - we have that in stock for $245.50. It's the OEM part and ships same day."
-    );
-    state = await processCallTurn(mockLLM, state);
-
-    // Should extract pricing and move to confirmation
-    expect(state.currentNode).toBe('confirmation');
-    expect(state.quotes.length).toBeGreaterThan(0);
-    expect(state.quotes[0]).toMatchObject({
-      partNumber: 'T478319',
-      price: 245.50,
-      availability: 'in_stock',
-    });
-  });
-
-  it('should handle transfer request', async () => {
-    // AI sends greeting
-    let state = await processCallTurn(mockLLM, initialState);
-
-    // Receptionist asks to hold
-    state = addMessage(state, 'supplier', "Hold on, let me transfer you to parts.");
-    state = await processCallTurn(mockLLM, state);
-
-    // Should route to transfer node
-    expect(state.currentNode).toBe('transfer');
-    expect(state.needsTransfer).toBe(true);
+    expect(state.conversationHistory).toHaveLength(0);
   });
 });
 
-describe('VOIP Call Flow - Edge Cases', () => {
-  let mockLLM: any;
-
-  beforeEach(async () => {
-    mockLLM = await OpenRouterClient.fromOrganization('org-789');
-  });
-
-  it('should handle voicemail detection', async () => {
+describe('VOIP Call Flow - Greeting Node', () => {
+  it('should produce a natural greeting mentioning parts department', () => {
     const state = initializeCallState({
-      callId: 'test-call-voicemail',
-      quoteRequestId: 'qr-123',
-      supplierId: 'supplier-456',
-      supplierName: 'Test Parts Supply',
-      supplierPhone: '+12345678900',
-      organizationId: 'org-789',
-      callerId: 'user-001',
+      callId: 'test',
+      quoteRequestId: 'qr',
+      supplierId: 's1',
+      supplierName: 'Acme',
+      supplierPhone: '+15551234567',
+      organizationId: 'org1',
+      callerId: 'c1',
       parts: [{ partNumber: 'TEST-001', description: 'Test part', quantity: 1 }],
     });
 
-    // Mock voicemail detection
-    mockLLM.complete = vi.fn(() => 'voicemail');
-
-    let newState = await processCallTurn(mockLLM, state);
-    newState = addMessage(newState, 'supplier', "You've reached the voicemail of...");
-    newState = await processCallTurn(mockLLM, newState);
-
-    expect(newState.currentNode).toBe('voicemail');
+    const result = greetingNode(state);
+    expect(result.conversationHistory).toHaveLength(1);
+    expect(result.conversationHistory[0].speaker).toBe('ai');
+    expect(result.conversationHistory[0].text.toLowerCase()).toContain('parts department');
   });
 
-  it('should handle not interested response', async () => {
+  it('should NOT include custom context verbatim in greeting', () => {
     const state = initializeCallState({
-      callId: 'test-call-not-interested',
-      quoteRequestId: 'qr-123',
-      supplierId: 'supplier-456',
-      supplierName: 'Test Parts Supply',
-      supplierPhone: '+12345678900',
-      organizationId: 'org-789',
-      callerId: 'user-001',
+      callId: 'test',
+      quoteRequestId: 'qr',
+      supplierId: 's1',
+      supplierName: 'Acme',
+      supplierPhone: '+15551234567',
+      organizationId: 'org1',
+      callerId: 'c1',
+      parts: [{ partNumber: 'TEST-001', description: 'Test part', quantity: 1 }],
+      customContext: 'Company: ACME\nQuote Request: #123\nVehicle: 2022 Tractor',
+    });
+
+    const result = greetingNode(state);
+    const greeting = result.conversationHistory[0].text;
+    expect(greeting).not.toContain('Company: ACME');
+    expect(greeting).not.toContain('Quote Request: #123');
+  });
+});
+
+describe('VOIP Call Flow - Routing from Greeting', () => {
+  it('should route to quote_request when supplier can help', async () => {
+    const mockLLM = createMockLLM();
+    let state = initializeCallState({
+      callId: 'test',
+      quoteRequestId: 'qr',
+      supplierId: 's1',
+      supplierName: 'Acme',
+      supplierPhone: '+15551234567',
+      organizationId: 'org1',
+      callerId: 'c1',
       parts: [{ partNumber: 'TEST-001', description: 'Test part', quantity: 1 }],
     });
 
-    mockLLM.complete = vi.fn(() => 'not_interested');
+    state = greetingNode(state);
+    state = addMessage(state, 'supplier', "Yes, you're speaking to parts.");
 
-    let newState = await processCallTurn(mockLLM, state);
-    newState = addMessage(newState, 'supplier', "Sorry, we're not interested in new quote requests.");
-    newState = await processCallTurn(mockLLM, newState);
-
-    expect(newState.currentNode).toBe('polite_end');
+    const nextNode = await routeFromGreeting(mockLLM, state);
+    expect(nextNode).toBe('quote_request');
   });
 
-  it('should handle negotiation when price exceeds budget', async () => {
-    const state = initializeCallState({
-      callId: 'test-call-negotiate',
-      quoteRequestId: 'qr-123',
-      supplierId: 'supplier-456',
-      supplierName: 'Test Parts Supply',
-      supplierPhone: '+12345678900',
-      organizationId: 'org-789',
-      callerId: 'user-001',
-      parts: [
-        {
-          partNumber: 'EXPENSIVE-001',
-          description: 'Expensive part',
-          quantity: 1,
-          budgetMax: 200, // Budget is $200
-        },
-      ],
+  it('should route to transfer when supplier says hold on', async () => {
+    const mockLLM = createMockLLM();
+    let state = initializeCallState({
+      callId: 'test',
+      quoteRequestId: 'qr',
+      supplierId: 's1',
+      supplierName: 'Acme',
+      supplierPhone: '+15551234567',
+      organizationId: 'org1',
+      callerId: 'c1',
+      parts: [{ partNumber: 'TEST-001', description: 'Test part', quantity: 1 }],
     });
 
-    // Mock price extraction returning $350 (over budget)
-    mockLLM.complete = vi.fn((messages) => {
-      const lastMessage = messages[messages.length - 1]?.content || '';
-      
-      if (lastMessage.includes('extract pricing')) {
-        return JSON.stringify([{
-          partNumber: 'EXPENSIVE-001',
-          price: 350, // Over budget!
-          availability: 'in_stock',
-        }]);
-      }
-      return 'yes_can_help';
+    state = greetingNode(state);
+    state = addMessage(state, 'supplier', "Hold on, let me transfer you to parts.");
+
+    const nextNode = await routeFromGreeting(mockLLM, state);
+    expect(nextNode).toBe('transfer');
+  });
+
+  it('should route to voicemail when detected', async () => {
+    const mockLLM = createMockLLM();
+    let state = initializeCallState({
+      callId: 'test',
+      quoteRequestId: 'qr',
+      supplierId: 's1',
+      supplierName: 'Acme',
+      supplierPhone: '+15551234567',
+      organizationId: 'org1',
+      callerId: 'c1',
+      parts: [{ partNumber: 'TEST-001', description: 'Test part', quantity: 1 }],
     });
 
-    // Process through quote request
-    let newState = await processCallTurn(mockLLM, state);
-    newState = addMessage(newState, 'supplier', "Yes, speaking.");
-    newState = await processCallTurn(mockLLM, newState);
-    newState = addMessage(newState, 'supplier', "That part is $350.");
-    newState = await processCallTurn(mockLLM, newState);
+    state = greetingNode(state);
+    state = addMessage(state, 'supplier', "You've reached the voicemail of Test Parts Supply.");
 
-    // Should attempt negotiation
-    expect(newState.currentNode).toBe('negotiate');
-    expect(newState.negotiationAttempts).toBeGreaterThan(0);
+    const nextNode = await routeFromGreeting(mockLLM, state);
+    expect(nextNode).toBe('voicemail');
+  });
+
+  it('should route to polite_end when not interested', async () => {
+    const mockLLM = createMockLLM();
+    let state = initializeCallState({
+      callId: 'test',
+      quoteRequestId: 'qr',
+      supplierId: 's1',
+      supplierName: 'Acme',
+      supplierPhone: '+15551234567',
+      organizationId: 'org1',
+      callerId: 'c1',
+      parts: [{ partNumber: 'TEST-001', description: 'Test part', quantity: 1 }],
+    });
+
+    state = greetingNode(state);
+    state = addMessage(state, 'supplier', "Sorry, we're not interested in phone quote requests.");
+
+    const nextNode = await routeFromGreeting(mockLLM, state);
+    expect(nextNode).toBe('polite_end');
+  });
+});
+
+describe('VOIP Call Flow - Quote Request Node', () => {
+  it('should use natural description on first mention', () => {
+    let state = initializeCallState({
+      callId: 'test',
+      quoteRequestId: 'qr',
+      supplierId: 's1',
+      supplierName: 'Acme',
+      supplierPhone: '+15551234567',
+      organizationId: 'org1',
+      callerId: 'c1',
+      parts: [{ partNumber: 'T478319', description: 'Cab door window pane', quantity: 1 }],
+    });
+
+    state = greetingNode(state);
+    state = addMessage(state, 'supplier', 'Yes, this is parts.');
+    state.currentNode = 'quote_request';
+    state = quoteRequestNode(state);
+
+    const lastAiMsg = state.conversationHistory.filter(m => m.speaker === 'ai').pop();
+    expect(lastAiMsg?.text).toContain('Cab door window pane');
+    // Should NOT contain raw part number on first mention
+    expect(lastAiMsg?.text).not.toContain('T478319');
+  });
+
+  it('should include part numbers on second mention', () => {
+    let state = initializeCallState({
+      callId: 'test',
+      quoteRequestId: 'qr',
+      supplierId: 's1',
+      supplierName: 'Acme',
+      supplierPhone: '+15551234567',
+      organizationId: 'org1',
+      callerId: 'c1',
+      parts: [{ partNumber: 'T478319', description: 'Cab door window pane', quantity: 1 }],
+    });
+
+    // First mention
+    state = greetingNode(state);
+    state = addMessage(state, 'supplier', 'Yes, this is parts.');
+    state.currentNode = 'quote_request';
+    state = quoteRequestNode(state);
+
+    // Supplier asks for part numbers
+    state = addMessage(state, 'supplier', 'Sure, what are the part numbers?');
+    state = quoteRequestNode(state);
+
+    const lastAiMsg = state.conversationHistory.filter(m => m.speaker === 'ai').pop();
+    // Second mention should include SSML-formatted part number (split into segments)
+    expect(lastAiMsg?.text).toContain('478319');
+    expect(lastAiMsg?.text).toContain('part numbers');
+  });
+});
+
+describe('VOIP Call Flow - Routing from Quote Request', () => {
+  it('should extract pricing and route forward', async () => {
+    const mockLLM = createMockLLM();
+    let state = initializeCallState({
+      callId: 'test',
+      quoteRequestId: 'qr',
+      supplierId: 's1',
+      supplierName: 'Acme',
+      supplierPhone: '+15551234567',
+      organizationId: 'org1',
+      callerId: 'c1',
+      parts: [{ partNumber: 'T478319', description: 'Cab door window pane', quantity: 1 }],
+    });
+
+    state = greetingNode(state);
+    state = addMessage(state, 'supplier', 'Yes, this is parts.');
+    state.currentNode = 'quote_request';
+    state = quoteRequestNode(state);
+    state = addMessage(state, 'supplier', 'T478319 is in stock for $245.50, ships same day.');
+
+    const nextNode = await routeFromQuoteRequest(mockLLM, state);
+    // Should route to confirmation (or misc_costs_inquiry if hasMiscCosts)
+    expect(nextNode).toBe('confirmation');
+  });
+
+  it('should route to negotiate when price exceeds budget', async () => {
+    const mockLLM = createMockLLM();
+    let state = initializeCallState({
+      callId: 'test',
+      quoteRequestId: 'qr',
+      supplierId: 's1',
+      supplierName: 'Acme',
+      supplierPhone: '+15551234567',
+      organizationId: 'org1',
+      callerId: 'c1',
+      parts: [{ partNumber: 'EXPENSIVE-001', description: 'Expensive part', quantity: 1, budgetMax: 200 }],
+    });
+
+    state = greetingNode(state);
+    state = addMessage(state, 'supplier', 'Yes, this is parts.');
+    state.currentNode = 'quote_request';
+    state = quoteRequestNode(state);
+    state = addMessage(state, 'supplier', 'That part is $350.');
+
+    const nextNode = await routeFromQuoteRequest(mockLLM, state);
+    expect(nextNode).toBe('negotiate');
+  });
+
+  it('should route to clarification when supplier asks a question', async () => {
+    const mockLLM = createMockLLM();
+    let state = initializeCallState({
+      callId: 'test',
+      quoteRequestId: 'qr',
+      supplierId: 's1',
+      supplierName: 'Acme',
+      supplierPhone: '+15551234567',
+      organizationId: 'org1',
+      callerId: 'c1',
+      parts: [{ partNumber: 'TEST-001', description: 'Test part', quantity: 1 }],
+    });
+
+    state = greetingNode(state);
+    state = addMessage(state, 'supplier', 'Yes, this is parts.');
+    state.currentNode = 'quote_request';
+    state = quoteRequestNode(state);
+    state = addMessage(state, 'supplier', 'What machine is this for?');
+
+    const nextNode = await routeFromQuoteRequest(mockLLM, state);
+    expect(nextNode).toBe('clarification');
+  });
+});
+
+describe('State Persistence', () => {
+  it('should maintain conversation history across nodes', () => {
+    let state = initializeCallState({
+      callId: 'test',
+      quoteRequestId: 'qr',
+      supplierId: 's1',
+      supplierName: 'Acme',
+      supplierPhone: '+15551234567',
+      organizationId: 'org1',
+      callerId: 'c1',
+      parts: [{ partNumber: 'TEST-001', description: 'Test part', quantity: 1 }],
+    });
+
+    // Turn 1: Greeting
+    state = greetingNode(state);
+    expect(state.conversationHistory).toHaveLength(1);
+
+    // Turn 2: Supplier
+    state = addMessage(state, 'supplier', 'Yes, this is parts.');
+    expect(state.conversationHistory).toHaveLength(2);
+
+    // Turn 3: Quote request
+    state.currentNode = 'quote_request';
+    state = quoteRequestNode(state);
+    expect(state.conversationHistory).toHaveLength(3);
+
+    // Verify speakers
+    expect(state.conversationHistory[0].speaker).toBe('ai');
+    expect(state.conversationHistory[1].speaker).toBe('supplier');
+    expect(state.conversationHistory[2].speaker).toBe('ai');
   });
 });
 
@@ -239,92 +377,26 @@ describe('Custom Context Integration', () => {
   it('should include custom context in state', () => {
     const customContext = `Company: ACME Construction
 Quote Request: #REQ-123
-Vehicle: 2015 John Deere 160GLC (Serial: 1FF160GXAFD056160)
-
-Parts Needed (2 parts):
-1. T478319 - Cab door window pane (Qty: 1)
-2. RE506428 - Engine oil filter (Qty: 3)`;
+Vehicle: 2015 John Deere 160GLC`;
 
     const state = initializeCallState({
-      callId: 'test-call-custom',
-      quoteRequestId: 'qr-123',
-      supplierId: 'supplier-456',
-      supplierName: 'Test Parts Supply',
-      supplierPhone: '+12345678900',
-      organizationId: 'org-789',
-      callerId: 'user-001',
+      callId: 'test',
+      quoteRequestId: 'qr',
+      supplierId: 's1',
+      supplierName: 'Acme',
+      supplierPhone: '+15551234567',
+      organizationId: 'org1',
+      callerId: 'c1',
       parts: [
         { partNumber: 'T478319', description: 'Cab door window pane', quantity: 1 },
         { partNumber: 'RE506428', description: 'Engine oil filter', quantity: 3 },
       ],
-      customContext: customContext,
+      customContext,
       customInstructions: 'Be extra friendly. This is a VIP customer.',
     });
 
     expect(state.customContext).toBe(customContext);
     expect(state.customInstructions).toContain('VIP customer');
     expect(state.parts).toHaveLength(2);
-  });
-
-  it('should NOT speak custom context verbatim in greeting', async () => {
-    const mockLLM = await OpenRouterClient.fromOrganization('org-789');
-    
-    const state = initializeCallState({
-      callId: 'test-call-no-verbatim',
-      quoteRequestId: 'qr-123',
-      supplierId: 'supplier-456',
-      supplierName: 'Test Parts Supply',
-      supplierPhone: '+12345678900',
-      organizationId: 'org-789',
-      callerId: 'user-001',
-      parts: [{ partNumber: 'TEST-001', description: 'Test part', quantity: 1 }],
-      customContext: `Company: ACME
-Quote Request: #123
-Vehicle: 2022 Tractor`,
-    });
-
-    const newState = await processCallTurn(mockLLM, state);
-    const greetingMessage = newState.conversationHistory[0]?.text || '';
-
-    // Should NOT contain the structured data format
-    expect(greetingMessage).not.toContain('Company: ACME');
-    expect(greetingMessage).not.toContain('Quote Request: #123');
-    
-    // Should contain natural language
-    expect(greetingMessage.toLowerCase()).toContain('parts department');
-  });
-});
-
-describe('State Persistence', () => {
-  it('should maintain conversation history across turns', async () => {
-    const mockLLM = await OpenRouterClient.fromOrganization('org-789');
-    
-    let state = initializeCallState({
-      callId: 'test-call-history',
-      quoteRequestId: 'qr-123',
-      supplierId: 'supplier-456',
-      supplierName: 'Test Parts Supply',
-      supplierPhone: '+12345678900',
-      organizationId: 'org-789',
-      callerId: 'user-001',
-      parts: [{ partNumber: 'TEST-001', description: 'Test part', quantity: 1 }],
-    });
-
-    // Turn 1
-    state = await processCallTurn(mockLLM, state);
-    expect(state.conversationHistory).toHaveLength(1);
-
-    // Turn 2
-    state = addMessage(state, 'supplier', 'Yes, this is parts.');
-    expect(state.conversationHistory).toHaveLength(2);
-
-    // Turn 3
-    state = await processCallTurn(mockLLM, state);
-    expect(state.conversationHistory).toHaveLength(3);
-
-    // Verify all speakers are tracked
-    expect(state.conversationHistory[0].speaker).toBe('ai');
-    expect(state.conversationHistory[1].speaker).toBe('supplier');
-    expect(state.conversationHistory[2].speaker).toBe('ai');
   });
 });

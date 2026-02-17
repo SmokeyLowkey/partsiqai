@@ -38,13 +38,7 @@ export interface CallState {
   contactRole?: 'gatekeeper' | 'buyer' | 'owner';
   
   // Extracted quotes
-  quotes: Array<{
-    partNumber: string;
-    price?: number;
-    availability: 'in_stock' | 'backorder' | 'unavailable';
-    leadTimeDays?: number;
-    notes?: string;
-  }>;
+  quotes: Array<ExtractedQuote>;
   
   // Decision variables
   needsTransfer: boolean;
@@ -52,7 +46,16 @@ export interface CallState {
   negotiationAttempts: number;
   maxNegotiationAttempts: number;
   clarificationAttempts: number;
-  
+
+  // Bot screening
+  botScreeningDetected: boolean;
+  botScreeningAttempts: number;
+  botScreeningMaxAttempts: number;
+
+  // Misc costs tracking
+  hasMiscCosts: boolean;
+  miscCostsAsked: boolean;
+
   // Call outcome
   status: 'in_progress' | 'completed' | 'failed' | 'needs_callback' | 'escalated';
   outcome?: string;
@@ -71,4 +74,6 @@ export type ExtractedQuote = {
   availability: 'in_stock' | 'backorder' | 'unavailable';
   leadTimeDays?: number;
   notes?: string;
+  isSubstitute?: boolean;
+  originalPartNumber?: string;
 };

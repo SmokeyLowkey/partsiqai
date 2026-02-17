@@ -20,6 +20,8 @@ const ExtractedQuoteSchema = z.object({
       leadTime: z.string().nullable().optional(),
       availability: z.string().nullable().optional(),
       availabilityNote: z.string().nullable().optional(),
+      isSubstitute: z.boolean().optional().default(false),
+      originalPartNumber: z.string().nullable().optional(),
     })
   ).default([]),
   notes: z.string().nullable().optional(),
@@ -166,6 +168,10 @@ INSTRUCTIONS:
    - Use "SPECIAL_ORDER" for: special order, custom order
    - Use null if unclear
 7. availabilityNote: Include any relevant supplier comments about the item
+8. SUBSTITUTE/SUPERSEDED PARTS: If the supplier says a part has been superseded, replaced, or offers a substitute:
+   - Use the SUBSTITUTE part number as "partNumber"
+   - Set "isSubstitute" to true
+   - Set "originalPartNumber" to the originally requested part number
 
 Respond with a JSON object in this EXACT format:
 {
@@ -175,14 +181,16 @@ Respond with a JSON object in this EXACT format:
   "validUntil": null,
   "items": [
     {
-      "partNumber": "exact part number",
+      "partNumber": "exact part number (use substitute if applicable)",
       "description": "part description",
       "quantity": quantity as number,
       "unitPrice": unit price as number,
       "totalPrice": total price as number,
       "leadTime": "lead time info or null",
       "availability": "IN_STOCK, BACKORDERED, SPECIAL_ORDER, or null",
-      "availabilityNote": "supplier comments about availability, or null"
+      "availabilityNote": "supplier comments about availability, or null",
+      "isSubstitute": false,
+      "originalPartNumber": null
     }
   ],
   "notes": "any special notes or conditions mentioned",

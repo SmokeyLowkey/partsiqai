@@ -73,10 +73,30 @@ model Organization {
   users                  User[]
   vehicleSearchMappings  VehicleSearchMapping[]
   vehicles               Vehicle[]
+  locations              OrganizationLocation[]
 
   @@index([slug])
   @@index([stripeCustomerId])
   @@map("organizations")
+}
+
+model OrganizationLocation {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  address        String
+  city           String
+  state          String
+  zipCode        String
+  country        String       @default("USA")
+  isPrimary      Boolean      @default(false)
+  phone          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("organization_locations")
 }
 
 model User {
