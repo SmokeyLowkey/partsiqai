@@ -9,6 +9,7 @@ export { SendQuoteDialog } from './SendQuoteDialog';
 export { SupplierMethodSelector } from './SupplierMethodSelector';
 export { CallLogEntry } from './CallLogEntry';
 export { FollowUpDialog } from './FollowUpDialog';
+export { FollowUpCallDialog } from './FollowUpCallDialog';
 export { ReplyDialog } from './ReplyDialog';
 export { EditQuoteDialog } from './EditQuoteDialog';
 export { ConvertToOrderDialog } from './ConvertToOrderDialog';

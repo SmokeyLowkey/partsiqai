@@ -99,6 +99,7 @@ interface CallLogEntryProps {
   langGraphState?: LangGraphState | null;
   createdAt: Date;
   endedAt?: Date | null;
+  onFollowUp?: () => void;
 }
 
 // Helper function to reconstruct call flow path from current node
@@ -146,6 +147,7 @@ export function CallLogEntry({
   langGraphState,
   createdAt,
   endedAt,
+  onFollowUp,
 }: CallLogEntryProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
@@ -318,6 +320,16 @@ export function CallLogEntry({
                 <AlertTriangle className="h-3 w-3 mr-1" />
                 Escalation Required
               </Badge>
+            )}
+            {onFollowUp && (status === 'COMPLETED' || status === 'FAILED' || status === 'NO_ANSWER') && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onFollowUp}
+              >
+                <PhoneCall className="h-4 w-4 mr-1" />
+                Follow-Up Call
+              </Button>
             )}
             {recordingUrl && (
               <Button

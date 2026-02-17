@@ -1,6 +1,6 @@
 import { Worker, Job } from 'bullmq';
 import { redisConnection } from '@/lib/queue/connection';
-import { QUEUE_NAMES, voipFallbackQueue } from '@/lib/queue/queues';
+import { QUEUE_NAMES } from '@/lib/queue/queues';
 import { VoipCallInitiationJobData } from '@/lib/queue/types';
 import { workerLogger } from '@/lib/logger';
 import { prisma } from '@/lib/prisma';
@@ -617,8 +617,6 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
     );
 
     // Update call log if it exists
-    let failedCallId: string | undefined;
-    
     try {
       const existingCall = await prisma.supplierCall.findFirst({
         where: {
@@ -630,7 +628,6 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
       });
 
       if (existingCall) {
-        failedCallId = existingCall.id;
         await prisma.supplierCall.update({
           where: { id: existingCall.id },
           data: {
@@ -644,39 +641,10 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
       logger.error({ error: updateError }, 'Failed to update call log after error');
     }
 
-    // Queue fallback email if email is available and method is 'both'
-    if (metadata.preferredMethod === 'both') {
-      logger.info({ quoteRequestId, supplierId }, 'Queueing fallback email');
-      
-      const supplier = await prisma.supplier.findUnique({
-        where: { id: supplierId },
-        select: { email: true },
-      });
-
-      if (supplier?.email) {
-        await voipFallbackQueue.add(
-          `voip-fallback-${quoteRequestId}-${supplierId}`,
-          {
-            quoteRequestId,
-            supplierId,
-            supplierName,
-            supplierEmail: supplier.email,
-            callId: failedCallId, // Pass the failed call log ID
-            failureReason: error.message,
-            context,
-            metadata: {
-              userId: metadata.userId,
-              organizationId: metadata.organizationId,
-            },
-          },
-          {
-            delay: 30000, // Wait 30 seconds before sending fallback email
-          }
-        );
-      }
-    }
-
-    // No automatic retry — user can manually retry from the communication history UI
+    // No fallback email needed — when contactMethod is 'both', the email is already
+    // sent in parallel via the SendQuoteDialog UI (Gmail integration). Sending a second
+    // fallback email would be redundant and confusing to suppliers.
+    // User can manually retry calls from the communication history UI.
 
     throw error;
   }

@@ -13,6 +13,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Send, Inbox, Eye, Mail, Clock, RefreshCw, Paperclip, Download, FileText, Image, File, Reply } from 'lucide-react';
 import { QuoteRequestEmailThreadWithDetails } from '@/types/quote-request';
 import { FollowUpDialog } from './FollowUpDialog';
+import { FollowUpCallDialog } from './FollowUpCallDialog';
 import { ReplyDialog } from './ReplyDialog';
 import { CallLogEntry } from './CallLogEntry';
 import { QuoteStatus, UserRole } from '@prisma/client';
@@ -76,6 +77,16 @@ export function CommunicationHistory({
     message: typeof emailThreads[0]['emailThread']['messages'][0];
   } | null>(null);
   const [downloadingAttachment, setDownloadingAttachment] = useState<string | null>(null);
+  const [followUpCall, setFollowUpCall] = useState<{
+    supplierId: string;
+    supplierName: string;
+    supplierPhone: string;
+    outcome?: string | null;
+    notes?: string | null;
+    createdAt?: Date;
+    extractedQuotes?: any[] | null;
+    conversationLog?: any[] | null;
+  } | null>(null);
   const [calls, setCalls] = useState<SupplierCallWithRelations[]>([]);
   const [loadingCalls, setLoadingCalls] = useState(true);
 
@@ -484,6 +495,16 @@ export function CommunicationHistory({
                   langGraphState={(call as any).langGraphState}
                   createdAt={call.createdAt}
                   endedAt={call.endedAt}
+                  onFollowUp={() => setFollowUpCall({
+                    supplierId: call.supplier.id,
+                    supplierName: call.supplier.name,
+                    supplierPhone: call.supplier.phone || call.phoneNumber,
+                    outcome: call.outcome,
+                    notes: call.notes,
+                    createdAt: call.createdAt,
+                    extractedQuotes: call.extractedQuotes,
+                    conversationLog: call.conversationLog,
+                  })}
                 />
               ))}
             </div>
@@ -623,6 +644,25 @@ export function CommunicationHistory({
         supplierEmail={followUpThread?.supplier.email || null}
         onSent={() => {
           setFollowUpThread(null);
+          onRefresh?.();
+        }}
+      />
+
+      {/* Follow-Up Call Dialog */}
+      <FollowUpCallDialog
+        open={!!followUpCall}
+        onOpenChange={(open) => !open && setFollowUpCall(null)}
+        quoteRequestId={quoteRequestId}
+        supplierId={followUpCall?.supplierId || ''}
+        supplierName={followUpCall?.supplierName || ''}
+        supplierPhone={followUpCall?.supplierPhone || ''}
+        previousCallOutcome={followUpCall?.outcome}
+        previousCallNotes={followUpCall?.notes}
+        previousCallDate={followUpCall?.createdAt}
+        extractedQuotes={followUpCall?.extractedQuotes}
+        conversationLog={followUpCall?.conversationLog}
+        onInitiated={() => {
+          setFollowUpCall(null);
           onRefresh?.();
         }}
       />
