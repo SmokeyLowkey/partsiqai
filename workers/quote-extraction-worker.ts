@@ -1137,6 +1137,7 @@ export const quoteExtractionWorker = new Worker<QuoteExtractionJobData>(
   {
     connection: redisConnection,
     concurrency: 3,
+    drainDelay: 30,
     limiter: {
       max: 10,
       duration: 60000,

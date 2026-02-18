@@ -80,6 +80,10 @@ export function getClientIp(req: NextRequest): string {
 export const rateLimits = {
   /** Login: 5 attempts per minute */
   login: { limit: 5, windowSeconds: 60 },
+  /** Signup: 3 attempts per 15 minutes */
+  signup: { limit: 3, windowSeconds: 900 },
+  /** Password reset / verification: 5 attempts per 15 minutes */
+  authAction: { limit: 5, windowSeconds: 900 },
   /** General API: 100 requests per minute */
   api: { limit: 100, windowSeconds: 60 },
   /** Cron: 2 per minute (prevent hammering) */

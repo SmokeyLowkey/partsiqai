@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { randomUUID } from "crypto";
 import { sendEmail, getVerificationEmailHtml, getBaseUrl } from "@/lib/email/resend";
+import { checkRateLimit as checkIpRateLimit, getClientIp, rateLimits } from "@/lib/rate-limit";
 
 // Rate limiting storage (in-memory for now - consider Redis in production)
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
@@ -52,8 +53,13 @@ async function sendVerificationEmail(
 }
 
 // POST /api/auth/resend-verification - Resend verification email
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    // Rate limit by IP to prevent abuse
+    const ip = getClientIp(request);
+    const ipRateCheck = checkIpRateLimit(`resend-verify:${ip}`, rateLimits.authAction);
+    if (!ipRateCheck.success) return ipRateCheck.response;
+
     const session = await getServerSession();
 
     // If no session, user must be unverified and trying to resend

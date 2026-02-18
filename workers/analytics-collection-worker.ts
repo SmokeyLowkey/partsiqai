@@ -256,6 +256,7 @@ export const analyticsCollectionWorker = new Worker<AnalyticsCollectionJobData>(
   {
     connection: redisConnection,
     concurrency: 5,
+    drainDelay: 30,
     limiter: {
       max: 10,
       duration: 1000,

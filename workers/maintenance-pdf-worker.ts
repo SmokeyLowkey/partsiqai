@@ -326,6 +326,7 @@ const worker = new Worker<MaintenancePdfJobData>(
   {
     connection: redisConnection,
     concurrency: 2, // Process up to 2 PDFs at a time
+    drainDelay: 30,
   }
 );
 

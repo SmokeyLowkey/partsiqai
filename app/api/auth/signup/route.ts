@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
 import { sendEmail, getVerificationEmailHtml, getMasterAdminNotificationHtml, getBaseUrl } from "@/lib/email/resend";
+import { checkRateLimit, getClientIp, rateLimits } from "@/lib/rate-limit";
 
 // Helper to generate organization slug from company name
 function generateSlug(name: string): string {
@@ -79,8 +80,13 @@ async function notifyMasterAdmins(
 }
 
 // POST /api/auth/signup - Self-service organization signup
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    // Rate limit by IP to prevent mass account creation
+    const ip = getClientIp(request);
+    const rateCheck = checkRateLimit(`signup:${ip}`, rateLimits.signup);
+    if (!rateCheck.success) return rateCheck.response;
+
     const body = await request.json();
     const {
       email,

@@ -805,6 +805,7 @@ export function startVoipCallInitiationWorker() {
     {
       connection: redisConnection,
       concurrency: 5, // Process up to 5 calls simultaneously
+      drainDelay: 30,
       limiter: {
         max: 10, // Max 10 calls
         duration: 60000, // per minute (rate limiting)

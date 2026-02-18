@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { checkRateLimit, getClientIp, rateLimits } from "@/lib/rate-limit";
 
 // GET /api/auth/reset-password?token=xxx — validate token
 export async function GET(request: NextRequest) {
@@ -37,8 +38,13 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/auth/reset-password — reset password with token
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    // Rate limit by IP to prevent token brute force
+    const ip = getClientIp(request);
+    const rateCheck = checkRateLimit(`reset-pwd:${ip}`, rateLimits.authAction);
+    if (!rateCheck.success) return rateCheck.response;
+
     const { token, password } = await request.json();
 
     if (!token || !password) {

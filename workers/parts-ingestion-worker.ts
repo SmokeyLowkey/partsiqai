@@ -72,6 +72,7 @@ export const partsIngestionWorker = new Worker<PartsIngestionJobData>(
   {
     connection: redisConnection,
     concurrency: 1,
+    drainDelay: 30,
   }
 );
 

@@ -672,6 +672,7 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
   {
     connection: redisConnection,
     concurrency: 3, // Process up to 3 organizations concurrently
+    drainDelay: 30,
     limiter: {
       max: 5, // Max 5 jobs
       duration: 60000, // per 60 seconds (to respect Gmail API limits)

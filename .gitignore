@@ -3,6 +3,7 @@
 # misc
 nul
 /json/
+/redis-logs/
 
 # dependencies
 /node_modules

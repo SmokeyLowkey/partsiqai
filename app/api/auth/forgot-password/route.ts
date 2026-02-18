@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { randomUUID } from "crypto";
 import { sendEmail, getPasswordResetEmailHtml, getBaseUrl } from "@/lib/email/resend";
+import { checkRateLimit as checkIpRateLimit, getClientIp, rateLimits } from "@/lib/rate-limit";
 
 // Rate limiting (3 requests per email per hour)
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
@@ -31,8 +32,13 @@ function checkRateLimit(email: string): { allowed: boolean; remainingTime?: numb
   return { allowed: true };
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    // Rate limit by IP to prevent enumeration/abuse
+    const ip = getClientIp(request);
+    const ipRateCheck = checkIpRateLimit(`forgot-pwd:${ip}`, rateLimits.authAction);
+    if (!ipRateCheck.success) return ipRateCheck.response;
+
     const { email } = await request.json();
 
     if (!email) {

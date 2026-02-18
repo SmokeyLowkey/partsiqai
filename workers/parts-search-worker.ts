@@ -83,6 +83,7 @@ export const partsSearchWorker = new Worker<PartsSearchJobData>(
   {
     connection: redisConnection,
     concurrency: 5, // Process up to 5 jobs concurrently
+    drainDelay: 30,
     limiter: {
       max: 10, // Max 10 jobs
       duration: 60000, // per 60 seconds

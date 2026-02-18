@@ -312,6 +312,7 @@ export function startVoipCallRetryWorker() {
     {
       connection: redisConnection,
       concurrency: 3, // Process up to 3 retry calls simultaneously
+      drainDelay: 30,
       limiter: {
         max: 5, // Max 5 retry calls
         duration: 60000, // per minute

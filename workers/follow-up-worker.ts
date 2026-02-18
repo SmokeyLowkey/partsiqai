@@ -227,6 +227,7 @@ export const followUpWorker = new Worker<FollowUpJobData>(
   {
     connection: redisConnection,
     concurrency: 5,
+    drainDelay: 30,
   }
 );
 

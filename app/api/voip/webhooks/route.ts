@@ -14,15 +14,19 @@ const logger = workerLogger.child({ module: 'voip-webhooks' });
  */
 export async function POST(req: NextRequest) {
   try {
-    const event = await req.json();
-    
-    // Verify webhook signature (in production)
-    const signature = req.headers.get('x-vapi-signature');
-    if (process.env.NODE_ENV === 'production' && signature) {
-      // TODO: Implement signature verification
-      // const isValid = verifyVapiSignature(signature, JSON.stringify(event));
-      // if (!isValid) return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
+    // Verify webhook secret (configured in Vapi dashboard under Server URL settings)
+    const webhookSecret = process.env.VAPI_WEBHOOK_SECRET;
+    if (webhookSecret) {
+      const vapiSecret = req.headers.get('x-vapi-secret');
+      if (vapiSecret !== webhookSecret) {
+        logger.warn('Webhook request with invalid or missing secret');
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+    } else if (process.env.NODE_ENV === 'production') {
+      logger.warn('VAPI_WEBHOOK_SECRET not configured — webhook verification disabled in production');
     }
+
+    const event = await req.json();
 
     // Extract callLogId from metadata (matches what worker sets when creating call)
     // Handle different event structures (call-started, transcript, end-of-call-report)

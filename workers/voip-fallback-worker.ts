@@ -188,6 +188,7 @@ export function startVoipFallbackWorker() {
     {
       connection: redisConnection,
       concurrency: 3,
+      drainDelay: 30,
       removeOnComplete: {
         count: 100,
       },
