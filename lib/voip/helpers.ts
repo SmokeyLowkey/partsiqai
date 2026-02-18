@@ -184,7 +184,12 @@ AVAILABILITY RULES (check ALL recent messages, not just the latest):
 - When in doubt between "in_stock" and "backorder", prefer "in_stock"
 - NEVER mark as "unavailable" if the supplier gave a price — that means they CAN supply it
 
-If supplier says a part has been superseded or replaced, set isSubstitute=true and originalPartNumber to the requested part.`;
+SUBSTITUTE PART RULES:
+- If supplier says a part has been superseded or replaced, set isSubstitute=true.
+- For originalPartNumber, determine WHICH requested part is being replaced by looking at the conversation context.
+- If the supplier says "for [specific part number], the updated number is...", match that exact part.
+- If the supplier says "that number" or "your number", look at the most recently discussed part in conversation.
+- Do NOT guess based on number similarity — use the conversation context.`;
 
   try {
     const result = await llmClient.generateCompletion(prompt, {
@@ -439,12 +444,19 @@ export async function extractSubstituteInfo(
       '\n';
   }
 
-  const prompt = `The supplier is offering a substitute/replacement/updated part number. Extract the NEW part number they're giving.
+  const prompt = `The supplier is offering a substitute/replacement/updated part number. Extract the NEW part number they're giving and determine WHICH original part it replaces.
 ${conversationContext}
 Supplier's latest response: "${supplierResponse}"
 
 Original parts requested:
 ${partsDescription}
+
+CRITICAL — DETERMINING WHICH PART IS BEING REPLACED:
+- Look at the conversation context to see which part was being discussed when the substitute was offered.
+- If the supplier says "for [part number], the updated number is...", match that specific part number.
+- If the supplier references a part by description (e.g., "for the right side adjuster"), match by description.
+- If the supplier says "that number" or "your number", look at the MOST RECENTLY discussed original part number in the conversation.
+- Do NOT assume the substitute replaces a specific part just because the numbers look similar.
 
 IMPORTANT: The supplier may use NATO phonetic alphabet (Alpha, Bravo, Charlie, Delta, Echo, Foxtrot, Golf, Hotel, India, Juliet, Kilo, Lima, Mike, November, Oscar, Papa, Quebec, Romeo, Sierra, Tango, Uniform, Victor, Whiskey, X-ray, Yankee, Zulu) to spell letters.
 Convert phonetic words back to letters: "Delta two seven" = "D27", "Papa" = "P", "Romeo Echo" = "RE".
@@ -452,7 +464,7 @@ Convert phonetic words back to letters: "Delta two seven" = "D27", "Papa" = "P",
 Return ONLY valid JSON, no markdown:
 {
   "substitutePartNumber": "the new/substitute part number in standard format (e.g., D27-1016-0160P)",
-  "originalPartNumber": "which original part this replaces",
+  "originalPartNumber": "which original part this replaces — must be one of the part numbers listed above",
   "notes": "any additional context"
 }
 

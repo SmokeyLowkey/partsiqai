@@ -219,24 +219,28 @@ export async function POST(
       );
     }
 
-    // Update quote request - if already SENT (from calls), keep supplierId that was set
-    const updateData: any = {
-      status: 'SENT',
-    };
-    
+    // Update quote request — only advance status forward, never regress
+    const noRegressStatuses = ['RECEIVED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'CONVERTED_TO_ORDER'];
+    const updateData: any = {};
+    if (!noRegressStatuses.includes(quoteRequest.status)) {
+      updateData.status = 'SENT';
+    }
+
     // Only update supplier IDs if not already set (i.e., if this is the first contact)
     if (!quoteRequest.supplierId) {
       updateData.supplierId = primarySupplierId;
-      updateData.additionalSupplierIds = 
+      updateData.additionalSupplierIds =
         additionalSupplierIds.length > 0
           ? additionalSupplierIds.join(',')
           : null;
     }
-    
-    await prisma.quoteRequest.update({
-      where: { id },
-      data: updateData,
-    });
+
+    if (Object.keys(updateData).length > 0) {
+      await prisma.quoteRequest.update({
+        where: { id },
+        data: updateData,
+      });
+    }
 
     return NextResponse.json({
       success: true,

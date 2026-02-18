@@ -166,17 +166,26 @@ export async function POST(
       .filter((j, idx) => idx > 0 && 'status' in j && (j.status === 'initiated' || j.status === 'queued'))
       .map((j) => j.supplierId);
 
-    await prisma.quoteRequest.update({
-      where: { id },
-      data: {
-        status: 'SENT',
-        supplierId: primarySupplier?.supplierId,
-        additionalSupplierIds:
-          additionalSupplierIds.length > 0
-            ? additionalSupplierIds.join(',')
-            : null,
-      },
-    });
+    // Only advance status forward — never regress from later workflow stages
+    const noRegressStatuses = ['RECEIVED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'CONVERTED_TO_ORDER'];
+    const updateData: any = {};
+    if (!noRegressStatuses.includes(quoteRequest.status)) {
+      updateData.status = 'SENT';
+    }
+    // Only update supplier IDs if not already set (follow-up calls shouldn't overwrite)
+    if (!quoteRequest.supplierId) {
+      updateData.supplierId = primarySupplier?.supplierId;
+      updateData.additionalSupplierIds =
+        additionalSupplierIds.length > 0
+          ? additionalSupplierIds.join(',')
+          : null;
+    }
+    if (Object.keys(updateData).length > 0) {
+      await prisma.quoteRequest.update({
+        where: { id },
+        data: updateData,
+      });
+    }
 
     return NextResponse.json({
       success: true,

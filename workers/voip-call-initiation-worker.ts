@@ -20,6 +20,132 @@ interface VapiCredentials {
 const logger = workerLogger.child({ worker: 'voip-call-initiation' });
 
 /**
+ * Fetch reference prices for parts using a waterfall strategy:
+ * 1. PartSupplier price for THIS supplier (most relevant)
+ * 2. Historical average from past SupplierQuoteItems (last 6 months)
+ * 3. Catalog price from Part table
+ * 4. undefined (no negotiation for this part)
+ */
+async function fetchReferencePrices(
+  items: Array<{ partNumber: string; partId: string | null }>,
+  supplierId: string,
+  organizationId: string,
+): Promise<Map<string, number | undefined>> {
+  try {
+  const result = new Map<string, number | undefined>();
+
+  // Batch-fetch all data sources in parallel
+  const partIds = items.map(i => i.partId).filter((id): id is string => id !== null);
+  const partNumbers = items.map(i => i.partNumber);
+
+  const [supplierPrices, historicalQuotes, catalogParts] = await Promise.all([
+    // 1. PartSupplier prices for this specific supplier
+    partIds.length > 0
+      ? prisma.partSupplier.findMany({
+          where: { partId: { in: partIds }, supplierId },
+          select: { partId: true, price: true },
+        })
+      : Promise.resolve([]),
+
+    // 2. Historical quote averages (last 6 months)
+    prisma.supplierQuoteItem.groupBy({
+      by: ['quoteRequestItemId'],
+      _avg: { unitPrice: true },
+      where: {
+        quoteRequestItem: {
+          partNumber: { in: partNumbers },
+          quoteRequest: { organizationId },
+        },
+        createdAt: { gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000) },
+      },
+    }).then(async (groups) => {
+      // Map quoteRequestItemId back to partNumber
+      if (groups.length === 0) return new Map<string, number>();
+      const itemIds = groups.map(g => g.quoteRequestItemId);
+      const qrItems = await prisma.quoteRequestItem.findMany({
+        where: { id: { in: itemIds } },
+        select: { id: true, partNumber: true },
+      });
+      const idToPartNumber = new Map(qrItems.map(i => [i.id, i.partNumber]));
+      // Average per partNumber (there may be multiple quoteRequestItems for the same partNumber)
+      const avgByPart = new Map<string, { sum: number; count: number }>();
+      for (const g of groups) {
+        const pn = idToPartNumber.get(g.quoteRequestItemId);
+        if (!pn || !g._avg.unitPrice) continue;
+        const existing = avgByPart.get(pn) || { sum: 0, count: 0 };
+        existing.sum += Number(g._avg.unitPrice);
+        existing.count += 1;
+        avgByPart.set(pn, existing);
+      }
+      const avgMap = new Map<string, number>();
+      for (const [pn, { sum, count }] of avgByPart) {
+        avgMap.set(pn, sum / count);
+      }
+      return avgMap;
+    }),
+
+    // 3. Catalog prices from Part table
+    prisma.part.findMany({
+      where: { partNumber: { in: partNumbers }, organizationId },
+      select: { partNumber: true, price: true },
+    }),
+  ]);
+
+  // Build lookup maps
+  const supplierPriceByPartId = new Map(
+    supplierPrices.map(sp => [sp.partId, Number(sp.price)])
+  );
+  const catalogPriceByPartNumber = new Map(
+    catalogParts.map(p => [p.partNumber, Number(p.price)])
+  );
+
+  // Apply waterfall for each item
+  for (const item of items) {
+    // Priority 1: Supplier-specific price
+    if (item.partId && supplierPriceByPartId.has(item.partId)) {
+      const price = supplierPriceByPartId.get(item.partId)!;
+      if (price > 0) {
+        result.set(item.partNumber, price);
+        continue;
+      }
+    }
+
+    // Priority 2: Historical quote average
+    const histAvg = historicalQuotes.get(item.partNumber);
+    if (histAvg && histAvg > 0) {
+      result.set(item.partNumber, histAvg);
+      continue;
+    }
+
+    // Priority 3: Catalog price
+    const catalogPrice = catalogPriceByPartNumber.get(item.partNumber);
+    if (catalogPrice && catalogPrice > 0) {
+      result.set(item.partNumber, catalogPrice);
+      continue;
+    }
+
+    // Priority 4: No reference — skip negotiation for this part
+    result.set(item.partNumber, undefined);
+  }
+
+  const populated = [...result.values()].filter(v => v !== undefined).length;
+  if (populated > 0) {
+    logger.info(
+      { populated, total: items.length },
+      'Fetched reference prices for negotiation'
+    );
+  }
+
+  return result;
+  } catch (error) {
+    // Reference prices are a nice-to-have for negotiation — don't let a DB error
+    // prevent the call from being initiated. Fall back to no negotiation.
+    logger.warn({ error }, 'Failed to fetch reference prices — negotiation will be skipped');
+    return new Map(items.map(i => [i.partNumber, undefined]));
+  }
+}
+
+/**
  * Format phone number to E.164 format (e.g., +15551234567)
  * Handles US/Canada numbers and basic international formats
  */
@@ -218,8 +344,16 @@ async function processVoipCallInitiation(job: Job<VoipCallInitiationJobData>) {
     const customContext = context.customContext; // Background facts (vehicle, parts, etc.)
     const customInstructions = context.customInstructions; // Behavioral guidance
 
-    // Build first message - always a natural greeting, NEVER the context
-    const firstMessage = `Hi, good morning! Could I speak to someone in your parts department?`;
+    // Build first message - natural greeting. For follow-up calls, mention it's a follow-up.
+    const isFollowUp = customInstructions && (
+      customInstructions.toLowerCase().includes('follow up') ||
+      customInstructions.toLowerCase().includes('follow-up') ||
+      customInstructions.toLowerCase().includes('previous quote') ||
+      customInstructions.toLowerCase().includes('previous call')
+    );
+    const firstMessage = isFollowUp
+      ? `Hi, good morning! Could I speak to someone in your parts department? I'm calling to follow up on a recent quote.`
+      : `Hi, good morning! Could I speak to someone in your parts department?`;
 
     // Build system instructions for the AI agent
     // Include both the default guidelines AND the custom context/instructions
@@ -295,11 +429,18 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
     const regularItems = quoteRequestData.items.filter(item => item.partNumber !== 'MISC-COSTS');
     const hasMiscCosts = quoteRequestData.items.some(item => item.partNumber === 'MISC-COSTS');
 
+    // Fetch reference prices for negotiation (waterfall: PartSupplier → historical avg → catalog price)
+    const referencePrices = await fetchReferencePrices(
+      regularItems,
+      supplierId,
+      metadata.organizationId
+    );
+
     const parts = regularItems.map(item => ({
       partNumber: item.partNumber,
       description: item.description || '',
       quantity: item.quantity,
-      budgetMax: undefined,
+      budgetMax: referencePrices.get(item.partNumber),
       source: item.source as 'CATALOG' | 'WEB_SEARCH' | 'MANUAL',
     }));
 

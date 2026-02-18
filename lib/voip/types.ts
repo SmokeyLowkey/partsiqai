@@ -46,6 +46,7 @@ export interface CallState {
   needsHumanEscalation: boolean;
   negotiationAttempts: number;
   maxNegotiationAttempts: number;
+  negotiatedParts: string[]; // partNumbers already negotiated (prevents re-negotiating)
   clarificationAttempts: number;
 
   // Bot screening
@@ -62,6 +63,9 @@ export interface CallState {
 
   // Transfer/hold tracking
   waitingForTransfer: boolean;
+
+  // Follow-up call tracking
+  isFollowUp: boolean;
 
   // Call outcome
   status: 'in_progress' | 'completed' | 'failed' | 'needs_callback' | 'escalated';

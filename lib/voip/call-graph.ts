@@ -5,7 +5,7 @@
  * Each node represents a step in the conversation flow.
  */
 
-import { CallState } from './types';
+import { CallState, ExtractedQuote } from './types';
 import { OpenRouterClient } from '@/lib/services/llm/openrouter-client';
 import {
   getLastSupplierResponse,
@@ -52,10 +52,11 @@ export function greetingNode(state: CallState): CallState {
       return state;
     }
     // Real person picked up — clear the flag and re-introduce
+    const transferIntro = state.isFollowUp
+      ? `Hi there! Thanks for taking my call.${orgIntro} I'm calling to follow up on a parts quote we requested recently.`
+      : `Hi there! Thanks for taking my call.${orgIntro} I'm looking to get pricing on some parts.`;
     return {
-      ...addMessage({ ...state, waitingForTransfer: false }, 'ai',
-        `Hi there! Thanks for taking my call.${orgIntro} I'm looking to get pricing on some parts.`
-      ),
+      ...addMessage({ ...state, waitingForTransfer: false }, 'ai', transferIntro),
     };
   }
 
@@ -67,14 +68,16 @@ export function greetingNode(state: CallState): CallState {
     msg => msg.speaker === 'ai' && (
       msg.text.toLowerCase().includes("i'm looking for") ||
       msg.text.toLowerCase().includes("i have the part numbers") ||
-      msg.text.toLowerCase().includes("part number is")
+      msg.text.toLowerCase().includes("part number is") ||
+      msg.text.toLowerCase().includes("following up")
     )
   );
 
   if (alreadyInQuoteFlow) {
-    return addMessage(state, 'ai',
-      `Hi there! Thanks for taking my call.${orgIntro} I'm looking to get pricing on some parts.`
-    );
+    const reintro = state.isFollowUp
+      ? `Hi there! Thanks for taking my call.${orgIntro} I'm calling to follow up on a parts quote we requested recently.`
+      : `Hi there! Thanks for taking my call.${orgIntro} I'm looking to get pricing on some parts.`;
+    return addMessage(state, 'ai', reintro);
   }
 
   const alreadyGreeted = state.conversationHistory.some(
@@ -87,7 +90,13 @@ export function greetingNode(state: CallState): CallState {
     );
   }
 
-  // After transfer — re-introduce, don't repeat the same greeting
+  // After transfer — re-introduce. For follow-up calls, reference the previous interaction.
+  if (state.isFollowUp) {
+    return addMessage(state, 'ai',
+      `Hi there! Thanks for taking my call.${orgIntro} I'm calling to follow up on a parts quote we requested recently.`
+    );
+  }
+
   return addMessage(state, 'ai',
     `Hi there! Thanks for taking my call.${orgIntro} I'm looking to get pricing on some parts.`
   );
@@ -131,11 +140,28 @@ export function quoteRequestNode(state: CallState): CallState {
 
   // Check if we've already mentioned what we're looking for
   const alreadyMentionedParts = state.conversationHistory.some(
-    msg => msg.speaker === 'ai' && msg.text.toLowerCase().includes("i'm looking for")
+    msg => msg.speaker === 'ai' && (
+      msg.text.toLowerCase().includes("i'm looking for") ||
+      msg.text.toLowerCase().includes("recently got a quote")
+    )
   );
 
   if (!alreadyMentionedParts) {
-    // First time - just mention descriptions naturally, no part numbers
+    // First time - mention what we need
+
+    // For follow-up calls, reference the previous interaction and explain purpose
+    if (state.isFollowUp && state.customInstructions) {
+      const descriptions = state.parts
+        .filter(p => p.partNumber !== 'MISC-COSTS')
+        .map(p => describePartNaturally(p.description, p.quantity))
+        .join(', and ');
+
+      const isSinglePart = state.parts.filter(p => p.partNumber !== 'MISC-COSTS').length === 1;
+      const request = `Great, thanks! We recently got a quote for ${descriptions} and I'm following up on ${isSinglePart ? 'it' : 'those'}. I have the part ${isSinglePart ? 'number' : 'numbers'} if that helps.`;
+      return addMessage(state, 'ai', request);
+    }
+
+    // Standard first-call flow
     const descriptions = state.parts
       .map(p => describePartNaturally(p.description, p.quantity))
       .join(', and ');
@@ -267,26 +293,50 @@ export async function priceExtractNode(
 }
 
 /**
- * Negotiate Node - Counter-offer if price too high
+ * Negotiate Node - Counter-offer if price too high.
+ * Strategy: Bundle first (when multiple parts over budget), then per-part fallback.
+ * Never reveals actual target price or budget numbers.
  */
 export function negotiateNode(state: CallState): CallState {
-  const quote = state.quotes[0];
-  const budget = state.parts[0]?.budgetMax;
+  const NEGOTIATION_THRESHOLD = 0.20;
 
-  if (!budget || !quote?.price) {
-    return state;
+  // Find all quotes that exceed their part's budget by >20%
+  const overBudgetParts: Array<{ quote: ExtractedQuote; partNumber: string }> = [];
+
+  for (const q of state.quotes) {
+    if (!q.price) continue;
+    const matchingPart = state.parts.find(p =>
+      p.partNumber === q.partNumber || p.partNumber === q.originalPartNumber
+    );
+    if (matchingPart?.budgetMax && q.price > matchingPart.budgetMax * (1 + NEGOTIATION_THRESHOLD)) {
+      overBudgetParts.push({ quote: q, partNumber: q.partNumber });
+    }
   }
 
-  if (quote.price <= budget) {
+  if (overBudgetParts.length === 0) {
     return state; // No negotiation needed
   }
 
-  const counterOffer = Math.max(quote.price * 0.8, budget * 0.95);
-  
-  const negotiationScript =
-    state.negotiationAttempts === 0
-      ? `That's a bit higher than our budget of $${budget}. Any flexibility on price? We're looking at around $${counterOffer.toFixed(2)}.`
-      : `I understand. We have other quotes in the $${budget} range. Can you match that to win this order?`;
+  let negotiationScript: string;
+
+  if (state.negotiationAttempts === 0) {
+    // First attempt: bundle if multiple, single-part if one
+    if (overBudgetParts.length >= 2) {
+      negotiationScript = "The pricing is coming in a bit higher than what we've been seeing in the market. " +
+        "If we're placing the full order with you, is there any flexibility on the overall pricing?";
+    } else {
+      const pn = formatPartNumberForSpeech(overBudgetParts[0].partNumber);
+      negotiationScript = `The price on ${pn} is a bit higher than what we've been seeing. Any flexibility there?`;
+    }
+  } else {
+    // Retry: per-part fallback — pick the most over-budget part
+    const pn = formatPartNumberForSpeech(overBudgetParts[0].partNumber);
+    negotiationScript = `I understand. What about on ${pn} — any room to come down on that one?`;
+  }
+
+  // NOTE: Don't populate negotiatedParts here — that happens when negotiation
+  // concludes (in processCallTurn after routeFromNegotiation exits to confirmation).
+  // Populating it here would prevent the retry attempt from finding any parts.
 
   return {
     ...addMessage(state, 'ai', negotiationScript),
@@ -330,7 +380,11 @@ export function confirmationNode(state: CallState): CallState {
       const substituteNote = q.isSubstitute && q.originalPartNumber
         ? ` (replacing ${formatPartNumberForSpeech(q.originalPartNumber)})`
         : '';
-      return `${partNum}${substituteNote} at $${q.price?.toFixed(2)}, ${q.availability === 'in_stock' ? 'in stock' : q.availability}`;
+      const availText = q.availability === 'in_stock' ? 'in stock'
+        : q.availability === 'backorder' ? 'on back order'
+        : q.availability === 'unavailable' ? 'unavailable'
+        : q.availability;
+      return `${partNum}${substituteNote} at $${q.price?.toFixed(2)}, ${availText}`;
     })
     .join(', and ');
 
@@ -371,12 +425,21 @@ export function transferNode(state: CallState): CallState {
 
 /**
  * Hold Acknowledgment Node - Supplier is transferring us or putting us on hold.
- * Only sets waitingForTransfer when coming from greeting/transfer (actual transfer).
- * When coming from quote_request (supplier looking something up), just acknowledge.
+ * Only sets waitingForTransfer when the hold is actually a transfer (detected from
+ * the last AI message being a greeting or transfer request).
+ * When the supplier is just looking something up, acknowledge without the flag.
  */
 export function holdAcknowledgmentNode(state: CallState): CallState {
-  // If we came from greeting or transfer, supplier is transferring us — set flag
-  const isTransfer = state.currentNode === 'greeting' || state.currentNode === 'transfer';
+  // Detect if this hold is actually a transfer by checking the last AI message.
+  // Note: we can't use state.currentNode — by the time this node runs, currentNode
+  // is already 'hold_acknowledgment' (set by the previous turn's routing).
+  const lastAiMsg = (state.conversationHistory
+    .filter(m => m.speaker === 'ai')
+    .pop()?.text || '').toLowerCase();
+  const isTransfer = lastAiMsg.includes('parts department') ||
+    lastAiMsg.includes('transfer me') ||
+    lastAiMsg.includes('direct number') ||
+    state.needsTransfer;
 
   return {
     ...addMessage(state, 'ai', `Sure, no problem! Take your time.`),
@@ -557,9 +620,28 @@ function shouldAskMiscCosts(state: CallState): boolean {
 }
 
 /**
- * Determine next node when pricing is complete
+ * Determine next node when pricing is complete (or we think it is).
+ * Checks for uncovered parts before allowing confirmation.
  */
 function nextNodeAfterPricing(state: CallState): string {
+  // Check for parts that have NO quotes at all (not even unavailable/substitute).
+  // Exclude MISC-COSTS as that's a virtual part for shipping fees.
+  const uncoveredParts = state.parts.filter(part =>
+    part.partNumber !== 'MISC-COSTS' &&
+    !state.quotes.some(q =>
+      q.partNumber === part.partNumber || q.originalPartNumber === part.partNumber
+    )
+  );
+  const alreadyAskedAboutUncovered = state.conversationHistory.some(
+    msg => msg.speaker === 'ai' && msg.text.toLowerCase().includes('before we wrap up')
+  );
+  if (uncoveredParts.length > 0 && !alreadyAskedAboutUncovered) {
+    // Route to conversational_response — the LLM will ask about the uncovered parts
+    // (their context is injected via the prompt). Don't use confirmationNode because
+    // routeFromConfirmation can't handle pricing/hold responses from the supplier.
+    return 'conversational_response';
+  }
+
   if (shouldAskMiscCosts(state)) return 'misc_costs_inquiry';
   return 'confirmation';
 }
@@ -598,14 +680,33 @@ export async function conversationalResponseNode(
       '\nDo NOT ask about the original part numbers listed above — they have been superseded. Ask for pricing on the substitute if not yet quoted.\n';
   }
 
+  // Build uncovered parts context — parts with no quotes at all
+  const uncoveredParts = state.parts.filter(part =>
+    part.partNumber !== 'MISC-COSTS' &&
+    !state.quotes.some(q =>
+      q.partNumber === part.partNumber || q.originalPartNumber === part.partNumber
+    )
+  );
+  let uncoveredContext = '';
+  if (uncoveredParts.length > 0) {
+    uncoveredContext = '\n\nPARTS STILL NEEDING QUOTES:\n' +
+      uncoveredParts.map(p => `- ${p.partNumber}: ${p.description}`).join('\n') +
+      '\nYou MUST ask the supplier about these parts if they haven\'t been discussed yet. Say something like "Could you also check on [part number]?"\n';
+  }
+
   // Build custom context if available
   const additionalContext = state.customContext || '';
+
+  // Build follow-up context if applicable
+  const followUpContext = state.isFollowUp && state.customInstructions
+    ? `\nFOLLOW-UP CALL PURPOSE: ${state.customInstructions}\nThis is a follow-up call. Reference the previous quote when relevant. Focus on the follow-up objectives.\n`
+    : '';
 
   const prompt = `You are on a phone call getting quotes for parts. Answer the supplier's question naturally.
 
 Context: ${additionalContext}
-
-Parts you need quotes for: ${partsContext}${substituteContext}
+${followUpContext}
+Parts you need quotes for: ${partsContext}${substituteContext}${uncoveredContext}
 
 Recent conversation:
 ${conversationContext}
@@ -618,10 +719,17 @@ IMPORTANT RULES:
 - If the supplier is looking something up or asks you to wait, acknowledge patiently ("Sure, take your time").
 - If the supplier is giving you pricing or part information, acknowledge it and confirm.
 - If you already know about a substitute (listed above), use the SUBSTITUTE part number, not the original.
-- Be specific about part numbers if they ask.
 - NEVER ask the supplier to "write down" or "email" a part number — you are on a phone call, just ask them to repeat it slowly if needed.
 - NEVER commit to purchasing or ordering. You are ONLY collecting price quotes. Do NOT say "I'll take it", "I'll order that", "put me down for one", "let's go ahead with that", etc. Instead say "Got it, thanks" or "That's helpful, thank you."
 - If the supplier asks about an account, say you're not sure and the team will follow up via email.
+- If the supplier asks for your name or phone number, provide the company name (from context) and say they can reach you at the number you're calling from.
+- If the supplier asks for a shipping address or destination, say you'll confirm the exact address via email but ask if they can give a ballpark shipping estimate.
+
+PART NUMBER FORMATTING — CRITICAL:
+- When referencing part numbers, write them in their EXACT alphanumeric format (e.g., AT495366, AT514800).
+- NEVER attempt to spell out part numbers using words — the system will format them for speech automatically.
+- NEVER read digit sequences as whole numbers (e.g., do NOT say "five hundred fourteen thousand eight hundred" for 514800).
+- Keep part number references short and exact. Example: "AT495366" not "alpha tango four nine five three six six".
 
 Respond in 1-2 sentences. Don't add meta-commentary — just give the direct response.`;
 
@@ -752,6 +860,18 @@ export async function routeFromQuoteRequest(
     return 'callback';
   }
 
+  // Contact info request — supplier asks for name, phone, account, email, etc.
+  // Must be checked EARLY so the agent doesn't ignore it and blurt out a part number.
+  const contactInfoPatterns = [
+    'your name', 'your phone', 'your number', 'phone number',
+    'who am i speaking', 'who is this', 'who\'s calling',
+    'account number', 'your account', 'your email', 'email address',
+    'company name', 'calling from',
+  ];
+  if (contactInfoPatterns.some(p => lower.includes(p))) {
+    return 'conversational_response';
+  }
+
   // Hold/wait patterns — supplier is looking something up or asks us to wait.
   // Must be checked EARLY to avoid re-requesting parts while they're working.
   const holdPatterns = [
@@ -797,16 +917,11 @@ export async function routeFromQuoteRequest(
   const looksLikePricing = /\$|\d+\.\d{2}|\b(each|per unit|per piece|apiece|a piece|price is|cost is|that'?s? going to be|that'?ll be|runs? about|looking at|dollars|cents|bucks)\b/i.test(lastResponse);
 
   if (looksLikePricing) {
-    // Response likely has pricing — route to price_extract to persist quotes.
-    // Previously we extracted here but discarded the results; price_extract
-    // will re-extract AND save to state.
-    const recentHistory = state.conversationHistory.slice(-6);
-    const extractedQuotes = await extractPricing(llmClient, lastResponse, state.parts, recentHistory);
-
-    if (extractedQuotes.length > 0 && extractedQuotes.some(q => q.price)) {
-      // Got pricing — always route through price_extract so quotes are persisted
-      return 'price_extract';
-    }
+    // Heuristic strongly suggests pricing — route directly to price_extract
+    // which will call extractPricing() and persist quotes to state.
+    // Previously this also called extractPricing() here to confirm, but that
+    // was wasteful: the results were discarded and price_extract re-extracted.
+    return 'price_extract';
   }
 
   // Check for questions (when no pricing was found or response doesn't look like pricing)
@@ -819,13 +934,16 @@ export async function routeFromQuoteRequest(
   }
 
   // No question and no pricing hint — try extractPricing as fallback
-  // (supplier may describe availability or pricing without obvious markers)
-  if (!looksLikePricing) {
+  // (supplier may describe availability or pricing without obvious markers).
+  // This is the only extractPricing call in the router; it's needed here because
+  // the regex heuristic didn't match, so we use the LLM to check for subtle pricing.
+  // If pricing IS found, price_extract will re-extract — acceptable tradeoff for
+  // this rare edge case vs. adding state complexity to cache the result.
+  {
     const recentHistory = state.conversationHistory.slice(-6);
     const extractedQuotes = await extractPricing(llmClient, lastResponse, state.parts, recentHistory);
 
     if (extractedQuotes.length > 0 && extractedQuotes.some(q => q.price)) {
-      // Route through price_extract so quotes are persisted to state
       return 'price_extract';
     }
   }
@@ -873,7 +991,8 @@ export async function routeFromQuoteRequest(
 }
 
 /**
- * Route from negotiation
+ * Route from negotiation.
+ * Checks for firm-price signals first (accept immediately), then refusal, then new price.
  */
 export async function routeFromNegotiation(
   llmClient: OpenRouterClient,
@@ -884,16 +1003,33 @@ export async function routeFromNegotiation(
   }
 
   const lastResponse = getLastSupplierResponse(state);
+  const lower = lastResponse.toLowerCase();
+
+  // Firm-price signals — supplier says price is non-negotiable. Accept immediately.
+  // Patterns must be specific enough to avoid false matches (e.g., "firm" alone
+  // could match "our firm" or "law firm").
+  const firmPricePatterns = [
+    'best price', 'best i can do', 'price is firm', 'prices are firm',
+    'can\'t go lower', 'cannot go lower', 'can\'t go any lower', 'cannot go any lower',
+    'that\'s the price', 'that is the price', 'lowest i can go', 'lowest we can go',
+    'already discounted', 'already giving you', 'best we can do', 'non-negotiable',
+    'set price', 'can\'t budge', 'cannot budge', 'final price',
+    'not negotiable', 'price is what it is', 'as low as i can go',
+    'as low as we can go', 'no wiggle room', 'no room to move',
+  ];
+  if (firmPricePatterns.some(p => lower.includes(p))) {
+    return 'confirmation';
+  }
 
   if (containsRefusal(lastResponse)) {
     return 'confirmation';
   }
 
-  // Check if they came down in price
+  // Check if they came down in price — route to price_extract so the new price is persisted
   const extractedQuotes = await extractPricing(llmClient, lastResponse, state.parts,
     state.conversationHistory.slice(-6));
   if (extractedQuotes.length > 0 && extractedQuotes.some(q => q.price)) {
-    return 'confirmation';
+    return 'price_extract';
   }
 
   return 'negotiate'; // Try again
@@ -910,31 +1046,35 @@ export async function routeFromConfirmation(
   const lastResponse = getLastSupplierResponse(state);
   const lower = lastResponse.toLowerCase();
 
-  // Correction patterns — supplier disagrees or corrects
-  const correctionPatterns = [
-    'that\'s wrong', 'that\'s not right', 'incorrect', 'actually',
-    'i said', 'they are available', 'it is available', 'in stock',
-    'not unavailable', 'we have them', 'i have them', 'they\'re available',
-    'let me correct', 'that\'s not correct',
-  ];
-
-  if (correctionPatterns.some(p => lower.includes(p))) {
-    // Clear stale quotes so we can re-extract with full context
-    return 'price_extract';
-  }
-
   // "No" at the start likely means disagreement with the confirmation
   if (/^no[\s,.]/.test(lower) || lower === 'no') {
     return 'price_extract';
   }
 
-  // Agreement patterns
+  // Agreement patterns — check BEFORE correction patterns because words like
+  // "actually" and "i said" appear in both contexts:
+  //   "That's actually correct" → agreement, not correction
+  //   "Like I said, sounds good" → agreement, not correction
   const agreePatterns = [
     'yes', 'yeah', 'yep', 'correct', 'that\'s right', 'sounds good',
     'that\'s it', 'perfect', 'mhm', 'uh-huh', 'you got it',
   ];
 
   const hasAgreement = agreePatterns.some(p => lower.includes(p));
+
+  // Correction patterns — only check when there's NO agreement signal
+  if (!hasAgreement) {
+    const correctionPatterns = [
+      'that\'s wrong', 'that\'s not right', 'incorrect', 'actually',
+      'i said', 'they are available', 'it is available', 'in stock',
+      'not unavailable', 'we have them', 'i have them', 'they\'re available',
+      'let me correct', 'that\'s not correct',
+    ];
+
+    if (correctionPatterns.some(p => lower.includes(p))) {
+      return 'price_extract';
+    }
+  }
 
   if (hasAgreement) {
     // Check if the SAME message also contains a hold/wait signal — supplier
@@ -996,6 +1136,12 @@ export async function processCallTurn(
       break;
     case 'negotiate':
       newState = negotiateNode(state);
+      // If negotiateNode found nothing to negotiate (all within threshold),
+      // it returns state unchanged with no AI message. Fall through to
+      // conversational response to avoid a silent turn.
+      if (newState.conversationHistory.length === state.conversationHistory.length) {
+        newState = await conversationalResponseNode(llmClient, state);
+      }
       break;
     case 'confirmation':
       newState = confirmationNode(state);
@@ -1052,10 +1198,17 @@ export async function processCallTurn(
       nextNode = await routeFromQuoteRequest(llmClient, newState);
       break;
     case 'price_extract': {
-      // After extracting pricing, check if negotiation is needed
-      const needsNegotiation = newState.quotes.some(
-        (q, idx) => q.price && newState.parts[idx]?.budgetMax && q.price > newState.parts[idx].budgetMax!
-      );
+      // After extracting pricing, check if negotiation is needed (>20% over reference)
+      const NEGOTIATION_THRESHOLD = 0.20;
+      const needsNegotiation = newState.quotes.some(q => {
+        if (!q.price) return false;
+        if (newState.negotiatedParts.includes(q.partNumber)) return false;
+        const matchingPart = newState.parts.find(p =>
+          p.partNumber === q.partNumber || p.partNumber === q.originalPartNumber
+        );
+        if (!matchingPart?.budgetMax) return false;
+        return q.price > matchingPart.budgetMax * (1 + NEGOTIATION_THRESHOLD);
+      });
       if (needsNegotiation && newState.negotiationAttempts < newState.maxNegotiationAttempts) {
         nextNode = 'negotiate';
       } else if (hasPricingForAllParts(newState)) {
@@ -1079,9 +1232,29 @@ export async function processCallTurn(
       }
       break;
     }
-    case 'negotiate':
+    case 'negotiate': {
       nextNode = await routeFromNegotiation(llmClient, newState);
+      // When negotiation concludes (anything other than retry), mark the
+      // over-budget parts as negotiated so they don't trigger negotiation
+      // again if we re-enter price_extract later (e.g., supplier corrects).
+      if (nextNode !== 'negotiate') {
+        const NEGOTIATION_THRESHOLD = 0.20;
+        const negotiatedNow = newState.quotes
+          .filter(q => {
+            if (!q.price) return false;
+            const mp = newState.parts.find(p =>
+              p.partNumber === q.partNumber || p.partNumber === q.originalPartNumber
+            );
+            return mp?.budgetMax ? q.price > mp.budgetMax * (1 + NEGOTIATION_THRESHOLD) : false;
+          })
+          .map(q => q.partNumber);
+        newState = {
+          ...newState,
+          negotiatedParts: [...new Set([...newState.negotiatedParts, ...negotiatedNow])],
+        };
+      }
       break;
+    }
     case 'clarification':
       // After clarification, route to conversational_response instead of repeating full quote
       nextNode = 'conversational_response';
@@ -1142,9 +1315,14 @@ export async function processCallTurn(
         break;
       }
 
-      // If we already have pricing for all parts, move forward — don't loop
+      // If we already have pricing for all parts, move forward — but check if
+      // the supplier just asked a question first (shipping address, account, etc.)
       if (hasPricingForAllParts(newState)) {
-        nextNode = nextNodeAfterPricing(newState);
+        if (await detectQuestion(lastSupplierMsg)) {
+          nextNode = 'conversational_response';
+        } else {
+          nextNode = nextNodeAfterPricing(newState);
+        }
         break;
       }
 
@@ -1297,6 +1475,12 @@ export function initializeCallState(params: {
 }): CallState {
   const { organizationName, quoteReference } = parseContextValues(params.customContext);
 
+  // Detect follow-up calls from customInstructions
+  const instructions = (params.customInstructions || '').toLowerCase();
+  const isFollowUp = instructions.includes('follow up') || instructions.includes('follow-up') ||
+    instructions.includes('previous quote') || instructions.includes('previous call') ||
+    instructions.includes('previous attempt');
+
   return {
     ...params,
     organizationName,
@@ -1308,6 +1492,7 @@ export function initializeCallState(params: {
     needsHumanEscalation: false,
     negotiationAttempts: 0,
     maxNegotiationAttempts: 2,
+    negotiatedParts: [],
     clarificationAttempts: 0,
     botScreeningDetected: false,
     botScreeningAttempts: 0,
@@ -1316,6 +1501,7 @@ export function initializeCallState(params: {
     hasMiscCosts: params.hasMiscCosts ?? false,
     miscCostsAsked: false,
     waitingForTransfer: false,
+    isFollowUp,
     status: 'in_progress',
   };
 }

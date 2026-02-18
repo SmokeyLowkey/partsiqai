@@ -38,6 +38,7 @@ function makeState(overrides: Partial<CallState> = {}): CallState {
     needsHumanEscalation: false,
     negotiationAttempts: 0,
     maxNegotiationAttempts: 2,
+    negotiatedParts: [],
     clarificationAttempts: 0,
     botScreeningDetected: false,
     botScreeningAttempts: 0,

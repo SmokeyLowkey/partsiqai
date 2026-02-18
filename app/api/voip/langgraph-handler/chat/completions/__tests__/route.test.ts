@@ -75,6 +75,7 @@ describe('LangGraph Handler API', () => {
         needsHumanEscalation: false,
         negotiationAttempts: 0,
         maxNegotiationAttempts: 2,
+        negotiatedParts: [],
         clarificationAttempts: 0,
         status: 'in_progress' as const,
       };
@@ -159,6 +160,7 @@ describe('LangGraph Handler API', () => {
         needsHumanEscalation: false,
         negotiationAttempts: 1,
         maxNegotiationAttempts: 2,
+        negotiatedParts: [],
         clarificationAttempts: 0,
         status: 'completed' as const,
       };

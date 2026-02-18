@@ -430,15 +430,23 @@ IMPORTANT: Numbers should be numbers, not strings.`;
     }
 
     // Update quote request status if we extracted any prices
+    // Only advance status forward — never regress from later workflow stages
     const totalItemsExtracted = results.reduce((sum, r) => sum + r.itemsExtracted, 0);
     if (totalItemsExtracted > 0) {
-      await prisma.quoteRequest.update({
+      const currentQuote = await prisma.quoteRequest.findUnique({
         where: { id },
-        data: {
-          status: 'RECEIVED',
-          responseDate: new Date(),
-        },
+        select: { status: true },
       });
+      const noRegressStatuses = ['UNDER_REVIEW', 'APPROVED', 'REJECTED', 'CONVERTED_TO_ORDER'];
+      if (currentQuote && !noRegressStatuses.includes(currentQuote.status)) {
+        await prisma.quoteRequest.update({
+          where: { id },
+          data: {
+            status: 'RECEIVED',
+            responseDate: new Date(),
+          },
+        });
+      }
     }
 
     return NextResponse.json({
