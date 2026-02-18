@@ -263,6 +263,7 @@ async function handleCallEnded(callId: string, vapiCallId: string | undefined, e
     conversationLog: {
       ...existingLog,
       conversationHistory,
+      quotes: state?.quotes || [],
       currentNode: state?.currentNode,
       status: state?.status,
       outcome: outcome,

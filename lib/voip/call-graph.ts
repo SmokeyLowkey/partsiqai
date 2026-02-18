@@ -41,6 +41,9 @@ import {
  * If we're waiting for a transfer and hear hold audio, stay silent.
  */
 export function greetingNode(state: CallState): CallState {
+  const orgName = state.organizationName || '';
+  const orgIntro = orgName ? ` I'm calling from ${orgName}.` : '';
+
   // If waiting for transfer, check if we're hearing hold music/ads
   if (state.waitingForTransfer) {
     const lastResponse = getLastSupplierResponse(state);
@@ -51,7 +54,7 @@ export function greetingNode(state: CallState): CallState {
     // Real person picked up — clear the flag and re-introduce
     return {
       ...addMessage({ ...state, waitingForTransfer: false }, 'ai',
-        `Hi there! Thanks for taking my call. I'm looking to get pricing on some parts.`
+        `Hi there! Thanks for taking my call.${orgIntro} I'm looking to get pricing on some parts.`
       ),
     };
   }
@@ -70,7 +73,7 @@ export function greetingNode(state: CallState): CallState {
 
   if (alreadyInQuoteFlow) {
     return addMessage(state, 'ai',
-      `Hi there! Thanks for taking my call. I'm looking to get pricing on some parts.`
+      `Hi there! Thanks for taking my call.${orgIntro} I'm looking to get pricing on some parts.`
     );
   }
 
@@ -80,13 +83,13 @@ export function greetingNode(state: CallState): CallState {
 
   if (!alreadyGreeted) {
     return addMessage(state, 'ai',
-      `Hi, good morning! Could I speak to someone in your parts department?`
+      `Hi, good morning!${orgIntro} Could I speak to someone in your parts department?`
     );
   }
 
   // After transfer — re-introduce, don't repeat the same greeting
   return addMessage(state, 'ai',
-    `Hi there! Thanks for taking my call. I'm looking to get pricing on some parts.`
+    `Hi there! Thanks for taking my call.${orgIntro} I'm looking to get pricing on some parts.`
   );
 }
 
@@ -139,9 +142,14 @@ export function quoteRequestNode(state: CallState): CallState {
 
     const hasUnverifiedParts = state.parts.some(p => p.source === 'WEB_SEARCH');
 
-    let request = `Great, thanks! I'm looking for ${descriptions}. Whenever you're ready, I have the part numbers.`;
+    const isSinglePart = state.parts.length === 1;
+    let request = `Great, thanks! I'm looking for ${descriptions}. Whenever you're ready, I have the part ${isSinglePart ? 'number' : 'numbers'}.`;
     if (hasUnverifiedParts) {
-      request += ` I should mention, I found some of these part numbers online so I'll need to verify they're correct for my machine.`;
+      if (isSinglePart) {
+        request += ` I should mention, I found this part number online so I'll need to verify it's correct for my machine.`;
+      } else {
+        request += ` I should mention, I found some of these part numbers online so I'll need to verify they're correct for my machine.`;
+      }
     }
     return addMessage(state, 'ai', request);
   }
@@ -163,7 +171,10 @@ export function quoteRequestNode(state: CallState): CallState {
 
     let request: string;
     if (isFirst) {
-      request = `Sure! The first part number is... ${partNum}. That's the ${nextPart.description}.`;
+      const isSinglePart = state.parts.length === 1;
+      request = isSinglePart
+        ? `Sure! The part number is... ${partNum}. That's the ${nextPart.description}.`
+        : `Sure! The first part number is... ${partNum}. That's the ${nextPart.description}.`;
       if (isUnverified) {
         request += ` Now, I found this one online so could you verify it's the right fit for my machine?`;
       }
@@ -609,6 +620,8 @@ IMPORTANT RULES:
 - If you already know about a substitute (listed above), use the SUBSTITUTE part number, not the original.
 - Be specific about part numbers if they ask.
 - NEVER ask the supplier to "write down" or "email" a part number — you are on a phone call, just ask them to repeat it slowly if needed.
+- NEVER commit to purchasing or ordering. You are ONLY collecting price quotes. Do NOT say "I'll take it", "I'll order that", "put me down for one", "let's go ahead with that", etc. Instead say "Got it, thanks" or "That's helpful, thank you."
+- If the supplier asks about an account, say you're not sure and the team will follow up via email.
 
 Respond in 1-2 sentences. Don't add meta-commentary — just give the direct response.`;
 
@@ -781,7 +794,7 @@ export async function routeFromQuoteRequest(
   // the price even when a question is present. But if there's no pricing
   // hint, check questions first — "Do you have an account?" is a normal
   // pre-pricing question the agent needs to answer.
-  const looksLikePricing = /\$|\d+\.\d{2}|\b(each|per unit|per piece|apiece|a piece|price is|cost is|that'?s? going to be|that'?ll be|runs? about|looking at)\b/i.test(lastResponse);
+  const looksLikePricing = /\$|\d+\.\d{2}|\b(each|per unit|per piece|apiece|a piece|price is|cost is|that'?s? going to be|that'?ll be|runs? about|looking at|dollars|cents|bucks)\b/i.test(lastResponse);
 
   if (looksLikePricing) {
     // Response likely has pricing — route to price_extract to persist quotes.
@@ -921,7 +934,22 @@ export async function routeFromConfirmation(
     'that\'s it', 'perfect', 'mhm', 'uh-huh', 'you got it',
   ];
 
-  if (agreePatterns.some(p => lower.includes(p))) {
+  const hasAgreement = agreePatterns.some(p => lower.includes(p));
+
+  if (hasAgreement) {
+    // Check if the SAME message also contains a hold/wait signal — supplier
+    // confirmed but is still working (e.g., "That sounds correct. Let me get you an ETA. One moment.")
+    const holdPatterns = ['one moment', 'hold on', 'let me', 'just a moment', 'one sec', 'give me a', 'bear with'];
+    if (holdPatterns.some(p => lower.includes(p))) {
+      return 'hold_acknowledgment';
+    }
+
+    // Check if the same message ALSO contains a question — supplier confirmed
+    // but is asking something (e.g., "Yeah. Do you have an account with us?")
+    if (await detectQuestion(lastResponse)) {
+      return 'conversational_response';
+    }
+
     return 'polite_end';
   }
 
@@ -1031,7 +1059,14 @@ export async function processCallTurn(
       if (needsNegotiation && newState.negotiationAttempts < newState.maxNegotiationAttempts) {
         nextNode = 'negotiate';
       } else if (hasPricingForAllParts(newState)) {
-        nextNode = nextNodeAfterPricing(newState);
+        // Before jumping to confirmation, check if the supplier just asked a question
+        // (e.g., "Do you have an account?"). Answer it first, then confirm next turn.
+        const lastSupplierMsgForQ = getLastSupplierResponse(newState);
+        if (lastSupplierMsgForQ && await detectQuestion(lastSupplierMsgForQ)) {
+          nextNode = 'conversational_response';
+        } else {
+          nextNode = nextNodeAfterPricing(newState);
+        }
       } else {
         // If a substitute was just recorded without pricing, stay conversational
         // so the agent asks for pricing on the substitute — NOT re-state it via quote_request
@@ -1076,7 +1111,7 @@ export async function processCallTurn(
       const holdSupplierMsg = getLastSupplierResponse(newState);
       if (detectSubstitute(holdSupplierMsg) || detectFitmentRejection(holdSupplierMsg)) {
         nextNode = 'price_extract'; // Will try extractPricing, then extractSubstituteInfo
-      } else if (/\$|\d+\.\d{2}|\b(price is|cost is|that'?ll be|runs? about)\b/i.test(holdSupplierMsg)) {
+      } else if (/\$|\d+\.\d{2}|\b(price is|cost is|that'?ll be|runs? about|dollars|cents|bucks)\b/i.test(holdSupplierMsg)) {
         nextNode = 'price_extract'; // Pricing detected
       } else {
         nextNode = 'conversational_response';

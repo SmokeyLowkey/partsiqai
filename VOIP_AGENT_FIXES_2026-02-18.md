@@ -290,3 +290,69 @@ if (hasUnpricedSubstitute) {
   nextNode = newState.allPartsRequested ? 'conversational_response' : 'quote_request';
 }
 ```
+
+---
+
+## Third Round — Post-Deploy Call Analysis (3 calls, 2026-02-18 05:57-05:58 UTC)
+
+**Reference Call Logs**:
+- `json/call-logs-2026-02-18T05-57-40-056Z.json` — 2 parts (AT495366, AT514800), supplier gave pricing in spoken words
+- `json/call-logs-2026-02-18T05-57-52-092Z.json` — 1 part (T344818), supplier offered OEM vs aftermarket
+- `json/call-logs-2026-02-18T05-58-04-699Z.json` — 1 part (101-24109), substitute D27-1016-0160P offered
+
+### Fix #16: `routeFromConfirmation()` — Agreement + Question/Hold Detection
+
+**File**: `lib/voip/call-graph.ts` — `routeFromConfirmation()`
+
+**Problem**: All 3 calls had the agent end the call while the supplier was still talking. The supplier would say "Correct. Let me get you an ETA. One moment." or "Yeah. Do you have an account with us?" — the word "correct"/"yeah" matched `agreePatterns` at line 924 and immediately returned `polite_end`, ignoring the rest of the message.
+
+**Fix**: Before routing to `polite_end` on agreement, check if the same message also contains:
+1. Hold/wait signals ("one moment", "let me", "bear with") → route to `hold_acknowledgment`
+2. A question (detected by `detectQuestion()`) → route to `conversational_response`
+
+### Fix #17: `looksLikePricing` Regex — Spoken-Word Currency
+
+**File**: `lib/voip/call-graph.ts` — `routeFromQuoteRequest()` line 784, `hold_acknowledgment` routing
+
+**Problem**: Call 1 — supplier said "one thousand one hundred seventeen **dollars** ninety seven **cents**" but the regex only matched `$` symbols, `\d+\.\d{2}` numeric format, and phrases like "price is". Deepgram transcribes spoken amounts as English words, not symbols.
+
+**Fix**: Added `dollars|cents|bucks` to both `looksLikePricing` regex instances.
+
+### Fix #18: `greetingNode()` — Organization Name in Templates
+
+**File**: `lib/voip/call-graph.ts` — `greetingNode()`
+
+**Problem**: All 3 calls — agent never identified itself. Hardcoded greetings like "Hi, good morning! Could I speak to someone in your parts department?" don't include `state.organizationName`. Suppliers had no idea who was calling.
+
+**Fix**: All greeting templates now interpolate `state.organizationName`:
+- `"Hi, good morning! I'm calling from ACME Construction. Could I speak to someone in your parts department?"`
+- `"Hi there! Thanks for taking my call. I'm calling from ACME Construction. I'm looking to get pricing on some parts."`
+
+### Fix #19: `conversationalResponseNode` — No Purchase Commitment
+
+**File**: `lib/voip/call-graph.ts` — `conversationalResponseNode()` prompt
+
+**Problem**: Calls 2 & 3 — agent said "I'll take one of those, please" which is a verbal purchase commitment. The system prompt prohibits this but the `conversationalResponseNode` LLM prompt didn't include the guardrail.
+
+**Fix**: Added rules to the LLM prompt:
+- "NEVER commit to purchasing or ordering. You are ONLY collecting price quotes."
+- "If the supplier asks about an account, say you're not sure and the team will follow up via email."
+
+### Fix #20: `price_extract` Routing — Check for Supplier Question Before Confirmation
+
+**File**: `lib/voip/call-graph.ts` — `price_extract` routing (line ~1053)
+
+**Problem**: Calls 2 & 3 — after pricing was extracted, the supplier asked "Do you have an account with us?" but the router jumped straight to `confirmationNode` which outputs a hardcoded template that ignores the supplier's message.
+
+**Fix**: Before routing to `confirmation` when `hasPricingForAllParts()` is true, check if the supplier's last message contains a question. If so, route to `conversational_response` first to answer it. Confirmation happens on the next turn.
+
+### Fix #21: `quoteRequestNode` — Single/Plural Grammar
+
+**File**: `lib/voip/call-graph.ts` — `quoteRequestNode()`
+
+**Problem**: Calls 2 & 3 (single-part requests) — agent said "I have the part **numbers**", "The **first** part number is...", "I found **some of these** part numbers online".
+
+**Fix**: Added `isSinglePart` checks:
+- "I have the part number" (singular) vs "I have the part numbers" (plural)
+- "The part number is..." (singular) vs "The first part number is..." (plural)
+- "I found this part number online" (singular) vs "I found some of these part numbers online" (plural)
