@@ -393,16 +393,95 @@ export function hasPricingForAllParts(state: CallState): boolean {
 }
 
 /**
- * Detect if a supplier response mentions a substitute or superseded part
+ * Detect if a supplier response mentions a substitute or superseded part.
+ * Includes patterns for common Deepgram transcription errors
+ * (e.g., "park number" for "part number").
  */
 export function detectSubstitute(response: string): boolean {
   const patterns = [
     'substitute', 'supersed', 'replaced by', 'replacement',
     'alternate', 'alternative', 'equivalent', 'updated part',
-    'new number', 'new part number', 'changed to',
+    'new number', 'new part number', 'new park number', 'changed to',
+    "doesn't match", 'does not match', "doesn't coincide",
+    'correct part', 'correct number', 'right part number',
+    'updated number', 'current number', 'current part',
   ];
   const lower = response.toLowerCase();
   return patterns.some(p => lower.includes(p));
+}
+
+/**
+ * Extract a substitute part number from the supplier's response using LLM.
+ * Used when a supplier offers a replacement/substitute but hasn't given pricing yet.
+ * Unlike extractPricing(), this function captures part number changes even without prices.
+ */
+export async function extractSubstituteInfo(
+  llmClient: OpenRouterClient,
+  supplierResponse: string,
+  originalParts: CallState['parts'],
+  recentHistory?: Array<{ speaker: string; text: string }>
+): Promise<{
+  substitutePartNumber: string;
+  originalPartNumber: string;
+  notes?: string;
+} | null> {
+  const partsDescription = originalParts
+    .map(p => `- ${p.partNumber}: ${p.description}`)
+    .join('\n');
+
+  let conversationContext = '';
+  if (recentHistory && recentHistory.length > 0) {
+    conversationContext = '\nRecent conversation:\n' +
+      recentHistory
+        .slice(-8)
+        .map(m => `${m.speaker === 'ai' ? 'You' : 'Supplier'}: ${m.text}`)
+        .join('\n') +
+      '\n';
+  }
+
+  const prompt = `The supplier is offering a substitute/replacement/updated part number. Extract the NEW part number they're giving.
+${conversationContext}
+Supplier's latest response: "${supplierResponse}"
+
+Original parts requested:
+${partsDescription}
+
+IMPORTANT: The supplier may use NATO phonetic alphabet (Alpha, Bravo, Charlie, Delta, Echo, Foxtrot, Golf, Hotel, India, Juliet, Kilo, Lima, Mike, November, Oscar, Papa, Quebec, Romeo, Sierra, Tango, Uniform, Victor, Whiskey, X-ray, Yankee, Zulu) to spell letters.
+Convert phonetic words back to letters: "Delta two seven" = "D27", "Papa" = "P", "Romeo Echo" = "RE".
+
+Return ONLY valid JSON, no markdown:
+{
+  "substitutePartNumber": "the new/substitute part number in standard format (e.g., D27-1016-0160P)",
+  "originalPartNumber": "which original part this replaces",
+  "notes": "any additional context"
+}
+
+If no substitute part number can be extracted, return null.`;
+
+  try {
+    const result = await llmClient.generateCompletion(prompt, {
+      temperature: 0,
+      model: 'anthropic/claude-3.5-sonnet',
+      maxTokens: 200,
+    });
+
+    let jsonStr = result.trim();
+    if (jsonStr === 'null' || jsonStr === '') return null;
+
+    // Extract JSON from potential markdown
+    const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlockMatch) jsonStr = codeBlockMatch[1].trim();
+    const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+    if (jsonMatch) jsonStr = jsonMatch[0];
+
+    const parsed = JSON.parse(jsonStr);
+    if (!parsed?.substitutePartNumber || !parsed?.originalPartNumber) return null;
+
+    return parsed;
+  } catch (error) {
+    console.error('Substitute extraction error:', error);
+    return null;
+  }
 }
 
 /**

@@ -12,6 +12,7 @@ import {
   addMessage,
   classifyIntent,
   extractPricing,
+  extractSubstituteInfo,
   detectQuestion,
   containsRefusal,
   generateClarification,
@@ -211,28 +212,47 @@ function describePartNaturally(description: string, quantity: number): string {
 }
 
 /**
- * Price Extract Node - Record prices from supplier
+ * Price Extract Node - Record prices from supplier.
+ * Also handles substitute part numbers without pricing by falling back
+ * to extractSubstituteInfo() when extractPricing() returns nothing.
  */
 export async function priceExtractNode(
   llmClient: OpenRouterClient,
   state: CallState
 ): Promise<CallState> {
   const lastResponse = getLastSupplierResponse(state);
-  const recentHistory = state.conversationHistory.slice(-6);
+  const recentHistory = state.conversationHistory.slice(-8);
   const extractedQuotes = await extractPricing(llmClient, lastResponse, state.parts, recentHistory);
 
-  if (extractedQuotes.length === 0) {
-    return state;
+  if (extractedQuotes.length > 0) {
+    // Use mergeExtractedQuotes to handle substitutes — adds new part numbers
+    // to state.parts and deduplicates quotes
+    const mergedState = mergeExtractedQuotes(state, extractedQuotes);
+    return {
+      ...mergedState,
+      status: extractedQuotes.some(q => q.price) ? 'in_progress' : mergedState.status,
+    };
   }
 
-  // Use mergeExtractedQuotes to handle substitutes — adds new part numbers
-  // to state.parts and deduplicates quotes
-  const mergedState = mergeExtractedQuotes(state, extractedQuotes);
+  // extractPricing returned nothing — but the supplier may have offered a substitute
+  // part number WITHOUT pricing (e.g., "the new part number is D27-1016-0160P").
+  // Try extractSubstituteInfo() to capture just the part number.
+  if (detectSubstitute(lastResponse) || detectFitmentRejection(lastResponse)) {
+    const subInfo = await extractSubstituteInfo(llmClient, lastResponse, state.parts, recentHistory);
+    if (subInfo) {
+      // Record the substitute as a quote entry (no price yet)
+      const substituteQuote = {
+        partNumber: subInfo.substitutePartNumber,
+        availability: 'in_stock' as const,
+        isSubstitute: true,
+        originalPartNumber: subInfo.originalPartNumber,
+        notes: subInfo.notes || 'Substitute offered by supplier — awaiting pricing',
+      };
+      return mergeExtractedQuotes(state, [substituteQuote]);
+    }
+  }
 
-  return {
-    ...mergedState,
-    status: extractedQuotes.some(q => q.price) ? 'in_progress' : mergedState.status,
-  };
+  return state;
 }
 
 /**
@@ -553,15 +573,28 @@ export async function conversationalResponseNode(
   const partsContext = state.parts
     .map(p => `${p.partNumber} (${p.description}) - Qty: ${p.quantity}`)
     .join(', ');
-  
+
+  // Build substitute context — tell the LLM about any substitutes already detected
+  // so it doesn't keep asking about original part numbers
+  const substituteQuotes = state.quotes.filter(q => q.isSubstitute && q.originalPartNumber);
+  let substituteContext = '';
+  if (substituteQuotes.length > 0) {
+    substituteContext = '\n\nSUBSTITUTE PARTS ALREADY IDENTIFIED:\n' +
+      substituteQuotes.map(q => {
+        const priceNote = q.price != null ? ` — quoted at $${q.price.toFixed(2)}` : ' — AWAITING PRICING';
+        return `- ${q.partNumber} replaces ${q.originalPartNumber}${priceNote}`;
+      }).join('\n') +
+      '\nDo NOT ask about the original part numbers listed above — they have been superseded. Ask for pricing on the substitute if not yet quoted.\n';
+  }
+
   // Build custom context if available
   const additionalContext = state.customContext || '';
-  
+
   const prompt = `You are on a phone call getting quotes for parts. Answer the supplier's question naturally.
 
 Context: ${additionalContext}
 
-Parts you need quotes for: ${partsContext}
+Parts you need quotes for: ${partsContext}${substituteContext}
 
 Recent conversation:
 ${conversationContext}
@@ -569,10 +602,13 @@ ${conversationContext}
 Supplier just said: "${lastResponse}"
 
 IMPORTANT RULES:
-- If the supplier says a part number is wrong, doesn't fit, or needs to be purchased separately — accept their correction gracefully ("Okay, no problem") and ask for the correct part numbers or individual parts instead. Do NOT re-request the original part number.
+- If the supplier says a part number is wrong, doesn't fit, or has been superseded — ACCEPT their correction immediately. Say something like "Got it, so the new part number is [what they said]. What's the price on that one?" Do NOT re-request or re-verify the original part number.
+- If the supplier is giving you a NEW/SUBSTITUTE part number, acknowledge it clearly and ask for pricing on it.
 - If the supplier is looking something up or asks you to wait, acknowledge patiently ("Sure, take your time").
-- If the supplier is giving you pricing or part information, acknowledge it and ask for the next item.
+- If the supplier is giving you pricing or part information, acknowledge it and confirm.
+- If you already know about a substitute (listed above), use the SUBSTITUTE part number, not the original.
 - Be specific about part numbers if they ask.
+- NEVER ask the supplier to "write down" or "email" a part number — you are on a phone call, just ask them to repeat it slowly if needed.
 
 Respond in 1-2 sentences. Don't add meta-commentary — just give the direct response.`;
 
@@ -730,14 +766,12 @@ export async function routeFromQuoteRequest(
     return 'quote_request'; // Will trigger phonetic spelling
   }
 
-  // Check if supplier says the part doesn't fit, is wrong, or must be purchased differently
-  if (detectFitmentRejection(lastResponse)) {
-    return 'conversational_response'; // LLM will ask for correct part/alternatives
-  }
-
-  // Check if supplier is providing a substitute/superseded part number.
-  // Route through price_extract to capture the substitute and any associated pricing.
-  if (detectSubstitute(lastResponse)) {
+  // Check if supplier says the part doesn't fit, is wrong, or must be purchased differently.
+  // Also check for substitutes — fitment rejection often comes WITH a substitute offer.
+  if (detectFitmentRejection(lastResponse) || detectSubstitute(lastResponse)) {
+    // Route to price_extract — it will try extractPricing() first, and if that
+    // returns nothing, fall back to extractSubstituteInfo() to capture the
+    // substitute part number even without pricing.
     return 'price_extract';
   }
 
@@ -999,9 +1033,14 @@ export async function processCallTurn(
       } else if (hasPricingForAllParts(newState)) {
         nextNode = nextNodeAfterPricing(newState);
       } else {
-        // Still missing pricing for some parts — go back to quote_request
-        // or stay conversational if all parts have been mentioned
-        nextNode = newState.allPartsRequested ? 'conversational_response' : 'quote_request';
+        // If a substitute was just recorded without pricing, stay conversational
+        // so the agent asks for pricing on the substitute — NOT re-state it via quote_request
+        const hasUnpricedSubstitute = newState.quotes.some(q => q.isSubstitute && q.price == null);
+        if (hasUnpricedSubstitute) {
+          nextNode = 'conversational_response';
+        } else {
+          nextNode = newState.allPartsRequested ? 'conversational_response' : 'quote_request';
+        }
       }
       break;
     }
@@ -1025,11 +1064,25 @@ export async function processCallTurn(
     case 'transfer':
       nextNode = 'greeting'; // Back to greeting after requesting transfer
       break;
-    case 'hold_acknowledgment':
+    case 'hold_acknowledgment': {
       // If we're waiting for a transfer, go to greeting for the new person.
-      // Otherwise, supplier was just looking something up — stay conversational.
-      nextNode = newState.waitingForTransfer ? 'greeting' : 'conversational_response';
+      if (newState.waitingForTransfer) {
+        nextNode = 'greeting';
+        break;
+      }
+      // Supplier came back from looking something up. Check what they said —
+      // they may have returned with a substitute part number, fitment info,
+      // or pricing, not just a generic "okay I'm back."
+      const holdSupplierMsg = getLastSupplierResponse(newState);
+      if (detectSubstitute(holdSupplierMsg) || detectFitmentRejection(holdSupplierMsg)) {
+        nextNode = 'price_extract'; // Will try extractPricing, then extractSubstituteInfo
+      } else if (/\$|\d+\.\d{2}|\b(price is|cost is|that'?ll be|runs? about)\b/i.test(holdSupplierMsg)) {
+        nextNode = 'price_extract'; // Pricing detected
+      } else {
+        nextNode = 'conversational_response';
+      }
       break;
+    }
     case 'conversational_response': {
       // After a conversational response, detect what to do next
       const lastSupplierMsg = getLastSupplierResponse(newState);
@@ -1073,13 +1126,27 @@ export async function processCallTurn(
         break;
       }
 
-      // If supplier mentioned a substitute part, try to capture the new part number
-      // and add it to state.parts so we can track pricing for it
-      if (detectSubstitute(lastSupplierMsg)) {
-        const subQuotes = await extractPricing(llmClient, lastSupplierMsg, newState.parts,
-          newState.conversationHistory.slice(-8));
+      // If supplier mentioned a substitute part or fitment rejection, capture it.
+      // Try extractPricing first (gets substitute + price), then fall back to
+      // extractSubstituteInfo (gets just the substitute part number without pricing).
+      if (detectSubstitute(lastSupplierMsg) || detectFitmentRejection(lastSupplierMsg)) {
+        const subHistory = newState.conversationHistory.slice(-8);
+        const subQuotes = await extractPricing(llmClient, lastSupplierMsg, newState.parts, subHistory);
         if (subQuotes.length > 0) {
           newState = mergeExtractedQuotes(newState, subQuotes);
+        } else {
+          // No pricing found — try to extract just the substitute part number
+          const subInfo = await extractSubstituteInfo(llmClient, lastSupplierMsg, newState.parts, subHistory);
+          if (subInfo) {
+            const substituteQuote = {
+              partNumber: subInfo.substitutePartNumber,
+              availability: 'in_stock' as const,
+              isSubstitute: true,
+              originalPartNumber: subInfo.originalPartNumber,
+              notes: subInfo.notes || 'Substitute offered by supplier — awaiting pricing',
+            };
+            newState = mergeExtractedQuotes(newState, [substituteQuote]);
+          }
         }
         nextNode = 'conversational_response';
         break;

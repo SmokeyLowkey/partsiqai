@@ -228,3 +228,65 @@ All 7 previous call logs were analyzed to verify the fixes address real failures
 2. **Post-extraction validation**: After LLM returns quotes, keyword-scans the supplier's text and recent history. If "in stock"/"on stock"/"have them"/etc. appear but LLM marked "unavailable", overrides to "in_stock". If a price exists but availability is "unavailable", overrides to "backorder."
 
 **Cross-call reference**: Call at 11:19:15 — supplier said "couple on stock" with $130.58 price, agent said "unavailable" in confirmation.
+
+---
+
+## Post-Deploy Fix: Substitute Part Numbers Without Pricing (2026-02-18 Call)
+
+**Reference Call**: `json/call-logs-2026-02-18T04-05-48-697Z.json`
+**Call ID**: `019c6ee7-5802-7556-8478-7a12b654b972`
+**Scenario**: Agent requested 101-24109 (alternator for 2022 Peterbilt 367). Supplier verified via serial number, determined part doesn't match, offered substitute D27-1016-0160P. Agent ignored it 4 times and re-asked about the original.
+
+### Root Cause: No Mechanism to Record Substitutes Without Pricing
+
+The only way to record a substitute was through `extractPricing()`, which returns `[]` when no price is mentioned. Suppliers typically give the part number first, THEN the price — so the substitute was never recorded, and the `conversationalResponseNode` LLM kept falling back to "verify 101-24109."
+
+### Fix #10: `extractSubstituteInfo()` — Capture Part Numbers Without Pricing
+
+**File**: `lib/voip/helpers.ts` — new `extractSubstituteInfo()`
+
+Added a lightweight LLM function that extracts substitute part numbers even when no pricing is given. It parses NATO phonetic alphabet from speech ("Delta two seven" → "D27", "Papa" → "P") and returns the substitute/original mapping.
+
+### Fix #11: `priceExtractNode` Fallback to Substitute Extraction
+
+**File**: `lib/voip/call-graph.ts` — `priceExtractNode()`
+
+When `extractPricing()` returns nothing and the supplier's response contains substitute/fitment signals, the node now falls back to `extractSubstituteInfo()`. The extracted substitute is recorded in `state.quotes[]` and `state.parts[]` via `mergeExtractedQuotes()`, even without a price.
+
+### Fix #12: Substitute-Aware `conversationalResponseNode`
+
+**File**: `lib/voip/call-graph.ts` — `conversationalResponseNode()`
+
+The LLM prompt now includes a "SUBSTITUTE PARTS ALREADY IDENTIFIED" section listing any substitutes from `state.quotes[]`. It explicitly tells the LLM: "Do NOT ask about the original part numbers — they have been superseded. Ask for pricing on the substitute." Also added rule: "NEVER ask the supplier to write down or email a part number."
+
+### Fix #13: Smarter `hold_acknowledgment` Routing
+
+**File**: `lib/voip/call-graph.ts` — `hold_acknowledgment` routing
+
+Previously routed blindly to `conversational_response` after hold. Now checks the supplier's return message for substitute/fitment/pricing signals and routes to `price_extract` when appropriate — ensuring substitutes and prices aren't missed when the supplier returns from looking something up.
+
+### Fix #14: Expanded `detectSubstitute()` Patterns
+
+**File**: `lib/voip/helpers.ts` — `detectSubstitute()`
+
+Added patterns for:
+- Deepgram transcription errors: "new park number" (→ "new part number")
+- Fitment-adjacent phrases: "doesn't match", "correct part", "current number"
+- Combined fitment rejection + substitute detection in routing (both trigger `price_extract`)
+
+### Fix #15: Unpriced Substitute Routing Edge Case
+
+**File**: `lib/voip/call-graph.ts` — `price_extract` routing (line ~1035)
+
+**Problem**: After recording a substitute without pricing, if `allPartsRequested` was false, the router would send the agent to `quote_request`. The `quote_request` node would then try to "give" the substitute part number back to the supplier — nonsensical since the supplier just provided it.
+
+**Fix**: Added an `hasUnpricedSubstitute` check before the `allPartsRequested` branch. When there's a substitute awaiting pricing, route to `conversational_response` instead of `quote_request`, so the agent naturally asks "And what's the pricing on that?" rather than re-stating the part number.
+
+```typescript
+const hasUnpricedSubstitute = newState.quotes.some(q => q.isSubstitute && q.price == null);
+if (hasUnpricedSubstitute) {
+  nextNode = 'conversational_response';
+} else {
+  nextNode = newState.allPartsRequested ? 'conversational_response' : 'quote_request';
+}
+```
