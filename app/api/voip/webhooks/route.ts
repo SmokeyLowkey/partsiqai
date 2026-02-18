@@ -408,6 +408,18 @@ async function handleStatusUpdate(callId: string, vapiCallId: string | undefined
 }
 
 /**
+ * Map free-text availability from AI extraction to valid ItemAvailability enum values.
+ */
+function normalizeAvailability(raw: string | undefined): 'IN_STOCK' | 'BACKORDERED' | 'SPECIAL_ORDER' | 'UNKNOWN' {
+  if (!raw) return 'UNKNOWN';
+  const normalized = raw.toUpperCase().replace(/[\s_-]+/g, '');
+  if (normalized.includes('INSTOCK') || normalized === 'AVAILABLE' || normalized === 'YES') return 'IN_STOCK';
+  if (normalized.includes('BACKORDER')) return 'BACKORDERED';
+  if (normalized.includes('SPECIALORDER')) return 'SPECIAL_ORDER';
+  return 'UNKNOWN';
+}
+
+/**
  * Create SupplierQuoteItems from extracted call data
  */
 async function createSupplierQuoteItems(
@@ -443,14 +455,14 @@ async function createSupplierQuoteItems(
         supplierId: supplierId,
         unitPrice: quote.price,
         totalPrice: quote.price * item.quantity,
-        availability: (quote.availability?.toUpperCase() || 'UNKNOWN') as any,
+        availability: normalizeAvailability(quote.availability),
         leadTimeDays: quote.leadTimeDays,
         notes: quote.notes || 'Received via phone call',
       },
       update: {
         unitPrice: quote.price,
         totalPrice: quote.price * item.quantity,
-        availability: (quote.availability?.toUpperCase() || 'UNKNOWN') as any,
+        availability: normalizeAvailability(quote.availability),
         leadTimeDays: quote.leadTimeDays,
         notes: quote.notes || 'Received via phone call',
       },
