@@ -1352,6 +1352,10 @@ enum UserRole {
 }
 
 enum VehicleType {
+  TRACTOR
+  COMBINE
+  SPRAYER
+  HARVESTER
   EXCAVATOR
   DOZER
   DUMP_TRUCK
@@ -1379,7 +1383,10 @@ enum VehicleSearchConfigStatus {
 enum IndustryCategory {
   CONSTRUCTION
   AGRICULTURE
+  MINING
   FORESTRY
+  INDUSTRIAL
+  OTHER
 }
 
 enum AlertType {

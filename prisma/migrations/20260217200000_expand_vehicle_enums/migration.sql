@@ -1,0 +1,10 @@
+-- Add new values to VehicleType enum
+ALTER TYPE "VehicleType" ADD VALUE IF NOT EXISTS 'TRACTOR';
+ALTER TYPE "VehicleType" ADD VALUE IF NOT EXISTS 'COMBINE';
+ALTER TYPE "VehicleType" ADD VALUE IF NOT EXISTS 'SPRAYER';
+ALTER TYPE "VehicleType" ADD VALUE IF NOT EXISTS 'HARVESTER';
+
+-- Add new values to IndustryCategory enum
+ALTER TYPE "IndustryCategory" ADD VALUE IF NOT EXISTS 'MINING';
+ALTER TYPE "IndustryCategory" ADD VALUE IF NOT EXISTS 'INDUSTRIAL';
+ALTER TYPE "IndustryCategory" ADD VALUE IF NOT EXISTS 'OTHER';

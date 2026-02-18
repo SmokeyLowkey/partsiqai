@@ -18,20 +18,40 @@ export function getLastAIMessage(state: CallState): string {
 }
 
 /**
- * Add a message to the conversation history
+ * Strip SSML/XML tags from text before sending to TTS.
+ * ElevenLabs reads tags like <break time="300ms"/> as literal words
+ * ("break time three hundred"), so any tags must be removed.
+ * Replaces <break .../> with a comma (natural pause) and strips all other tags.
+ */
+export function stripSSML(text: string): string {
+  return text
+    .replace(/<break[^>]*\/?>/gi, ',')     // <break time="300ms"/> → comma
+    .replace(/<\/?[a-z][^>]*>/gi, '')       // Strip any other XML/SSML tags
+    .replace(/\s*,\s*,/g, ',')             // Clean up double commas
+    .replace(/\s{2,}/g, ' ')               // Collapse extra spaces
+    .trim();
+}
+
+/**
+ * Add a message to the conversation history.
+ * AI messages are automatically stripped of SSML/XML tags to prevent
+ * ElevenLabs from vocalizing markup as literal words.
  */
 export function addMessage(
   state: CallState,
   speaker: 'ai' | 'supplier' | 'system',
   text: string
 ): CallState {
+  // Strip SSML from AI messages — ElevenLabs reads tags as words
+  const cleanText = speaker === 'ai' ? stripSSML(text) : text;
+
   return {
     ...state,
     conversationHistory: [
       ...state.conversationHistory,
       {
         speaker,
-        text,
+        text: cleanText,
         timestamp: new Date(),
       },
     ],
@@ -153,7 +173,17 @@ Return JSON array:
 ]
 
 If no pricing mentioned, return []. Match part numbers carefully (e.g., "a t five one four seven nine nine" = "AT514799").
-If supplier said "in stock", "have them", "on hand", "couple in stock" etc. in ANY recent message, availability MUST be "in_stock".
+
+AVAILABILITY RULES (check ALL recent messages, not just the latest):
+- "in_stock" if supplier said ANY of: "in stock", "on stock", "have it", "have them", "have a couple",
+  "on hand", "got them", "got it", "couple in stock", "couple on stock", "we do have", "we have"
+- "backorder" if supplier said: "order it in", "ordered in", "coming from", "get it from", "few days",
+  "couple days", "ship from", "transfer from", "not in stock here but can get"
+- "unavailable" ONLY if supplier explicitly said: "can't get it", "discontinued", "no longer available",
+  "don't carry", "don't have access to"
+- When in doubt between "in_stock" and "backorder", prefer "in_stock"
+- NEVER mark as "unavailable" if the supplier gave a price — that means they CAN supply it
+
 If supplier says a part has been superseded or replaced, set isSubstitute=true and originalPartNumber to the requested part.`;
 
   try {
@@ -174,7 +204,37 @@ If supplier says a part has been superseded or replaced, set isSubstitute=true a
       jsonStr = jsonMatch[0];
     }
     
-    return JSON.parse(jsonStr);
+    const quotes = JSON.parse(jsonStr);
+
+    // Post-extraction validation: override availability when supplier's words
+    // clearly contradict the LLM's classification. The LLM sometimes marks parts
+    // as "unavailable" even when the supplier said "we have a couple on stock".
+    const allText = [
+      supplierResponse,
+      ...(recentHistory || []).map(m => m.text),
+    ].join(' ').toLowerCase();
+
+    const inStockPhrases = [
+      'in stock', 'on stock', 'have it', 'have them', 'have a couple',
+      'on hand', 'got them', 'got it', 'couple in stock', 'couple on stock',
+      'we do have', 'we have some', 'have those',
+    ];
+    const textIndicatesInStock = inStockPhrases.some(p => allText.includes(p));
+
+    for (const quote of quotes) {
+      // If supplier clearly said in stock but LLM marked unavailable, override
+      if (quote.availability === 'unavailable' && textIndicatesInStock) {
+        console.log(`Availability override: "${quote.partNumber}" marked unavailable but supplier said in stock. Correcting to in_stock.`);
+        quote.availability = 'in_stock';
+      }
+      // If supplier gave a price, the part is at minimum backordered, never unavailable
+      if (quote.availability === 'unavailable' && quote.price != null) {
+        console.log(`Availability override: "${quote.partNumber}" marked unavailable but has price $${quote.price}. Correcting to backorder.`);
+        quote.availability = 'backorder';
+      }
+    }
+
+    return quotes;
   } catch (error) {
     console.error('Price extraction error:', error);
     return [];
@@ -477,6 +537,20 @@ export function containsRefusal(response: string): boolean {
  * Spells out letters individually and reads digits one by one
  * Example: "AT535106" → "A T, 5 3 5 1 0 6"
  */
+/**
+ * Short phonetic names for TTS clarity.
+ * ElevenLabs consistently mangles single-letter pronunciation
+ * (e.g., "A T" → "eighty"), so we use NATO phonetic words.
+ */
+const TTS_LETTER_NAMES: Record<string, string> = {
+  A: 'Alpha', B: 'Bravo', C: 'Charlie', D: 'Delta', E: 'Echo',
+  F: 'Foxtrot', G: 'Golf', H: 'Hotel', I: 'India', J: 'Juliet',
+  K: 'Kilo', L: 'Lima', M: 'Mike', N: 'November', O: 'Oscar',
+  P: 'Papa', Q: 'Quebec', R: 'Romeo', S: 'Sierra', T: 'Tango',
+  U: 'Uniform', V: 'Victor', W: 'Whiskey', X: 'X-ray', Y: 'Yankee',
+  Z: 'Zulu',
+};
+
 export function formatPartNumberForSpeech(partNumber: string): string {
   // Split into segments: letters, digits, hyphens, and other chars
   const segments = partNumber.match(/[A-Za-z]+|[0-9]+|-|[^A-Za-z0-9-]+/g);
@@ -488,8 +562,13 @@ export function formatPartNumberForSpeech(partNumber: string): string {
         return 'dash';
       }
       if (/^[A-Za-z]+$/.test(seg)) {
-        // Spell out each letter: "AT" → "A T"
-        return seg.toUpperCase().split('').join(' ');
+        // Use NATO phonetic words: "AT" → "Alpha Tango"
+        // ElevenLabs reads "A T" as "eighty" — phonetic words are unambiguous
+        return seg
+          .toUpperCase()
+          .split('')
+          .map(ch => TTS_LETTER_NAMES[ch] || ch)
+          .join(' ');
       }
       if (/^[0-9]+$/.test(seg)) {
         // Read each digit individually: "535106" → "5 3 5 1 0 6"
@@ -505,15 +584,6 @@ export function formatPartNumberForSpeech(partNumber: string): string {
  * Used when supplier asks to repeat or has trouble hearing
  * Example: "AT308568" → "Alpha Tango ... 3, 0, 8, 5, 6, 8"
  */
-const NATO_ALPHABET: Record<string, string> = {
-  A: 'Alpha', B: 'Bravo', C: 'Charlie', D: 'Delta', E: 'Echo',
-  F: 'Foxtrot', G: 'Golf', H: 'Hotel', I: 'India', J: 'Juliet',
-  K: 'Kilo', L: 'Lima', M: 'Mike', N: 'November', O: 'Oscar',
-  P: 'Papa', Q: 'Quebec', R: 'Romeo', S: 'Sierra', T: 'Tango',
-  U: 'Uniform', V: 'Victor', W: 'Whiskey', X: 'X-ray', Y: 'Yankee',
-  Z: 'Zulu',
-};
-
 export function formatPartNumberPhonetic(partNumber: string): string {
   const segments = partNumber.match(/[A-Za-z]+|[0-9]+|-|[^A-Za-z0-9-]+/g);
   if (!segments) return partNumber;
@@ -524,11 +594,11 @@ export function formatPartNumberPhonetic(partNumber: string): string {
         return 'dash';
       }
       if (/^[A-Za-z]+$/.test(seg)) {
-        // Spell out each letter using NATO alphabet
+        // Spell out each letter using NATO phonetic words (reuses TTS_LETTER_NAMES)
         return seg
           .toUpperCase()
           .split('')
-          .map(ch => NATO_ALPHABET[ch] || ch)
+          .map(ch => TTS_LETTER_NAMES[ch] || ch)
           .join(', ');
       }
       if (/^[0-9]+$/.test(seg)) {
@@ -538,6 +608,47 @@ export function formatPartNumberPhonetic(partNumber: string): string {
       return seg;
     })
     .join(' ... ');
+}
+
+/**
+ * Replace raw part numbers in free-form text with TTS-safe formatted versions.
+ * Catches patterns like "AT331812", "AT5 1 0 3 0 2", "AT-331812" etc.
+ * and replaces them with formatPartNumberForSpeech() output.
+ */
+export function formatPartNumbersInText(
+  text: string,
+  knownParts: Array<{ partNumber: string }>
+): string {
+  let result = text;
+
+  // Build a list of all known part numbers (including variations)
+  for (const part of knownParts) {
+    const pn = part.partNumber;
+    // Escape for regex
+    const escaped = pn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // Match the exact part number (case-insensitive)
+    const exactRegex = new RegExp(escaped, 'gi');
+    result = result.replace(exactRegex, formatPartNumberForSpeech(pn));
+
+    // Also match the spaced-out version: "A T 3 3 1 8 1 2" or "A T 5 1 0 3 0 2"
+    const spacedOut = pn.replace(/([A-Za-z])/g, '$1 ').replace(/([0-9])/g, '$1 ').trim().replace(/\s+/g, '\\s*');
+    if (spacedOut !== escaped) {
+      const spacedRegex = new RegExp(spacedOut, 'gi');
+      result = result.replace(spacedRegex, formatPartNumberForSpeech(pn));
+    }
+  }
+
+  // Catch any remaining alphanumeric part-number-like patterns (2+ letters followed by 4+ digits)
+  // that weren't in knownParts (e.g., substitute part numbers the LLM mentioned)
+  result = result.replace(/\b([A-Z]{1,4})[\s-]?(\d{4,10})\b/gi, (_match, letters, digits) => {
+    const fullPn = `${letters.toUpperCase()}${digits}`;
+    // Don't reformat if it's already formatted (contains commas from previous formatting)
+    if (_match.includes(',')) return _match;
+    return formatPartNumberForSpeech(fullPn);
+  });
+
+  return result;
 }
 
 export async function generateClarification(

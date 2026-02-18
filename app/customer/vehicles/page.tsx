@@ -48,7 +48,7 @@ interface Vehicle {
   make: string;
   model: string;
   year: number;
-  type: 'TRACTOR' | 'COMBINE' | 'SPRAYER' | 'HARVESTER' | 'LOADER' | 'EXCAVATOR' | 'DOZER' | 'OTHER';
+  type: 'TRACTOR' | 'COMBINE' | 'SPRAYER' | 'HARVESTER' | 'EXCAVATOR' | 'DOZER' | 'DUMP_TRUCK' | 'LOADER' | 'CRANE' | 'GRADER' | 'COMPACTOR' | 'OTHER';
   industryCategory: 'AGRICULTURE' | 'CONSTRUCTION' | 'MINING' | 'FORESTRY' | 'INDUSTRIAL' | 'OTHER';
   status: 'ACTIVE' | 'INACTIVE' | 'MAINTENANCE' | 'RETIRED';
   currentLocation?: string;
