@@ -714,8 +714,9 @@ IMPORTANT RULES:
 - NEVER ask the supplier to "write down" or "email" a part number — you are on a phone call, just ask them to repeat it slowly if needed.
 - NEVER commit to purchasing or ordering. You are ONLY collecting price quotes. Do NOT say "I'll take it", "I'll order that", "put me down for one", "let's go ahead with that", etc. Instead say "Got it, thanks" or "That's helpful, thank you."
 - If the supplier asks about an account, say you're not sure and the team will follow up via email.
-- If the supplier asks for your name or phone number, provide the company name (from context) and say they can reach you at the number you're calling from.
+- If the supplier asks for your name, who you are, or who's calling: say you're calling on behalf of ${state.callerName ? `${state.callerName} at ${state.organizationName}` : state.organizationName}. If they ask for a phone number, say they can reach us at the number you're calling from.
 - If the supplier asks for a shipping address or destination, say you'll confirm the exact address via email but ask if they can give a ballpark shipping estimate.
+- ONE THING AT A TIME: If the supplier asks you a question (name, account, etc.), answer ONLY that question. Do NOT bundle a part number request into the same response — wait for the next turn to continue with parts. Keep each response focused on one topic.
 
 PART NUMBER FORMATTING — CRITICAL:
 - When referencing part numbers, write them in their EXACT alphanumeric format (e.g., AT495366, AT514800).
@@ -892,6 +893,19 @@ export async function routeFromGreeting(
   ];
   if (engagementPatterns.some(p => lower.includes(p))) {
     return 'quote_request';
+  }
+
+  // Fast path: receptionist/gatekeeper asking for caller info — answer their
+  // question so they can transfer us to the right person.
+  const receptionistPatterns = [
+    'who\'s calling', 'who is calling', 'who am i speaking',
+    'your name', 'who are you', 'what company', 'calling from',
+    'what is this regarding', 'what\'s this about', 'what is this about',
+    'what are you calling about', 'reason for your call',
+    'may i ask who', 'can i ask who',
+  ];
+  if (receptionistPatterns.some(p => lower.includes(p))) {
+    return 'conversational_response';
   }
 
   const intent = await classifyIntent(llmClient, lastResponse, [
@@ -1213,12 +1227,15 @@ export async function routeFromConversationalResponse(
   const lastSupplierMsg = getLastSupplierResponse(newState);
   const lastSupplierLower = lastSupplierMsg.toLowerCase();
 
-  // Hold/wait patterns — supplier is looking something up
+  // Hold/wait patterns — supplier is looking something up or transferring
   const convHoldPatterns = [
     'one moment', 'just a moment', 'hold on', 'hold please',
     'one second', 'just a sec', 'hang on', 'one sec',
     'give me a moment', 'give me a sec', 'give me a minute',
     'bear with me', 'hang tight', 'just a minute',
+    'let me transfer', 'i\'ll transfer', 'i will transfer',
+    'transferring you', 'putting you through', 'connect you',
+    'let me get', 'let me put you through',
   ];
   if (convHoldPatterns.some(p => lastSupplierLower.includes(p))) {
     return { nextNode: 'hold_acknowledgment', state: newState };
@@ -1329,6 +1346,27 @@ export async function processCallTurn(
   }
 
   const currentNode = state.currentNode;
+
+  // Pre-routing intercept: scripted nodes (quote_request, confirmation) generate
+  // canned responses without considering the supplier's last message. If the supplier
+  // just asked a question (name, account, verification, etc.), redirect to
+  // conversational_response FIRST so we answer them instead of ignoring their question.
+  const lastSupplierMsg = getLastSupplierResponse(state);
+  if (lastSupplierMsg && (currentNode === 'quote_request' || currentNode === 'confirmation')) {
+    const lower = lastSupplierMsg.toLowerCase();
+    const contactInfoPatterns = [
+      'your name', 'your phone', 'your number', 'phone number',
+      'who am i speaking', 'who is this', 'who\'s calling',
+      'account number', 'your account', 'your email', 'email address',
+      'company name', 'calling from',
+    ];
+    if (contactInfoPatterns.some(p => lower.includes(p)) || isVerificationQuestion(lastSupplierMsg)) {
+      return {
+        ...(await conversationalResponseNode(llmClient, state, nudge)),
+        currentNode, // Stay on the same node — we'll resume it next turn
+      };
+    }
+  }
 
   // Execute current node
   let newState = state;
@@ -1569,6 +1607,7 @@ export function initializeCallState(params: {
   supplierPhone: string;
   organizationId: string;
   callerId: string;
+  callerName?: string;
   parts: Array<{
     partNumber: string;
     description: string;
@@ -1591,6 +1630,7 @@ export function initializeCallState(params: {
     ...params,
     organizationName,
     quoteReference,
+    callerName: params.callerName,
     currentNode: 'greeting',
     conversationHistory: [],
     quotes: [],

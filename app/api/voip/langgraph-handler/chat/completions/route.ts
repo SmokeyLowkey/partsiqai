@@ -459,13 +459,36 @@ export async function POST(req: NextRequest) {
     const callId = body.call?.metadata?.callLogId;
 
     if (!userMessage) {
-      logger.error(
+      // First turn: VAPI may send only system + assistant messages (no user message yet)
+      // when using assistant-speaks-first-with-model-generated-message mode.
+      // Return the greeting already seeded in call state instead of an error.
+      if (callId) {
+        try {
+          const existingState = await getCallState(callId);
+          if (existingState) {
+            const greeting = getLastAIMessage(existingState);
+            if (greeting) {
+              logger.info(
+                { callId, greetingLength: greeting.length },
+                'First turn (no user message) — returning seeded greeting from call state'
+              );
+              if (isStreaming) return buildStreamingResponse(greeting);
+              return NextResponse.json(buildChatCompletionResponse(greeting));
+            }
+          }
+        } catch (stateError: any) {
+          logger.warn({ callId, error: stateError.message }, 'Failed to load state for first-turn greeting');
+        }
+      }
+
+      // Genuine missing user message (not first turn) — use a natural filler
+      logger.warn(
         { messages: body.messages?.map((m: any) => ({ role: m.role, len: m.content?.length })) },
         'No user message found in messages array'
       );
-      const errorContent = "I'm sorry, I didn't catch that. Could you repeat?";
-      if (isStreaming) return buildStreamingResponse(errorContent);
-      return NextResponse.json(buildChatCompletionResponse(errorContent));
+      const fillerContent = "Mhm.";
+      if (isStreaming) return buildStreamingResponse(fillerContent);
+      return NextResponse.json(buildChatCompletionResponse(fillerContent));
     }
 
     if (!callId) {

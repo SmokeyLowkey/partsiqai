@@ -34,6 +34,9 @@ export interface CallState {
     timestamp: Date;
   }>;
   
+  // Our caller identity (for when supplier asks "who's calling?")
+  callerName?: string;
+
   // Supplier info (detected during call)
   contactName?: string;
   contactRole?: 'gatekeeper' | 'buyer' | 'owner';

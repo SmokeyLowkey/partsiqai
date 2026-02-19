@@ -175,14 +175,18 @@ Return JSON array:
 If no pricing mentioned, return []. Match part numbers carefully (e.g., "a t five one four seven nine nine" = "AT514799").
 
 AVAILABILITY RULES (check ALL recent messages, not just the latest):
-- "in_stock" if supplier said ANY of: "in stock", "on stock", "have it", "have them", "have a couple",
-  "on hand", "got them", "got it", "couple in stock", "couple on stock", "we do have", "we have"
-- "backorder" if supplier said: "order it in", "ordered in", "coming from", "get it from", "few days",
-  "couple days", "ship from", "transfer from", "not in stock here but can get"
+- "in_stock" if supplier POSITIVELY confirmed stock: "in stock", "on stock", "have it", "have them",
+  "have a couple", "on hand", "got them", "got it", "couple in stock", "we do have", "we have",
+  "available at the store", "available here", "have it here"
+- "backorder" if supplier said ANY of: "order it in", "ordered in", "coming from", "get it from",
+  "few days", "couple days", "ship from", "transfer from", "not in stock", "don't have it in stock",
+  "I don't have it", "out of stock", "not available here", "not on hand", "would have to order",
+  "need to order", "can order it", "special order"
 - "unavailable" ONLY if supplier explicitly said: "can't get it", "discontinued", "no longer available",
   "don't carry", "don't have access to"
-- When in doubt between "in_stock" and "backorder", prefer "in_stock"
-- NEVER mark as "unavailable" if the supplier gave a price — that means they CAN supply it
+- CRITICAL: If supplier says "don't have it in stock" or "not in stock" but still gives a price,
+  mark as "backorder" NOT "in_stock". Having a price does NOT mean in stock — it means they can get it.
+- NEVER mark as "unavailable" if the supplier gave a price — use "backorder" instead
 
 SUBSTITUTE PART RULES:
 - If supplier says a part has been superseded or replaced, set isSubstitute=true.

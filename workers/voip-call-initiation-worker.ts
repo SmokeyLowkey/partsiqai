@@ -358,7 +358,7 @@ async function processVoipCallInitiation(job: Job<VoipCallInitiationJobData>) {
 
     // Build system instructions for the AI agent
     // Include both the default guidelines AND the custom context/instructions
-    let systemInstructions = `You are a real person calling suppliers to get parts quotes. Be natural, friendly, and conversational.
+    let systemInstructions = `You are a procurement assistant calling suppliers on behalf of a customer to get parts quotes. Be natural, friendly, and conversational. If asked who you are, say you're calling on behalf of the customer and their company.
 
 CRITICAL: Always start by asking for the parts department. Once connected, explain what you need naturally.`;
 
@@ -482,6 +482,18 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
       finalCustomContext += `\nShipping Address: ${primaryLocation.address}, ${primaryLocation.city}, ${primaryLocation.state} ${primaryLocation.zipCode}`;
     }
 
+    // Look up caller's name for when supplier asks "who's calling?"
+    let callerName: string | undefined;
+    try {
+      const callerUser = await prisma.user.findUnique({
+        where: { id: metadata.userId },
+        select: { name: true },
+      });
+      callerName = callerUser?.name || undefined;
+    } catch {
+      // Best effort — callerName is optional
+    }
+
     // Initialize LangGraph state and save to Redis
     const initialCallState = initializeCallState({
       callId: callLog.id,
@@ -491,6 +503,7 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
       supplierPhone: formattedPhone,
       organizationId: metadata.organizationId,
       callerId: metadata.userId,
+      callerName,
       parts,
       customContext: finalCustomContext.trim(),
       customInstructions: customInstructions,
