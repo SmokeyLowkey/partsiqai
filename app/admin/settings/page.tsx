@@ -1350,14 +1350,14 @@ export default function SettingsPage() {
               <div className="space-y-2">
                 <Label>Overseer Model</Label>
                 <Select
-                  value={openRouterConfig.overseerModel}
-                  onValueChange={(value) => setOpenRouterConfig({ ...openRouterConfig, overseerModel: value })}
+                  value={openRouterConfig.overseerModel || "__default__"}
+                  onValueChange={(value) => setOpenRouterConfig({ ...openRouterConfig, overseerModel: value === "__default__" ? "" : value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Use Search Model" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">(Use Search Model)</SelectItem>
+                    <SelectItem value="__default__">(Use Search Model)</SelectItem>
                     <SelectItem value="anthropic/claude-4.5-sonnet-20250929">Claude Sonnet 4.5</SelectItem>
                     <SelectItem value="anthropic/claude-4.5-opus-20251124">Claude Opus 4.5</SelectItem>
                     <SelectItem value="anthropic/claude-4.6-opus-20260205">Claude Opus 4.6</SelectItem>
@@ -1853,14 +1853,14 @@ export default function SettingsPage() {
               <div className="space-y-2">
                 <Label>Overseer Model</Label>
                 <Select
-                  value={platformOpenRouterConfig.overseerModel}
-                  onValueChange={(value) => setPlatformOpenRouterConfig({ ...platformOpenRouterConfig, overseerModel: value })}
+                  value={platformOpenRouterConfig.overseerModel || "__default__"}
+                  onValueChange={(value) => setPlatformOpenRouterConfig({ ...platformOpenRouterConfig, overseerModel: value === "__default__" ? "" : value })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Use Search Model" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">(Use Search Model)</SelectItem>
+                    <SelectItem value="__default__">(Use Search Model)</SelectItem>
                     <SelectItem value="anthropic/claude-4.5-sonnet-20250929">Claude Sonnet 4.5</SelectItem>
                     <SelectItem value="anthropic/claude-4.5-opus-20251124">Claude Opus 4.5</SelectItem>
                     <SelectItem value="anthropic/claude-4.6-opus-20260205">Claude Opus 4.6</SelectItem>
