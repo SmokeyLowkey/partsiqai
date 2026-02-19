@@ -122,9 +122,12 @@ export default function QuoteRequestDetailPage() {
     fetchSuppliers();
   }, [fetchQuoteRequest]);
 
-  // Auto-poll every 30s while quote is in DRAFT or SENT status
+  // Auto-poll every 30s while quote is in DRAFT or SENT status.
+  // Pause polling when any dialog is open to prevent form resets.
+  const isDialogOpen = showSendDialog || showEditDialog || showRequestApprovalDialog || showApprovalActionsDialog;
+
   useEffect(() => {
-    if (!quoteRequest) return;
+    if (!quoteRequest || isDialogOpen) return;
     const pollableStatuses = ['DRAFT', 'SENT'];
     if (!pollableStatuses.includes(quoteRequest.status)) return;
 
@@ -133,7 +136,7 @@ export default function QuoteRequestDetailPage() {
     }, 30_000);
 
     return () => clearInterval(interval);
-  }, [quoteRequest?.status, fetchQuoteRequest]);
+  }, [quoteRequest?.status, fetchQuoteRequest, isDialogOpen]);
 
   const fetchSuppliers = async () => {
     try {
@@ -377,8 +380,8 @@ export default function QuoteRequestDetailPage() {
             Edit Quote
           </Button>
           
-          {/* Approval Actions for Managers - available in any state except SENT and terminal states */}
-          {canApprove && !['SENT', 'APPROVED', 'REJECTED', 'CONVERTED_TO_ORDER'].includes(quoteRequest.status) && (
+          {/* Approval Actions for Managers - available in any state except DRAFT, SENT and terminal states */}
+          {canApprove && !['DRAFT', 'SENT', 'APPROVED', 'REJECTED', 'CONVERTED_TO_ORDER'].includes(quoteRequest.status) && (
             <Button onClick={() => setShowApprovalActionsDialog(true)}>
               <UserCheck className="h-4 w-4 mr-2" />
               {quoteRequest.status === 'UNDER_REVIEW' ? 'Review Approval' : 'Approve / Reject'}
