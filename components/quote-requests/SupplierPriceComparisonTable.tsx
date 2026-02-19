@@ -142,50 +142,36 @@ export function SupplierPriceComparisonTable({
 
   // Check if supplier can accept quote
   const canAcceptQuote = (supplierId: string) => {
-    // Check user role permissions FIRST
-    const canConvert = userRole === 'MANAGER' || userRole === 'ADMIN' || userRole === 'MASTER_ADMIN';
-    
-    // Check if quote was created by a technician (needs approval)
-    const quoteCreatedByTechnician = createdByRole === 'TECHNICIAN';
-    
-    // If quote was created by technician and requires manager approval
-    if (quoteCreatedByTechnician) {
-      // Must be approved
-      if (quoteStatus !== 'APPROVED') {
-        return { 
-          enabled: false, 
-          reason: 'Quote requires manager approval' 
-        };
-      }
-      
-      // Must be the supplier selected by the manager during approval
-      if (selectedSupplierId && supplierId !== selectedSupplierId) {
-        return { 
-          enabled: false, 
-          reason: 'Manager approved a different supplier' 
-        };
-      }
-      
-      // If approved but no supplier selected yet, only managers can convert
-      if (!selectedSupplierId && !canConvert) {
-        return { 
-          enabled: false, 
-          reason: 'Manager must select which supplier to use' 
-        };
-      }
-    }
-    
-    // Technicians cannot convert quotes at all (even if approved)
+    const isManager = userRole === 'MANAGER' || userRole === 'ADMIN' || userRole === 'MASTER_ADMIN';
+
+    // Technicians cannot convert quotes at all
     if (userRole === 'TECHNICIAN') {
-      return { 
-        enabled: false, 
-        reason: 'Only managers can convert quotes to orders' 
+      return {
+        enabled: false,
+        reason: 'Only managers can convert quotes to orders'
       };
     }
-    
-    // Check quote status
-    if (!['RECEIVED', 'APPROVED'].includes(quoteStatus)) {
-      return { enabled: false, reason: 'Waiting for supplier responses' };
+
+    // Block on terminal/non-actionable statuses
+    if (['SENT', 'DRAFT', 'CONVERTED_TO_ORDER', 'REJECTED', 'EXPIRED'].includes(quoteStatus)) {
+      return { enabled: false, reason: quoteStatus === 'SENT' ? 'Waiting for supplier responses' : `Cannot accept quote with status ${quoteStatus}` };
+    }
+
+    // For technician-created quotes that require approval
+    const quoteCreatedByTechnician = createdByRole === 'TECHNICIAN';
+    if (quoteCreatedByTechnician && requiresApproval && quoteStatus === 'UNDER_REVIEW') {
+      // Managers can still accept — approval will be implicit
+      if (!isManager) {
+        return { enabled: false, reason: 'Quote requires manager approval' };
+      }
+    }
+
+    // If a specific supplier was selected during approval, enforce it
+    if (selectedSupplierId && supplierId !== selectedSupplierId) {
+      return {
+        enabled: false,
+        reason: 'Manager approved a different supplier'
+      };
     }
 
     // Check supplier responded

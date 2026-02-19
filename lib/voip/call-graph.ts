@@ -381,11 +381,36 @@ export function confirmationNode(state: CallState): CallState {
       const substituteNote = q.isSubstitute && q.originalPartNumber
         ? ` (replacing ${formatPartNumberForSpeech(q.originalPartNumber)})`
         : '';
-      const availText = q.availability === 'in_stock' ? 'in stock'
-        : q.availability === 'backorder' ? 'on back order'
-        : q.availability === 'unavailable' ? 'unavailable'
-        : q.availability;
-      return `${partNum}${substituteNote} at $${q.price?.toFixed(2)}, ${availText}`;
+
+      // Build availability text — handle split availability (e.g., 1 in stock, 1 on backorder)
+      const requestedPart = state.parts.find(p => p.partNumber === q.partNumber);
+      const requestedQty = requestedPart?.quantity ?? 1;
+      let availText: string;
+
+      if (q.quantityAvailable != null && q.quantityAvailable > 0 && q.quantityAvailable < requestedQty) {
+        // Split: some in stock, rest on backorder
+        const backorderQty = requestedQty - q.quantityAvailable;
+        availText = `${q.quantityAvailable} in stock and ${backorderQty} on back order`;
+      } else {
+        availText = q.availability === 'in_stock' ? 'in stock'
+          : q.availability === 'backorder' ? 'on back order'
+          : q.availability === 'unavailable' ? 'unavailable'
+          : q.availability;
+      }
+
+      let leadTimeNote = '';
+      if (q.leadTimeDays != null) {
+        if (q.leadTimeDays >= 30) {
+          const months = Math.round(q.leadTimeDays / 30);
+          leadTimeNote = `, about ${months} ${months === 1 ? 'month' : 'months'} lead time`;
+        } else if (q.leadTimeDays >= 7) {
+          const weeks = Math.round(q.leadTimeDays / 7);
+          leadTimeNote = `, about ${weeks} ${weeks === 1 ? 'week' : 'weeks'} lead time`;
+        } else {
+          leadTimeNote = `, about ${q.leadTimeDays} ${q.leadTimeDays === 1 ? 'day' : 'days'} lead time`;
+        }
+      }
+      return `${partNum}${substituteNote} at $${q.price?.toFixed(2)}, ${availText}${leadTimeNote}`;
     })
     .join(', and ');
 
@@ -615,6 +640,14 @@ function mergeExtractedQuotes(
  */
 function shouldAskMiscCosts(state: CallState): boolean {
   if (!state.hasMiscCosts || state.miscCostsAsked) return false;
+
+  // Check if shipping/freight was already discussed conversationally
+  // (the LLM may have asked about it naturally before miscCostsInquiryNode fires)
+  const shippingAlreadyDiscussed = state.conversationHistory.some(
+    msg => msg.speaker === 'ai' && /\b(shipping|freight|delivery|transfer fee|ship.*cost)\b/i.test(msg.text)
+  );
+  if (shippingAlreadyDiscussed) return false;
+
   return state.quotes.some(q =>
     q.availability === 'backorder' || q.availability === 'unavailable'
   );
@@ -676,6 +709,26 @@ function buildConversationalPrompt(state: CallState, lastResponse: string, nudge
       '\nDo NOT ask about the original part numbers listed above — they have been superseded. Ask for pricing on the substitute if not yet quoted.\n';
   }
 
+  // Quotes already collected — so the LLM knows what it has and doesn't re-ask
+  const collectedQuotes = state.quotes.filter(q => q.price != null);
+  let quotesContext = '';
+  if (collectedQuotes.length > 0) {
+    quotesContext = '\n\nQUOTES ALREADY COLLECTED (do NOT re-ask for these prices):\n' +
+      collectedQuotes.map(q => {
+        const requestedPart = state.parts.find(p => p.partNumber === q.partNumber);
+        const requestedQty = requestedPart?.quantity ?? 1;
+        let availNote = q.availability === 'in_stock' ? 'in stock'
+          : q.availability === 'backorder' ? 'on backorder'
+          : 'unavailable';
+        if (q.quantityAvailable != null && q.quantityAvailable > 0 && q.quantityAvailable < requestedQty) {
+          availNote = `${q.quantityAvailable} in stock, ${requestedQty - q.quantityAvailable} on backorder`;
+        }
+        const leadNote = q.leadTimeDays != null ? `, ${q.leadTimeDays} day lead time` : '';
+        return `- ${q.partNumber}: $${q.price!.toFixed(2)}, ${availNote}${leadNote}`;
+      }).join('\n') +
+      '\nYou already have this information. Do NOT ask the supplier to repeat prices you already collected.\n';
+  }
+
   const uncoveredParts = state.parts.filter(part =>
     part.partNumber !== 'MISC-COSTS' &&
     !state.quotes.some(q =>
@@ -698,7 +751,7 @@ function buildConversationalPrompt(state: CallState, lastResponse: string, nudge
 
 Context: ${additionalContext}
 ${followUpContext}
-Parts you need quotes for: ${partsContext}${substituteContext}${uncoveredContext}
+Parts you need quotes for: ${partsContext}${substituteContext}${quotesContext}${uncoveredContext}
 
 Recent conversation:
 ${conversationContext}
@@ -876,7 +929,7 @@ export async function routeFromGreeting(
 
   // Fast path: supplier is ALREADY transferring — just acknowledge and wait
   const holdPatterns = [
-    'one moment', 'just a moment', 'hold on', 'hold please',
+    'one moment', 'just a moment', 'hold on', 'hold please', 'please hold',
     'let me transfer', 'i\'ll transfer', 'i will transfer',
     'transferring you', 'putting you through', 'one second',
     'just a sec', 'hang on', 'one sec',
@@ -982,7 +1035,7 @@ export async function routeFromQuoteRequest(
   // Hold/wait patterns — supplier is looking something up or asks us to wait.
   // Must be checked EARLY to avoid re-requesting parts while they're working.
   const holdPatterns = [
-    'one moment', 'just a moment', 'hold on', 'hold please',
+    'one moment', 'just a moment', 'hold on', 'hold please', 'please hold',
     'one second', 'just a sec', 'hang on', 'one sec',
     'give me a moment', 'give me a sec', 'give me a minute',
     'let me check', 'let me look', 'let me pull', 'let me see',
@@ -1158,10 +1211,7 @@ export async function routeFromConfirmation(
     return 'price_extract';
   }
 
-  // Agreement patterns — check BEFORE correction patterns because words like
-  // "actually" and "i said" appear in both contexts:
-  //   "That's actually correct" → agreement, not correction
-  //   "Like I said, sounds good" → agreement, not correction
+  // Agreement patterns
   const agreePatterns = [
     'yes', 'yeah', 'yep', 'correct', 'that\'s right', 'sounds good',
     'that\'s it', 'perfect', 'mhm', 'uh-huh', 'you got it',
@@ -1169,18 +1219,28 @@ export async function routeFromConfirmation(
 
   const hasAgreement = agreePatterns.some(p => lower.includes(p));
 
-  // Correction patterns — only check when there's NO agreement signal
-  if (!hasAgreement) {
-    const correctionPatterns = [
-      'that\'s wrong', 'that\'s not right', 'incorrect', 'actually',
-      'i said', 'they are available', 'it is available', 'in stock',
-      'not unavailable', 'we have them', 'i have them', 'they\'re available',
-      'let me correct', 'that\'s not correct',
-    ];
+  // Correction patterns — ALWAYS check, even when agreement is present.
+  // Supplier often says "Yeah, but [correction]" or "Yes, so just the one on
+  // back order and one in stock" — agreement on price but correcting availability.
+  // Correction takes priority: route to price_extract to update the state.
+  const correctionPatterns = [
+    'that\'s wrong', 'that\'s not right', 'incorrect',
+    'i said', 'they are available', 'it is available',
+    'not unavailable', 'we have them', 'i have them', 'they\'re available',
+    'let me correct', 'that\'s not correct',
+    // Split availability corrections (e.g., "just the one on back order, one in stock")
+    'just the one', 'only one', 'only have one', 'one in stock', 'one on back order',
+    'but the other', 'the rest',
+  ];
 
-    if (correctionPatterns.some(p => lower.includes(p))) {
-      return 'price_extract';
-    }
+  const hasCorrection = correctionPatterns.some(p => lower.includes(p));
+
+  // "actually" is ambiguous — "that's actually correct" vs "actually, the price is..."
+  // Only treat as correction when there's no agreement signal
+  const hasActually = lower.includes('actually') && !hasAgreement;
+
+  if (hasCorrection || hasActually) {
+    return 'price_extract';
   }
 
   if (hasAgreement) {
@@ -1229,7 +1289,7 @@ export async function routeFromConversationalResponse(
 
   // Hold/wait patterns — supplier is looking something up or transferring
   const convHoldPatterns = [
-    'one moment', 'just a moment', 'hold on', 'hold please',
+    'one moment', 'just a moment', 'hold on', 'hold please', 'please hold',
     'one second', 'just a sec', 'hang on', 'one sec',
     'give me a moment', 'give me a sec', 'give me a minute',
     'bear with me', 'hang tight', 'just a minute',

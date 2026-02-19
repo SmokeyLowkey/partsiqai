@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import {
@@ -95,12 +95,7 @@ export default function QuoteRequestDetailPage() {
   const canConvert = userRole === 'MANAGER' || userRole === 'ADMIN' || userRole === 'MASTER_ADMIN';
   const requiresApproval = userRole === 'TECHNICIAN';
 
-  useEffect(() => {
-    fetchQuoteRequest();
-    fetchSuppliers();
-  }, [params.id]);
-
-  const fetchQuoteRequest = async () => {
+  const fetchQuoteRequest = useCallback(async () => {
     try {
       const response = await fetch(`/api/quote-requests/${params.id}`);
       if (response.ok) {
@@ -120,7 +115,25 @@ export default function QuoteRequestDetailPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [params.id, router]);
+
+  useEffect(() => {
+    fetchQuoteRequest();
+    fetchSuppliers();
+  }, [fetchQuoteRequest]);
+
+  // Auto-poll every 30s while quote is in DRAFT or SENT status
+  useEffect(() => {
+    if (!quoteRequest) return;
+    const pollableStatuses = ['DRAFT', 'SENT'];
+    if (!pollableStatuses.includes(quoteRequest.status)) return;
+
+    const interval = setInterval(() => {
+      fetchQuoteRequest();
+    }, 30_000);
+
+    return () => clearInterval(interval);
+  }, [quoteRequest?.status, fetchQuoteRequest]);
 
   const fetchSuppliers = async () => {
     try {
@@ -364,17 +377,17 @@ export default function QuoteRequestDetailPage() {
             Edit Quote
           </Button>
           
-          {/* Approval Actions for Managers */}
-          {canApprove && quoteRequest.status === 'UNDER_REVIEW' && (
+          {/* Approval Actions for Managers - available in any state except SENT and terminal states */}
+          {canApprove && !['SENT', 'APPROVED', 'REJECTED', 'CONVERTED_TO_ORDER'].includes(quoteRequest.status) && (
             <Button onClick={() => setShowApprovalActionsDialog(true)}>
               <UserCheck className="h-4 w-4 mr-2" />
-              Review Approval
+              {quoteRequest.status === 'UNDER_REVIEW' ? 'Review Approval' : 'Approve / Reject'}
             </Button>
           )}
           
-          {/* Request Approval for Technicians */}
-          {requiresApproval && 
-           quoteRequest.status === 'RECEIVED' && 
+          {/* Request Approval for Technicians - can request from SENT, RECEIVED, or DRAFT */}
+          {requiresApproval &&
+           ['DRAFT', 'SENT', 'RECEIVED'].includes(quoteRequest.status) &&
            !quoteRequest.requiresApproval && (
             <Button onClick={() => setShowRequestApprovalDialog(true)}>
               <Clock className="h-4 w-4 mr-2" />

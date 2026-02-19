@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { extractPdfTextFromS3, isValidPdf, extractBasicQuoteInfo } from '@/lib/services/document/pdf-parser';
 import { uploadEmailAttachment } from '@/lib/services/storage/s3-client';
 import { workerLogger } from '@/lib/logger';
+import { notifyQuoteReceived } from '@/lib/notifications/quote-received';
 
 const QUEUE_NAME = 'quote-extraction';
 
@@ -985,6 +986,17 @@ export const quoteExtractionWorker = new Worker<QuoteExtractionJobData>(
             workerLogger.error({ err: trackingError }, 'Error extracting tracking information');
             // Don't fail the entire job if tracking extraction fails
           }
+        }
+
+        // Notify quote creator when supplier quote items were extracted
+        if (supplierQuoteItemsCreated > 0 && thread.supplierId) {
+          await notifyQuoteReceived({
+            quoteRequestId: existingQuoteRequestThread.quoteRequestId,
+            supplierName: thread.supplier?.name || 'Supplier',
+            channel: 'email',
+            organizationId,
+            itemsExtracted: supplierQuoteItemsCreated,
+          });
         }
 
         workerLogger.info({

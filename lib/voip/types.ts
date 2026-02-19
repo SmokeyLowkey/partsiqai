@@ -89,6 +89,7 @@ export type ExtractedQuote = {
   partNumber: string;
   price?: number;
   availability: 'in_stock' | 'backorder' | 'unavailable';
+  quantityAvailable?: number; // How many are in stock (for split availability when qty > 1)
   leadTimeDays?: number;
   notes?: string;
   isSubstitute?: boolean;

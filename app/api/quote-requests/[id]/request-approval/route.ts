@@ -60,8 +60,8 @@ export async function POST(
       );
     }
 
-    // Verify quote is in correct status
-    if (!["RECEIVED", "DRAFT"].includes(quoteRequest.status)) {
+    // Verify quote is in correct status (technicians can request approval from DRAFT, SENT, or RECEIVED)
+    if (!["DRAFT", "SENT", "RECEIVED"].includes(quoteRequest.status)) {
       return NextResponse.json(
         { error: `Cannot request approval for quote with status ${quoteRequest.status}` },
         { status: 400 }

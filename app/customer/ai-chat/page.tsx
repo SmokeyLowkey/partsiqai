@@ -504,8 +504,10 @@ export default function AIChatPage() {
       if (data.conversationId && !conversationId) {
         migrateDraftPickList(data.conversationId);
         setConversationId(data.conversationId);
-        await loadConversations(); // Refresh conversation list
       }
+
+      // Always refresh conversation list to update message counts
+      await loadConversations();
 
       // Add assistant message - use the proper metadata structure
       if (data.assistantMessage) {
@@ -533,12 +535,8 @@ export default function AIChatPage() {
           return [...filtered, savedUserMsg, assistantMsg];
         });
 
-        // Extract parts from response if available
-        const formattedResponse = data.searchResults || data.assistantMessage.metadata?.formattedResponse;
-        if (formattedResponse?.parts) {
-          // Show pick list panel when parts are available
-          setShowMobilePickList(true);
-        }
+        // Parts are rendered inline in the assistant message.
+        // The pick list icon in the header updates automatically via state.
       }
     } catch (error: any) {
       console.error("Error sending message:", error);

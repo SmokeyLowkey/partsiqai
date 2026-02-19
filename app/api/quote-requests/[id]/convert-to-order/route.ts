@@ -159,10 +159,13 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // Validation 1: Status check
-    if (!['RECEIVED', 'APPROVED'].includes(quoteRequest.status)) {
+    // Validation 1: Status check — managers can convert from RECEIVED, UNDER_REVIEW, or APPROVED
+    const convertableStatuses = isManagerOrAdmin
+      ? ['RECEIVED', 'UNDER_REVIEW', 'APPROVED']
+      : ['RECEIVED', 'APPROVED'];
+    if (!convertableStatuses.includes(quoteRequest.status)) {
       return NextResponse.json({
-        error: 'Quote must be in RECEIVED or APPROVED status',
+        error: `Quote must be in ${convertableStatuses.join(' or ')} status`,
         currentStatus: quoteRequest.status,
       }, { status: 400 });
     }

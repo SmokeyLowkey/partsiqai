@@ -59,8 +59,9 @@ export async function POST(
       );
     }
 
-    // Verify quote is pending approval
-    if (quoteRequest.status !== "UNDER_REVIEW") {
+    // Managers can reject from any actionable state (not SENT, CONVERTED_TO_ORDER, or already APPROVED/REJECTED)
+    const nonRejectableStatuses = ["SENT", "CONVERTED_TO_ORDER", "APPROVED", "REJECTED"];
+    if (nonRejectableStatuses.includes(quoteRequest.status)) {
       return NextResponse.json(
         { error: `Cannot reject quote with status ${quoteRequest.status}` },
         { status: 400 }

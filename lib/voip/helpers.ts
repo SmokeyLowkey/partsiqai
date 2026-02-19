@@ -165,6 +165,7 @@ Return JSON array:
     "partNumber": "exact part number (use substitute number if supplier offered one)",
     "price": number or null,
     "availability": "in_stock" or "backorder" or "unavailable",
+    "quantityAvailable": number or null (how many are currently in stock — important when requested qty > 1),
     "leadTimeDays": number or null,
     "notes": "string or null",
     "isSubstitute": true if this is a substitute/superseded/replacement part (false otherwise),
@@ -187,6 +188,12 @@ AVAILABILITY RULES (check ALL recent messages, not just the latest):
 - CRITICAL: If supplier says "don't have it in stock" or "not in stock" but still gives a price,
   mark as "backorder" NOT "in_stock". Having a price does NOT mean in stock — it means they can get it.
 - NEVER mark as "unavailable" if the supplier gave a price — use "backorder" instead
+
+QUANTITY AVAILABLE RULES:
+- If supplier says "we only have one" or "have 2 in stock" or "got 3 on hand", set quantityAvailable to that number
+- If supplier says "we have it" (singular, no quantity limit mentioned), set quantityAvailable to null (means full qty available)
+- If supplier says "we have some but would need to order the rest", set quantityAvailable to the number they said they have
+- This is important for split availability: e.g., customer needs 4, supplier has 2 in stock and can order 2 more
 
 SUBSTITUTE PART RULES:
 - If supplier says a part has been superseded or replaced, set isSubstitute=true.

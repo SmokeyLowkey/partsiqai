@@ -4,6 +4,7 @@ import { getCallState, saveCallState, deleteCallState } from '@/lib/voip/state-m
 import { initializeCallState } from '@/lib/voip/call-graph';
 import { getLastAIMessage, determineOutcome, addMessage } from '@/lib/voip/helpers';
 import { workerLogger } from '@/lib/logger';
+import { notifyQuoteReceived } from '@/lib/notifications/quote-received';
 
 const logger = workerLogger.child({ module: 'voip-webhooks' });
 
@@ -216,9 +217,10 @@ async function handleCallEnded(callId: string, vapiCallId: string | undefined, e
   // Extract final outcome
   const outcome = state ? determineOutcome(state) : 'NO_ANSWER';
 
-  // Get call record
+  // Get call record with supplier name for notifications
   const call = await prisma.supplierCall.findUnique({
     where: { id: callId },
+    include: { supplier: { select: { name: true } } },
   });
 
   if (!call) {
@@ -294,13 +296,37 @@ async function handleCallEnded(callId: string, vapiCallId: string | undefined, e
     data: updateData,
   });
 
-  // If quote received, create SupplierQuoteItems
+  // If quote received, create SupplierQuoteItems and update quote status
   if (extractedQuotes.length > 0 && call.quoteRequestId) {
     await createSupplierQuoteItems(
       call.quoteRequestId,
       call.supplierId,
       extractedQuotes
     );
+
+    // Update QuoteRequest status to RECEIVED (don't regress advanced statuses)
+    const noRegressStatuses = ['UNDER_REVIEW', 'APPROVED', 'REJECTED', 'CONVERTED_TO_ORDER'];
+    const qr = await prisma.quoteRequest.findUnique({
+      where: { id: call.quoteRequestId },
+      select: { status: true },
+    });
+    if (qr && !noRegressStatuses.includes(qr.status)) {
+      await prisma.quoteRequest.update({
+        where: { id: call.quoteRequestId },
+        data: { status: 'RECEIVED', responseDate: new Date() },
+      });
+    }
+  }
+
+  // Notify quote creator on every completed call (with or without extracted pricing)
+  if (call.quoteRequestId) {
+    await notifyQuoteReceived({
+      quoteRequestId: call.quoteRequestId,
+      supplierName: call.supplier?.name || 'Supplier',
+      channel: 'phone_call',
+      organizationId: call.organizationId,
+      itemsExtracted: extractedQuotes.length,
+    });
   }
 
   // Handle next actions

@@ -557,10 +557,46 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
       'VAPI URL configuration'
     );
 
+    // Build Deepgram transcriber config with custom keywords for this call.
+    // Boosts recognition of org name, part numbers, and procurement vocabulary.
+    const transcriberKeywords: string[] = [];
+    const transcriberKeyterms: string[] = [];
+
+    // Boost org name recognition (Deepgram often mangles company names)
+    if (organizationName && organizationName !== 'our company') {
+      transcriberKeyterms.push(organizationName);
+    }
+
+    // Boost part number prefixes (e.g., "AHC", "AT") and full part numbers
+    const prefixesSeen = new Set<string>();
+    for (const part of parts) {
+      // Extract alphabetic prefix (e.g., "AHC" from "AHC18598")
+      const prefixMatch = part.partNumber.match(/^[A-Za-z]+/);
+      if (prefixMatch && !prefixesSeen.has(prefixMatch[0].toUpperCase())) {
+        prefixesSeen.add(prefixMatch[0].toUpperCase());
+        transcriberKeywords.push(`${prefixMatch[0].toUpperCase()}:3`);
+      }
+      // Full part number as keyterm
+      transcriberKeyterms.push(part.partNumber);
+    }
+
+    // Common procurement terms that Deepgram may struggle with
+    transcriberKeyterms.push('parts department', 'part number', 'back order');
+
+    const transcriberConfig = {
+      provider: 'deepgram',
+      model: 'nova-3',
+      language: 'en',
+      smartFormat: true,
+      keyterm: transcriberKeyterms,
+      keywords: transcriberKeywords,
+    };
+
     // Build VAPI assistant configuration (only if not using assistant ID)
     const vapiAssistantConfig = vapiAssistantId ? undefined : {
       firstMessage: firstMessage,
       context: systemInstructions,
+      transcriber: transcriberConfig,
       model: {
         provider: 'custom-llm',
         model: 'langgraph-state-machine',
@@ -634,6 +670,7 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
       // model override MUST include provider/model/url or Vapi returns 400.
       callPayload.assistantOverrides = {
         firstMessage: firstMessage,
+        transcriber: transcriberConfig,
         model: {
           provider: 'custom-llm',
           model: 'langgraph-state-machine',

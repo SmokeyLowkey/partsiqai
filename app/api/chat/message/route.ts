@@ -85,6 +85,15 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Increment message count for user message
+    await prisma.chatConversation.update({
+      where: { id: conversation.id },
+      data: {
+        messageCount: { increment: 1 },
+        lastMessageAt: new Date(),
+      },
+    });
+
     // Determine if this is a parts search query
     const isSearchQuery = await isPartsSearchQuery(message);
     console.log('[Chat API] Is search query?', isSearchQuery, 'for message:', message);
@@ -138,6 +147,15 @@ export async function POST(req: NextRequest) {
               formattedResponse: searchResults,
               searchMetadata: searchResults.metadata,
             })),
+          },
+        });
+
+        // Increment message count for assistant message
+        await prisma.chatConversation.update({
+          where: { id: conversation.id },
+          data: {
+            messageCount: { increment: 1 },
+            lastMessageAt: new Date(),
           },
         });
 
@@ -197,6 +215,15 @@ export async function POST(req: NextRequest) {
           },
         });
 
+        // Increment message count for error message
+        await prisma.chatConversation.update({
+          where: { id: conversation.id },
+          data: {
+            messageCount: { increment: 1 },
+            lastMessageAt: new Date(),
+          },
+        });
+
         return NextResponse.json({
           conversationId: conversation.id,
           userMessage,
@@ -214,6 +241,15 @@ export async function POST(req: NextRequest) {
           content:
             "I'm here to help you find parts! Try asking me about specific part numbers or describing what you need.",
           messageType: 'TEXT',
+        },
+      });
+
+      // Increment message count for assistant message
+      await prisma.chatConversation.update({
+        where: { id: conversation.id },
+        data: {
+          messageCount: { increment: 1 },
+          lastMessageAt: new Date(),
         },
       });
 

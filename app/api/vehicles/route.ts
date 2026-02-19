@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
+import { notifyVehiclePending } from '@/lib/notifications/vehicle-pending';
 
 const VehicleSchema = z.object({
   vehicleId: z.string().min(1, 'Vehicle ID is required'),
@@ -181,6 +182,14 @@ export async function POST(req: NextRequest) {
         lastServiceDate: data.lastServiceDate ? new Date(data.lastServiceDate) : undefined,
         nextServiceDate: data.nextServiceDate ? new Date(data.nextServiceDate) : undefined,
       },
+    });
+
+    // Notify admins that a new vehicle needs search configuration
+    await notifyVehiclePending({
+      vehicleId: vehicle.id,
+      vehicleName: `${data.year} ${data.make} ${data.model}`,
+      createdByName: session.user.name || session.user.email || 'A team member',
+      organizationId: session.user.organizationId,
     });
 
     return NextResponse.json({ vehicle }, { status: 201 });
