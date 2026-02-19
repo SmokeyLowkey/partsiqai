@@ -625,6 +625,9 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
           provider: 'custom-llm',
           model: 'langgraph-state-machine',
           url: `${appUrl}/api/voip/langgraph-handler`,
+          headers: {
+            'Authorization': `Bearer ${process.env.VOIP_WEBHOOK_SECRET || 'dev-secret'}`,
+          },
           messages: [{ role: 'system', content: systemInstructions }],
         },
         // VAPI rejects `tools` in assistantOverrides, so endCall tool must be
