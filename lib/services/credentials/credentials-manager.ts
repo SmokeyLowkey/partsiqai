@@ -76,6 +76,8 @@ export class CredentialsManager {
           return {
             apiKey: process.env.OPENROUTER_API_KEY,
             defaultModel: 'meta-llama/llama-3.1-8b-instruct',
+            voiceModel: process.env.OPENROUTER_VOICE_MODEL || 'openai/gpt-4o',
+            overseerModel: process.env.OPENROUTER_OVERSEER_MODEL || undefined,
           } as T;
         }
         break;
@@ -173,7 +175,20 @@ export class CredentialsManager {
       console.warn(`[CredentialsManager] Failed to update lastUsedAt for credential ${credential.id}:`, error);
     }
 
-    return decryptCredentials<T>(credential.credentials);
+    const decrypted = decryptCredentials<Record<string, any>>(credential.credentials);
+
+    // Merge config data (e.g., defaultModel, voiceModel) into the credentials object.
+    // Config is stored encrypted in a separate field by saveCredentials().
+    if (credential.config && typeof credential.config === 'string') {
+      try {
+        const configData = decryptCredentials<Record<string, any>>(credential.config as string);
+        return { ...decrypted, ...configData } as T;
+      } catch (error) {
+        console.warn(`[CredentialsManager] Failed to decrypt config for ${type}:`, error);
+      }
+    }
+
+    return decrypted as T;
   }
 
   /**

@@ -14,6 +14,7 @@ import type {
   VoipCallInitiationJobData,
   VoipFallbackJobData,
   VoipCallRetryJobData,
+  CommanderEventJobData,
 } from './types';
 
 export const QUEUE_NAMES = {
@@ -30,6 +31,7 @@ export const QUEUE_NAMES = {
   VOIP_CALL_INITIATION: 'voip-call-initiation',
   VOIP_FALLBACK: 'voip-fallback',
   VOIP_CALL_RETRY: 'voip-call-retry',
+  COMMANDER_EVENTS: 'commander-events',
 } as const;
 
 const defaultJobOptions = {
@@ -177,6 +179,20 @@ export const voipCallRetryQueue = new Queue<VoipCallRetryJobData, any, string>(
       attempts: 1, // Single attempt per retry job
       removeOnComplete: { age: 86400, count: 100 },
       removeOnFail: { age: 604800, count: 100 },
+    },
+  }
+);
+
+// Commander Events Queue (Overseer → Commander)
+export const commanderEventsQueue = new Queue<CommanderEventJobData, any, string>(
+  QUEUE_NAMES.COMMANDER_EVENTS,
+  {
+    connection: redisConnection,
+    defaultJobOptions: {
+      ...defaultJobOptions,
+      attempts: 1, // Commander events are idempotent, no retry needed
+      removeOnComplete: { age: 3600, count: 100 },
+      removeOnFail: { age: 86400, count: 100 },
     },
   }
 );

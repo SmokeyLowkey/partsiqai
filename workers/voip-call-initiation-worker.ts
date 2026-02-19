@@ -10,6 +10,7 @@ import { CredentialsManager } from '@/lib/services/credentials/credentials-manag
 import { initializeCallState } from '@/lib/voip/call-graph';
 import { saveCallState } from '@/lib/voip/state-manager';
 import { addMessage } from '@/lib/voip/helpers';
+import { initOverseerState, saveOverseerState } from '@/lib/voip/overseer/state';
 
 interface VapiCredentials {
   apiKey: string;
@@ -501,6 +502,10 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
 
     try {
       await saveCallState(callLog.id, stateWithGreeting);
+
+      // Initialize Overseer state for this call
+      const overseerState = initOverseerState(callLog.id);
+      await saveOverseerState(callLog.id, overseerState);
 
       logger.info(
         {

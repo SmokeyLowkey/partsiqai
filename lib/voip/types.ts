@@ -67,6 +67,9 @@ export interface CallState {
   // Follow-up call tracking
   isFollowUp: boolean;
 
+  // Turn counter (incremented on each supplier message, used by Overseer for stale nudge detection)
+  turnNumber: number;
+
   // Call outcome
   status: 'in_progress' | 'completed' | 'failed' | 'needs_callback' | 'escalated';
   outcome?: string;

@@ -167,7 +167,9 @@ export default function SettingsPage() {
 
   const [openRouterConfig, setOpenRouterConfig] = useState({
     apiKey: "",
-    defaultModel: "anthropic/claude-3.5-sonnet",
+    defaultModel: "anthropic/claude-4.5-sonnet-20250929",
+    voiceModel: "openai/gpt-4o",
+    overseerModel: "",
   });
 
   const [pineconeConfig, setPineconeConfig] = useState({
@@ -198,7 +200,9 @@ export default function SettingsPage() {
   // Platform-wide integration states for master admin
   const [platformOpenRouterConfig, setPlatformOpenRouterConfig] = useState({
     apiKey: "",
-    defaultModel: "anthropic/claude-3.5-sonnet",
+    defaultModel: "anthropic/claude-4.5-sonnet-20250929",
+    voiceModel: "openai/gpt-4o",
+    overseerModel: "",
   });
   const [platformPineconeConfig, setPlatformPineconeConfig] = useState({
     apiKey: "",
@@ -442,7 +446,9 @@ export default function SettingsPage() {
         const openRouterCreds = creds.OPENROUTER || {};
         setPlatformOpenRouterConfig({
           apiKey: openRouterCreds.apiKey || "",
-          defaultModel: openRouterCreds.defaultModel || "anthropic/claude-3.5-sonnet",
+          defaultModel: openRouterCreds.defaultModel || "anthropic/claude-4.5-sonnet-20250929",
+          voiceModel: openRouterCreds.voiceModel || "openai/gpt-4o",
+          overseerModel: openRouterCreds.overseerModel || "",
         });
 
         // Pinecone
@@ -571,7 +577,7 @@ export default function SettingsPage() {
       switch (type) {
         case "OPENROUTER":
           credentials = { apiKey: openRouterConfig.apiKey };
-          config = { defaultModel: openRouterConfig.defaultModel };
+          config = { defaultModel: openRouterConfig.defaultModel, voiceModel: openRouterConfig.voiceModel, overseerModel: openRouterConfig.overseerModel };
           break;
         case "PINECONE":
           credentials = { apiKey: pineconeConfig.apiKey, host: pineconeConfig.host };
@@ -727,6 +733,8 @@ export default function SettingsPage() {
           credentials = {
             apiKey: platformOpenRouterConfig.apiKey,
             defaultModel: platformOpenRouterConfig.defaultModel,
+            voiceModel: platformOpenRouterConfig.voiceModel,
+            overseerModel: platformOpenRouterConfig.overseerModel,
           };
           break;
 
@@ -1295,7 +1303,7 @@ export default function SettingsPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Default Model</Label>
+                <Label>Search Model</Label>
                 <Select
                   value={openRouterConfig.defaultModel}
                   onValueChange={(value) => setOpenRouterConfig({ ...openRouterConfig, defaultModel: value })}
@@ -1304,14 +1312,63 @@ export default function SettingsPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="anthropic/claude-4.5-sonnet-20250929">Claude Sonnet 4.5</SelectItem>
+                    <SelectItem value="anthropic/claude-4.5-opus-20251124">Claude Opus 4.5</SelectItem>
+                    <SelectItem value="anthropic/claude-4.6-opus-20260205">Claude Opus 4.6</SelectItem>
                     <SelectItem value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</SelectItem>
-                    <SelectItem value="anthropic/claude-3-opus">Claude 3 Opus</SelectItem>
-                    <SelectItem value="openai/gpt-4-turbo">GPT-4 Turbo</SelectItem>
+                    <SelectItem value="openai/gpt-4.1-2025-04-14">GPT-4.1</SelectItem>
                     <SelectItem value="openai/gpt-4o">GPT-4o</SelectItem>
-                    <SelectItem value="openai/gpt-4.1">GPT-4.1</SelectItem>
-                    <SelectItem value="google/gemini-pro">Gemini Pro</SelectItem>
+                    <SelectItem value="openai/gpt-5.2-20251211">GPT-5.2</SelectItem>
+                    <SelectItem value="google/gemini-2.5-pro">Gemini 2.5 Pro</SelectItem>
+                    <SelectItem value="google/gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Voice Agent Model</Label>
+                <Select
+                  value={openRouterConfig.voiceModel}
+                  onValueChange={(value) => setOpenRouterConfig({ ...openRouterConfig, voiceModel: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="openai/gpt-4o">GPT-4o (recommended)</SelectItem>
+                    <SelectItem value="openai/gpt-4o-mini">GPT-4o Mini (fastest)</SelectItem>
+                    <SelectItem value="openai/gpt-4.1-mini-2025-04-14">GPT-4.1 Mini</SelectItem>
+                    <SelectItem value="openai/gpt-4.1-nano-2025-04-14">GPT-4.1 Nano (fastest)</SelectItem>
+                    <SelectItem value="openai/gpt-5-nano-2025-08-07">GPT-5 Nano</SelectItem>
+                    <SelectItem value="anthropic/claude-4.5-haiku-20251001">Claude Haiku 4.5</SelectItem>
+                    <SelectItem value="anthropic/claude-3.5-haiku">Claude 3.5 Haiku</SelectItem>
+                    <SelectItem value="google/gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
+                    <SelectItem value="google/gemini-2.0-flash-001">Gemini 2.0 Flash</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Sub-300ms model for voice calls. Faster models reduce dead air.</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Overseer Model</Label>
+                <Select
+                  value={openRouterConfig.overseerModel}
+                  onValueChange={(value) => setOpenRouterConfig({ ...openRouterConfig, overseerModel: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Use Search Model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">(Use Search Model)</SelectItem>
+                    <SelectItem value="anthropic/claude-4.5-sonnet-20250929">Claude Sonnet 4.5</SelectItem>
+                    <SelectItem value="anthropic/claude-4.5-opus-20251124">Claude Opus 4.5</SelectItem>
+                    <SelectItem value="anthropic/claude-4.6-opus-20260205">Claude Opus 4.6</SelectItem>
+                    <SelectItem value="openai/gpt-4.1-2025-04-14">GPT-4.1</SelectItem>
+                    <SelectItem value="openai/gpt-4o">GPT-4o</SelectItem>
+                    <SelectItem value="openai/gpt-5.2-20251211">GPT-5.2</SelectItem>
+                    <SelectItem value="google/gemini-2.5-pro">Gemini 2.5 Pro</SelectItem>
+                    <SelectItem value="google/gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Model for call oversight. Runs async — no latency constraint. Falls back to Search Model.</p>
               </div>
             </div>
 
@@ -1749,7 +1806,7 @@ export default function SettingsPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Default Model</Label>
+                <Label>Search Model</Label>
                 <Select
                   value={platformOpenRouterConfig.defaultModel}
                   onValueChange={(value) => setPlatformOpenRouterConfig({ ...platformOpenRouterConfig, defaultModel: value })}
@@ -1758,13 +1815,63 @@ export default function SettingsPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="anthropic/claude-4.5-sonnet-20250929">Claude Sonnet 4.5</SelectItem>
+                    <SelectItem value="anthropic/claude-4.5-opus-20251124">Claude Opus 4.5</SelectItem>
+                    <SelectItem value="anthropic/claude-4.6-opus-20260205">Claude Opus 4.6</SelectItem>
                     <SelectItem value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</SelectItem>
-                    <SelectItem value="anthropic/claude-3-opus">Claude 3 Opus</SelectItem>
-                    <SelectItem value="openai/gpt-4-turbo">GPT-4 Turbo</SelectItem>
+                    <SelectItem value="openai/gpt-4.1-2025-04-14">GPT-4.1</SelectItem>
                     <SelectItem value="openai/gpt-4o">GPT-4o</SelectItem>
-                    <SelectItem value="google/gemini-pro">Gemini Pro</SelectItem>
+                    <SelectItem value="openai/gpt-5.2-20251211">GPT-5.2</SelectItem>
+                    <SelectItem value="google/gemini-2.5-pro">Gemini 2.5 Pro</SelectItem>
+                    <SelectItem value="google/gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Voice Agent Model</Label>
+                <Select
+                  value={platformOpenRouterConfig.voiceModel}
+                  onValueChange={(value) => setPlatformOpenRouterConfig({ ...platformOpenRouterConfig, voiceModel: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="openai/gpt-4o">GPT-4o (recommended)</SelectItem>
+                    <SelectItem value="openai/gpt-4o-mini">GPT-4o Mini (fastest)</SelectItem>
+                    <SelectItem value="openai/gpt-4.1-mini-2025-04-14">GPT-4.1 Mini</SelectItem>
+                    <SelectItem value="openai/gpt-4.1-nano-2025-04-14">GPT-4.1 Nano (fastest)</SelectItem>
+                    <SelectItem value="openai/gpt-5-nano-2025-08-07">GPT-5 Nano</SelectItem>
+                    <SelectItem value="anthropic/claude-4.5-haiku-20251001">Claude Haiku 4.5</SelectItem>
+                    <SelectItem value="anthropic/claude-3.5-haiku">Claude 3.5 Haiku</SelectItem>
+                    <SelectItem value="google/gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
+                    <SelectItem value="google/gemini-2.0-flash-001">Gemini 2.0 Flash</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Sub-300ms model for voice calls. Faster models reduce dead air.</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Overseer Model</Label>
+                <Select
+                  value={platformOpenRouterConfig.overseerModel}
+                  onValueChange={(value) => setPlatformOpenRouterConfig({ ...platformOpenRouterConfig, overseerModel: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Use Search Model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">(Use Search Model)</SelectItem>
+                    <SelectItem value="anthropic/claude-4.5-sonnet-20250929">Claude Sonnet 4.5</SelectItem>
+                    <SelectItem value="anthropic/claude-4.5-opus-20251124">Claude Opus 4.5</SelectItem>
+                    <SelectItem value="anthropic/claude-4.6-opus-20260205">Claude Opus 4.6</SelectItem>
+                    <SelectItem value="openai/gpt-4.1-2025-04-14">GPT-4.1</SelectItem>
+                    <SelectItem value="openai/gpt-4o">GPT-4o</SelectItem>
+                    <SelectItem value="openai/gpt-5.2-20251211">GPT-5.2</SelectItem>
+                    <SelectItem value="google/gemini-2.5-pro">Gemini 2.5 Pro</SelectItem>
+                    <SelectItem value="google/gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Model for call oversight. Runs async — no latency constraint. Falls back to Search Model.</p>
               </div>
             </div>
 

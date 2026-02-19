@@ -7,6 +7,7 @@
 
 import { CallState, ExtractedQuote } from './types';
 import { OpenRouterClient } from '@/lib/services/llm/openrouter-client';
+import { OverseerNudge } from './overseer/types';
 import {
   getLastSupplierResponse,
   addMessage,
@@ -650,25 +651,20 @@ function nextNodeAfterPricing(state: CallState): string {
  * Conversational Response Node - Handle follow-up questions and clarifications
  * Uses LLM to generate contextually appropriate responses based on conversation history
  */
-export async function conversationalResponseNode(
-  llmClient: OpenRouterClient,
-  state: CallState
-): Promise<CallState> {
-  const lastResponse = getLastSupplierResponse(state);
-  
-  // Build conversation context for the LLM
+/**
+ * Build the prompt for conversational response generation.
+ * Shared by both streaming and non-streaming paths.
+ */
+function buildConversationalPrompt(state: CallState, lastResponse: string, nudge?: OverseerNudge | null): string {
   const conversationContext = state.conversationHistory
-    .slice(-6) // Only last 6 messages to keep prompt focused
+    .slice(-6)
     .map(msg => `${msg.speaker === 'ai' ? 'You' : 'Supplier'}: ${msg.text}`)
     .join('\n');
-  
-  // Build parts context
+
   const partsContext = state.parts
     .map(p => `${p.partNumber} (${p.description}) - Qty: ${p.quantity}`)
     .join(', ');
 
-  // Build substitute context — tell the LLM about any substitutes already detected
-  // so it doesn't keep asking about original part numbers
   const substituteQuotes = state.quotes.filter(q => q.isSubstitute && q.originalPartNumber);
   let substituteContext = '';
   if (substituteQuotes.length > 0) {
@@ -680,7 +676,6 @@ export async function conversationalResponseNode(
       '\nDo NOT ask about the original part numbers listed above — they have been superseded. Ask for pricing on the substitute if not yet quoted.\n';
   }
 
-  // Build uncovered parts context — parts with no quotes at all
   const uncoveredParts = state.parts.filter(part =>
     part.partNumber !== 'MISC-COSTS' &&
     !state.quotes.some(q =>
@@ -694,15 +689,12 @@ export async function conversationalResponseNode(
       '\nYou MUST ask the supplier about these parts if they haven\'t been discussed yet. Say something like "Could you also check on [part number]?"\n';
   }
 
-  // Build custom context if available
   const additionalContext = state.customContext || '';
-
-  // Build follow-up context if applicable
   const followUpContext = state.isFollowUp && state.customInstructions
     ? `\nFOLLOW-UP CALL PURPOSE: ${state.customInstructions}\nThis is a follow-up call. Reference the previous quote when relevant. Focus on the follow-up objectives.\n`
     : '';
 
-  const prompt = `You are on a phone call getting quotes for parts. Answer the supplier's question naturally.
+  return `You are on a phone call getting quotes for parts. Answer the supplier's question naturally.
 
 Context: ${additionalContext}
 ${followUpContext}
@@ -731,34 +723,135 @@ PART NUMBER FORMATTING — CRITICAL:
 - NEVER read digit sequences as whole numbers (e.g., do NOT say "five hundred fourteen thousand eight hundred" for 514800).
 - Keep part number references short and exact. Example: "AT495366" not "alpha tango four nine five three six six".
 
-Respond in 1-2 sentences. Don't add meta-commentary — just give the direct response.`;
+Respond in 1-2 sentences. Don't add meta-commentary — just give the direct response.${nudge ? formatNudgeForPrompt(nudge) : ''}`;
+}
+
+/** Format an Overseer nudge for injection into the voice agent prompt */
+function formatNudgeForPrompt(nudge: OverseerNudge): string {
+  const priorityLabels: Record<string, string> = {
+    P0: 'CRITICAL — you MUST address this in your next response',
+    P1: 'IMPORTANT — you SHOULD address this',
+    P2: 'SUGGESTION — consider this if natural',
+  };
+  const label = priorityLabels[nudge.priority] || nudge.priority;
+  const phaseNote = nudge.phaseTransition
+    ? `\nPHASE TRANSITION: Move to ${nudge.phaseTransition} phase.`
+    : '';
+
+  return `
+
+SUPERVISOR GUIDANCE (from your call supervisor — follow these instructions):
+[${nudge.priority}] ${label}: ${nudge.text}${phaseNote}`;
+}
+
+/** Clean meta-commentary from LLM response */
+function cleanMetaCommentary(response: string): string {
+  return response
+    .replace(/^(here'?s? my (response|result|answer):?|my (response|result|answer):?)\s*/i, '')
+    .trim();
+}
+
+export async function conversationalResponseNode(
+  llmClient: OpenRouterClient,
+  state: CallState,
+  nudge?: OverseerNudge | null,
+): Promise<CallState> {
+  const lastResponse = getLastSupplierResponse(state);
+  const prompt = buildConversationalPrompt(state, lastResponse, nudge);
 
   try {
     let response = await llmClient.generateCompletion(prompt, {
       temperature: 0.4,
-      model: 'anthropic/claude-3.5-sonnet', // Upgrade for better context awareness
+      model: llmClient.getVoiceModel(),
       maxTokens: 150,
     });
 
-    // Clean up meta-commentary more aggressively (must be done BEFORE adding to state)
-    response = response
-      .replace(/^(here'?s? my (response|result|answer):?|my (response|result|answer):?)\\s*/i, '')
-      .trim();
-
-    // Replace any raw part numbers with TTS-safe formatted versions.
-    // The LLM may output "AT331812" or "AT510302" which TTS will mangle.
-    // We find anything that looks like a part number and format it for speech.
+    response = cleanMetaCommentary(response);
     response = formatPartNumbersInText(response, state.parts);
 
     return addMessage(state, 'ai', response);
   } catch (error) {
     console.error('Conversational response generation error:', error);
-    // Fallback response
-    return addMessage(
-      state,
-      'ai',
-      "Could you repeat that?"
-    );
+    return addMessage(state, 'ai', "Could you repeat that?");
+  }
+}
+
+/**
+ * Streaming variant of conversationalResponseNode.
+ * Yields processed sentence chunks via callback for real-time SSE to VAPI.
+ * Uses sentence-level buffering so part number formatting works correctly.
+ */
+export async function streamConversationalResponse(
+  llmClient: OpenRouterClient,
+  state: CallState,
+  onSentence: (sentence: string) => void,
+  nudge?: OverseerNudge | null,
+): Promise<CallState> {
+  const lastResponse = getLastSupplierResponse(state);
+  const prompt = buildConversationalPrompt(state, lastResponse, nudge);
+
+  try {
+    const messages: Array<{ role: 'user'; content: string }> = [
+      { role: 'user', content: prompt },
+    ];
+
+    let fullResponse = '';
+    let sentenceBuffer = '';
+    let isFirstSentence = true;
+
+    const SENTENCE_TERMINATORS = /[.?!]\s*$/;
+    const MAX_BUFFER_TOKENS = 50;
+    let bufferTokenCount = 0;
+
+    for await (const token of llmClient.streamChat(messages, {
+      temperature: 0.4,
+      model: llmClient.getVoiceModel(),
+      maxTokens: 150,
+    })) {
+      fullResponse += token;
+      sentenceBuffer += token;
+      bufferTokenCount++;
+
+      const hasSentenceEnd = SENTENCE_TERMINATORS.test(sentenceBuffer);
+      const bufferOverflow = bufferTokenCount >= MAX_BUFFER_TOKENS;
+
+      if (hasSentenceEnd || bufferOverflow) {
+        let processed = sentenceBuffer;
+        if (isFirstSentence) {
+          processed = cleanMetaCommentary(processed);
+          isFirstSentence = false;
+        }
+        processed = formatPartNumbersInText(processed.trim(), state.parts);
+
+        if (processed.length > 0) {
+          onSentence(processed);
+        }
+
+        sentenceBuffer = '';
+        bufferTokenCount = 0;
+      }
+    }
+
+    // Flush remaining buffer
+    if (sentenceBuffer.trim().length > 0) {
+      let processed = sentenceBuffer;
+      if (isFirstSentence) {
+        processed = cleanMetaCommentary(processed);
+      }
+      processed = formatPartNumbersInText(processed.trim(), state.parts);
+      if (processed.length > 0) {
+        onSentence(processed);
+      }
+    }
+
+    // Store cleaned full response in state
+    fullResponse = cleanMetaCommentary(fullResponse);
+    fullResponse = formatPartNumbersInText(fullResponse, state.parts);
+
+    return addMessage(state, 'ai', fullResponse);
+  } catch (error) {
+    console.error('Streaming conversational response error:', error);
+    throw error;
   }
 }
 
@@ -1108,11 +1201,127 @@ export async function routeFromConfirmation(
 }
 
 /**
- * Simple graph execution - processes one turn at a time
+ * Route from conversational_response node.
+ * Extracted so it can be shared by processCallTurn and the streaming handler.
+ * May mutate state (e.g., merging extracted quotes).
+ */
+export async function routeFromConversationalResponse(
+  llmClient: OpenRouterClient,
+  state: CallState
+): Promise<{ nextNode: string; state: CallState }> {
+  let newState = state;
+  const lastSupplierMsg = getLastSupplierResponse(newState);
+  const lastSupplierLower = lastSupplierMsg.toLowerCase();
+
+  // Hold/wait patterns — supplier is looking something up
+  const convHoldPatterns = [
+    'one moment', 'just a moment', 'hold on', 'hold please',
+    'one second', 'just a sec', 'hang on', 'one sec',
+    'give me a moment', 'give me a sec', 'give me a minute',
+    'bear with me', 'hang tight', 'just a minute',
+  ];
+  if (convHoldPatterns.some(p => lastSupplierLower.includes(p))) {
+    return { nextNode: 'hold_acknowledgment', state: newState };
+  }
+
+  // Check if supplier is wrapping up the call
+  const isWrappingUp = /\b(bye|goodbye|thanks|thank you|have a (good|great|nice) day)\b/i.test(lastSupplierMsg);
+  if (isWrappingUp) {
+    return { nextNode: 'polite_end', state: newState };
+  }
+
+  // If we already have pricing for all parts, move forward — but check if
+  // the supplier just asked a question first (shipping address, account, etc.)
+  if (hasPricingForAllParts(newState)) {
+    if (await detectQuestion(lastSupplierMsg)) {
+      return { nextNode: 'conversational_response', state: newState };
+    } else {
+      return { nextNode: nextNodeAfterPricing(newState), state: newState };
+    }
+  }
+
+  // Try to extract pricing from current response (with conversation context).
+  const convQuotes = await extractPricing(llmClient, lastSupplierMsg, newState.parts,
+    newState.conversationHistory.slice(-6));
+  if (convQuotes.length > 0 && convQuotes.some(q => q.price)) {
+    const mergedState = mergeExtractedQuotes(newState, convQuotes);
+    newState = mergedState;
+    return { nextNode: nextNodeAfterPricing(mergedState), state: newState };
+  }
+
+  // If supplier mentioned a substitute part or fitment rejection, capture it.
+  if (detectSubstitute(lastSupplierMsg) || detectFitmentRejection(lastSupplierMsg)) {
+    const subHistory = newState.conversationHistory.slice(-8);
+    const subQuotes = await extractPricing(llmClient, lastSupplierMsg, newState.parts, subHistory);
+    if (subQuotes.length > 0) {
+      newState = mergeExtractedQuotes(newState, subQuotes);
+    } else {
+      const subInfo = await extractSubstituteInfo(llmClient, lastSupplierMsg, newState.parts, subHistory);
+      if (subInfo) {
+        const substituteQuote = {
+          partNumber: subInfo.substitutePartNumber,
+          availability: 'in_stock' as const,
+          isSubstitute: true,
+          originalPartNumber: subInfo.originalPartNumber,
+          notes: subInfo.notes || 'Substitute offered by supplier — awaiting pricing',
+        };
+        newState = mergeExtractedQuotes(newState, [substituteQuote]);
+      }
+    }
+    return { nextNode: 'conversational_response', state: newState };
+  }
+
+  // Only go back to quote_request if early AND no pricing collected yet
+  if (newState.conversationHistory.length <= 4 && newState.quotes.length === 0) {
+    return { nextNode: 'quote_request', state: newState };
+  }
+
+  const isQuestion = await detectQuestion(lastSupplierMsg);
+
+  // If supplier is asking a verification question (serial number, fitment),
+  // always stay in conversation regardless of turn count
+  if (isVerificationQuestion(lastSupplierMsg)) {
+    return { nextNode: 'conversational_response', state: newState };
+  }
+
+  // If supplier is asking to repeat, go back to quote_request for phonetic spelling
+  if (isAskingToRepeat(lastSupplierMsg)) {
+    return { nextNode: 'quote_request', state: newState };
+  }
+
+  // If supplier says part doesn't fit, stay conversational to get alternatives
+  if (detectFitmentRejection(lastSupplierMsg)) {
+    return { nextNode: 'conversational_response', state: newState };
+  }
+
+  // If supplier is actively offering help or looking something up, NEVER end
+  const stillEngaged = /\b(let me|i('ll| will) (give|get|look|check|pull)|give you|here('s| is)|look(ing)? (it |that )?up|one moment|give me a (sec|moment|minute)|checking|pulling (it |that )?up|hold on|just a (sec|moment|minute))\b/i.test(lastSupplierMsg);
+  if (stillEngaged) {
+    return { nextNode: 'conversational_response', state: newState };
+  }
+
+  if (isQuestion && newState.conversationHistory.length > 24) {
+    return { nextNode: 'polite_end', state: newState };
+  }
+
+  // Check if supplier seems stuck/confused
+  const seemsStuck = /\b(what|huh|repeat|again|didn'?t (catch|hear|get) that)\b/i.test(lastSupplierMsg);
+  if (seemsStuck && newState.clarificationAttempts < 2) {
+    return { nextNode: 'clarification', state: newState };
+  }
+
+  return { nextNode: 'conversational_response', state: newState };
+}
+
+/**
+ * Simple graph execution - processes one turn at a time.
+ * Accepts an optional Overseer nudge that is passed through to LLM-powered nodes
+ * and checked for phase transition overrides after routing.
  */
 export async function processCallTurn(
   llmClient: OpenRouterClient,
-  state: CallState
+  state: CallState,
+  nudge?: OverseerNudge | null,
 ): Promise<CallState> {
   // Already completed or escalated — don't process more turns
   if (state.status === 'completed' || state.status === 'escalated') {
@@ -1140,7 +1349,7 @@ export async function processCallTurn(
       // it returns state unchanged with no AI message. Fall through to
       // conversational response to avoid a silent turn.
       if (newState.conversationHistory.length === state.conversationHistory.length) {
-        newState = await conversationalResponseNode(llmClient, state);
+        newState = await conversationalResponseNode(llmClient, state, nudge);
       }
       break;
     case 'confirmation':
@@ -1174,16 +1383,16 @@ export async function processCallTurn(
       newState = miscCostsInquiryNode(state);
       break;
     case 'conversational_response':
-      newState = await conversationalResponseNode(llmClient, state);
+      newState = await conversationalResponseNode(llmClient, state, nudge);
       break;
     case 'end':
       // If we're at end but receiving more input, use conversational response
-      newState = await conversationalResponseNode(llmClient, state);
+      newState = await conversationalResponseNode(llmClient, state, nudge);
       break;
     default:
       console.warn(`Unknown node: ${currentNode}`);
       // Fall back to conversational response for unknown nodes
-      newState = await conversationalResponseNode(llmClient, state);
+      newState = await conversationalResponseNode(llmClient, state, nudge);
       break;
   }
 
@@ -1292,126 +1501,9 @@ export async function processCallTurn(
       break;
     }
     case 'conversational_response': {
-      // After a conversational response, detect what to do next
-      const lastSupplierMsg = getLastSupplierResponse(newState);
-      const lastSupplierLower = lastSupplierMsg.toLowerCase();
-
-      // Hold/wait patterns — supplier is looking something up
-      const convHoldPatterns = [
-        'one moment', 'just a moment', 'hold on', 'hold please',
-        'one second', 'just a sec', 'hang on', 'one sec',
-        'give me a moment', 'give me a sec', 'give me a minute',
-        'bear with me', 'hang tight', 'just a minute',
-      ];
-      if (convHoldPatterns.some(p => lastSupplierLower.includes(p))) {
-        nextNode = 'hold_acknowledgment';
-        break;
-      }
-
-      // Check if supplier is wrapping up the call
-      const isWrappingUp = /\b(bye|goodbye|thanks|thank you|have a (good|great|nice) day)\b/i.test(lastSupplierMsg);
-      if (isWrappingUp) {
-        nextNode = 'polite_end';
-        break;
-      }
-
-      // If we already have pricing for all parts, move forward — but check if
-      // the supplier just asked a question first (shipping address, account, etc.)
-      if (hasPricingForAllParts(newState)) {
-        if (await detectQuestion(lastSupplierMsg)) {
-          nextNode = 'conversational_response';
-        } else {
-          nextNode = nextNodeAfterPricing(newState);
-        }
-        break;
-      }
-
-      // Try to extract pricing from current response (with conversation context).
-      // Include substitute parts in extraction by passing all known parts.
-      const convQuotes = await extractPricing(llmClient, lastSupplierMsg, newState.parts,
-        newState.conversationHistory.slice(-6));
-      if (convQuotes.length > 0 && convQuotes.some(q => q.price)) {
-        // Merge extracted quotes into state (handles substitutes too)
-        const mergedState = mergeExtractedQuotes(newState, convQuotes);
-        // Save the merged state so pricing isn't lost
-        newState = mergedState;
-        nextNode = nextNodeAfterPricing(mergedState);
-        break;
-      }
-
-      // If supplier mentioned a substitute part or fitment rejection, capture it.
-      // Try extractPricing first (gets substitute + price), then fall back to
-      // extractSubstituteInfo (gets just the substitute part number without pricing).
-      if (detectSubstitute(lastSupplierMsg) || detectFitmentRejection(lastSupplierMsg)) {
-        const subHistory = newState.conversationHistory.slice(-8);
-        const subQuotes = await extractPricing(llmClient, lastSupplierMsg, newState.parts, subHistory);
-        if (subQuotes.length > 0) {
-          newState = mergeExtractedQuotes(newState, subQuotes);
-        } else {
-          // No pricing found — try to extract just the substitute part number
-          const subInfo = await extractSubstituteInfo(llmClient, lastSupplierMsg, newState.parts, subHistory);
-          if (subInfo) {
-            const substituteQuote = {
-              partNumber: subInfo.substitutePartNumber,
-              availability: 'in_stock' as const,
-              isSubstitute: true,
-              originalPartNumber: subInfo.originalPartNumber,
-              notes: subInfo.notes || 'Substitute offered by supplier — awaiting pricing',
-            };
-            newState = mergeExtractedQuotes(newState, [substituteQuote]);
-          }
-        }
-        nextNode = 'conversational_response';
-        break;
-      }
-
-      // Only go back to quote_request if early AND no pricing collected yet
-      if (newState.conversationHistory.length <= 4 && newState.quotes.length === 0) {
-        nextNode = 'quote_request';
-        break;
-      }
-
-      const isQuestion = await detectQuestion(lastSupplierMsg);
-
-      // If supplier is asking a verification question (serial number, fitment),
-      // always stay in conversation regardless of turn count
-      if (isVerificationQuestion(lastSupplierMsg)) {
-        nextNode = 'conversational_response';
-        break;
-      }
-
-      // If supplier is asking to repeat, go back to quote_request for phonetic spelling
-      if (isAskingToRepeat(lastSupplierMsg)) {
-        nextNode = 'quote_request';
-        break;
-      }
-
-      // If supplier says part doesn't fit, stay conversational to get alternatives
-      if (detectFitmentRejection(lastSupplierMsg)) {
-        nextNode = 'conversational_response';
-        break;
-      }
-
-      // If supplier is actively offering help or looking something up, NEVER end
-      const stillEngaged = /\b(let me|i('ll| will) (give|get|look|check|pull)|give you|here('s| is)|look(ing)? (it |that )?up|one moment|give me a (sec|moment|minute)|checking|pulling (it |that )?up|hold on|just a (sec|moment|minute))\b/i.test(lastSupplierMsg);
-      if (stillEngaged) {
-        nextNode = 'conversational_response';
-        break;
-      }
-
-      if (isQuestion && newState.conversationHistory.length > 24) {
-        // Only end after many exchanges (24+), not 14
-        nextNode = 'polite_end';
-        break;
-      }
-
-      // Check if supplier seems stuck/confused
-      const seemsStuck = /\b(what|huh|repeat|again|didn'?t (catch|hear|get) that)\b/i.test(lastSupplierMsg);
-      if (seemsStuck && newState.clarificationAttempts < 2) {
-        nextNode = 'clarification';
-      } else {
-        nextNode = 'conversational_response';
-      }
+      const convResult = await routeFromConversationalResponse(llmClient, newState);
+      newState = convResult.state;
+      nextNode = convResult.nextNode;
       break;
     }
     case 'voicemail':
@@ -1425,6 +1517,20 @@ export async function processCallTurn(
       break;
     default:
       nextNode = 'end';
+  }
+
+  // Phase transition override: if the Overseer nudge includes a phase transition,
+  // override the routing decision to enforce the new phase.
+  if (nudge?.phaseTransition) {
+    const phaseNodeMap: Record<string, string> = {
+      NEGOTIATE: 'negotiate',
+      FINALIZE: 'confirmation',
+    };
+    const overrideNode = phaseNodeMap[nudge.phaseTransition];
+    if (overrideNode && nextNode !== 'polite_end' && nextNode !== 'end' &&
+        newState.status !== 'completed' && newState.status !== 'escalated') {
+      nextNode = overrideNode;
+    }
   }
 
   return {
@@ -1502,6 +1608,7 @@ export function initializeCallState(params: {
     miscCostsAsked: false,
     waitingForTransfer: false,
     isFollowUp,
+    turnNumber: 0,
     status: 'in_progress',
   };
 }

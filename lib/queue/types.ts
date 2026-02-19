@@ -236,3 +236,24 @@ export const VoipCallRetryJobSchema = z.object({
 });
 
 export type VoipCallRetryJobData = z.infer<typeof VoipCallRetryJobSchema>;
+
+// Commander Event Job (Overseer → Commander)
+export const CommanderEventJobSchema = z.object({
+  callId: z.string(),
+  quoteRequestId: z.string(),
+  supplierName: z.string(),
+  eventType: z.enum([
+    'quote_received',
+    'quote_rejected',
+    'negotiation_stalled',
+    'transfer_in_progress',
+    'supplier_wants_callback',
+    'call_ended',
+    'error_detected',
+  ]),
+  timestamp: z.number(),
+  data: z.record(z.any()),
+  organizationId: z.string(),
+});
+
+export type CommanderEventJobData = z.infer<typeof CommanderEventJobSchema>;

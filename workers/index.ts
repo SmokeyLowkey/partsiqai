@@ -26,6 +26,7 @@ import { partsIngestionWorker } from './parts-ingestion-worker';
 import { analyticsCollectionWorker } from './analytics-collection-worker';
 import { startVoipCallInitiationWorker } from './voip-call-initiation-worker';
 import { startVoipFallbackWorker } from './voip-fallback-worker';
+import { startCommanderWorker } from './commander-worker';
 // Retry worker disabled — retries are now user-controlled from the UI
 // import { startVoipCallRetryWorker } from './voip-call-retry-worker';
 
@@ -34,6 +35,7 @@ workerLogger.info('Starting PartsIQ Workers');
 // Start VOIP workers
 const voipCallInitiationWorker = startVoipCallInitiationWorker();
 const voipFallbackWorker = startVoipFallbackWorker();
+const commanderWorker = startCommanderWorker();
 // const voipCallRetryWorker = startVoipCallRetryWorker();
 
 // Email monitoring is handled by Vercel cron (/api/cron/email-monitor) every 15 minutes.
@@ -50,6 +52,7 @@ const workers = [
   { name: 'Analytics Collection', worker: analyticsCollectionWorker },
   { name: 'VOIP Call Initiation', worker: voipCallInitiationWorker },
   { name: 'VOIP Fallback', worker: voipFallbackWorker },
+  { name: 'Commander', worker: commanderWorker },
   // { name: 'VOIP Call Retry', worker: voipCallRetryWorker },
 ];
 

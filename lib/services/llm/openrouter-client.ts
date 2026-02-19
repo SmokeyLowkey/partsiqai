@@ -13,8 +13,10 @@ export interface CompletionOptions {
 export class OpenRouterClient {
   private client: OpenAI;
   private defaultModel: string;
+  private voiceModel: string;
+  private overseerModel: string;
 
-  private constructor(apiKey: string, defaultModel?: string) {
+  private constructor(apiKey: string, defaultModel?: string, voiceModel?: string, overseerModel?: string) {
     this.client = new OpenAI({
       baseURL: 'https://openrouter.ai/api/v1',
       apiKey,
@@ -24,6 +26,24 @@ export class OpenRouterClient {
       },
     });
     this.defaultModel = defaultModel || 'anthropic/claude-3.5-sonnet';
+    this.voiceModel = voiceModel || 'openai/gpt-4o';
+    this.overseerModel = overseerModel || this.defaultModel;
+  }
+
+  /**
+   * Get the configured voice model (sub-300ms inference for real-time calls).
+   * Per procurement architecture: GPT-4o recommended for unpredictable supplier conversations.
+   */
+  getVoiceModel(): string {
+    return this.voiceModel;
+  }
+
+  /**
+   * Get the configured overseer model (async analysis, no latency constraint).
+   * Falls back to defaultModel when not explicitly configured.
+   */
+  getOverseerModel(): string {
+    return this.overseerModel;
   }
 
   /**
@@ -33,13 +53,15 @@ export class OpenRouterClient {
     const credentials = await credentialsManager.getCredentialsWithFallback<{
       apiKey: string;
       defaultModel?: string;
+      voiceModel?: string;
+      overseerModel?: string;
     }>(organizationId, 'OPENROUTER');
 
     if (!credentials) {
       throw new Error('OpenRouter credentials not configured for this organization');
     }
 
-    return new OpenRouterClient(credentials.apiKey, credentials.defaultModel);
+    return new OpenRouterClient(credentials.apiKey, credentials.defaultModel, credentials.voiceModel, credentials.overseerModel);
   }
 
   async generateCompletion(
@@ -162,6 +184,39 @@ export class OpenRouterClient {
     } catch (error: any) {
       console.error('OpenRouter streaming error:', error);
       throw new Error(`Streaming completion failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Stream a chat completion with full messages array (for voice agent streaming).
+   * Yields tokens as they arrive from the LLM.
+   */
+  async *streamChat(
+    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+    options?: CompletionOptions & { model?: string }
+  ): AsyncGenerator<string> {
+    try {
+      const stream = await this.client.chat.completions.create({
+        model: options?.model || this.defaultModel,
+        messages,
+        temperature: options?.temperature ?? 0.7,
+        max_tokens: options?.maxTokens ?? 2000,
+        stream: true,
+        stop: options?.stop,
+        top_p: options?.topP,
+        frequency_penalty: options?.frequencyPenalty,
+        presence_penalty: options?.presencePenalty,
+      });
+
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content;
+        if (content) {
+          yield content;
+        }
+      }
+    } catch (error: any) {
+      console.error('OpenRouter streaming chat error:', error);
+      throw new Error(`Streaming chat failed: ${error.message}`);
     }
   }
 }

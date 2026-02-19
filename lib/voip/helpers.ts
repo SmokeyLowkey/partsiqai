@@ -95,7 +95,7 @@ Return ONLY the intent name (e.g., "yes_can_help"), nothing else.`;
   try {
     const result = await llmClient.generateCompletion(prompt, {
       temperature: 0,
-      model: 'anthropic/claude-3.5-sonnet', // Upgrade from llama to Claude for better accuracy
+      model: llmClient.getVoiceModel(),
       maxTokens: 30,
     });
     
@@ -194,7 +194,7 @@ SUBSTITUTE PART RULES:
   try {
     const result = await llmClient.generateCompletion(prompt, {
       temperature: 0,
-      model: 'anthropic/claude-3.5-sonnet', // Upgrade for better structured extraction
+      model: llmClient.getVoiceModel(),
       maxTokens: 1000,
     });
     
@@ -473,7 +473,7 @@ If no substitute part number can be extracted, return null.`;
   try {
     const result = await llmClient.generateCompletion(prompt, {
       temperature: 0,
-      model: 'anthropic/claude-3.5-sonnet',
+      model: llmClient.getVoiceModel(),
       maxTokens: 200,
     });
 
@@ -762,7 +762,7 @@ Respond naturally, don't add preambles like "Here's my clarification" - just say
   try {
     let result = await llmClient.generateCompletion(prompt, {
       temperature: 0.3,
-      model: 'anthropic/claude-3.5-sonnet', // Upgrade for better natural responses
+      model: llmClient.getVoiceModel(),
       maxTokens: 150,
     });
     
