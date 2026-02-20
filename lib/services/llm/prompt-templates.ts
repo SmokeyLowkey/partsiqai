@@ -185,6 +185,15 @@ Extract:
    "gasket" → ["seal", "o-ring", "packing"]
 7. shouldSearchWeb — true if the query is likely about a part not in an internal parts database
    (e.g., asking about pricing, suppliers, specifications, or very specific/obscure part numbers)
+8. partIntents — ONLY if multiple part types or part numbers are mentioned in the query,
+   return an array where each entry represents ONE distinct part the user is looking for.
+   Each entry has its own focused search text and synonyms specific to THAT part only.
+   Example for "I need a fuel filter and an oil filter":
+   [
+     { "label": "Fuel Filter", "queryText": "fuel filter", "partType": "fuel filter", "partNumber": null, "expandedTerms": ["fuel element", "fuel strainer"] },
+     { "label": "Oil Filter", "queryText": "oil filter", "partType": "oil filter", "partNumber": null, "expandedTerms": ["oil element", "lube filter"] }
+   ]
+   For single-part queries, omit this field entirely.
 
 Return JSON:
 {
@@ -195,7 +204,8 @@ Return JSON:
   "intent": "exact_part_number" | "part_description" | "compatibility_check" | "alternatives" | "general_question",
   "processedQuery": "cleaned and standardized query string optimized for search",
   "expandedTerms": ["synonym1", "synonym2"],
-  "shouldSearchWeb": boolean
+  "shouldSearchWeb": boolean,
+  "partIntents": [{ "label": "string", "queryText": "string", "partType": "string or null", "partNumber": "string or null", "expandedTerms": ["string"] }]
 }
 `,
 

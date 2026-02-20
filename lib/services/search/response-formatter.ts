@@ -1,4 +1,13 @@
-import type { SearchResult, EnrichedPartResult } from './multi-agent-orchestrator';
+import type { SearchResult, EnrichedPartResult, PartGroup } from './multi-agent-orchestrator';
+
+export interface FormattedPartGroup {
+  label: string;
+  queryUsed: string;
+  parts: FormattedPart[];
+  webParts?: FormattedPart[];
+  summary: SearchSummary;
+  resultCount: number;
+}
 
 export interface FormattedSearchResponse {
   // Main response text (for chat display)
@@ -8,6 +17,7 @@ export interface FormattedSearchResponse {
   // Structured data (for UI components)
   parts: FormattedPart[];
   webParts?: FormattedPart[];
+  partGroups?: FormattedPartGroup[];
   summary: SearchSummary;
   recommendations: Recommendation[];
   filters: FilterOption[];
@@ -20,6 +30,8 @@ export interface FormattedSearchResponse {
     sourcesUsed: string[];
     hasMoreResults: boolean;
     queryIntent?: string;
+    isMultiPartQuery?: boolean;
+    partCount?: number;
   };
 
   // Flag indicating only web results are available (vehicle not configured)
@@ -116,28 +128,34 @@ export class ResponseFormatter {
     const recommendations = this.generateRecommendations(searchResults.results);
     const filters = this.generateFilters(searchResults.results);
 
-    // Generate natural language message
-    const messageText = this.generateMessageText(
-      query,
-      formattedParts,
-      summary,
-      vehicleContext,
-      formattedWebParts
-    );
+    // Format part groups if present (multi-part query)
+    let formattedPartGroups: FormattedPartGroup[] | undefined;
+    if (searchResults.partGroups && searchResults.partGroups.length > 0) {
+      formattedPartGroups = searchResults.partGroups.map(group => ({
+        label: group.label,
+        queryUsed: group.queryUsed,
+        parts: this.formatParts(group.results),
+        webParts: group.webResults ? this.formatParts(group.webResults) : undefined,
+        summary: this.generateSummary(group.results, group.webResults),
+        resultCount: group.resultCount,
+      }));
+    }
 
-    const messageHtml = this.generateMessageHtml(
-      query,
-      formattedParts,
-      summary,
-      vehicleContext,
-      formattedWebParts
-    );
+    // Generate natural language message (grouped or flat)
+    const messageText = formattedPartGroups
+      ? this.generateGroupedMessageText(query, formattedPartGroups, summary, vehicleContext)
+      : this.generateMessageText(query, formattedParts, summary, vehicleContext, formattedWebParts);
+
+    const messageHtml = formattedPartGroups
+      ? this.generateGroupedMessageHtml(query, formattedPartGroups, summary, vehicleContext)
+      : this.generateMessageHtml(query, formattedParts, summary, vehicleContext, formattedWebParts);
 
     return {
       messageText,
       messageHtml,
       parts: formattedParts,
       webParts: formattedWebParts,
+      partGroups: formattedPartGroups,
       summary,
       recommendations,
       filters,
@@ -146,6 +164,8 @@ export class ResponseFormatter {
         ...searchResults.searchMetadata,
         hasMoreResults: searchResults.results.length > 10,
         queryIntent: searchResults.searchMetadata.queryIntent,
+        isMultiPartQuery: searchResults.searchMetadata.isMultiPartQuery,
+        partCount: searchResults.searchMetadata.partCount,
       },
     };
   }
@@ -576,6 +596,101 @@ export class ResponseFormatter {
 
     html += `
         ${summary.inStockCount > 0 ? '<p class="cta">Would you like to add any of these to your quote request?</p>' : ''}
+      </div>
+    `;
+
+    return html;
+  }
+
+  private generateGroupedMessageText(
+    query: string,
+    partGroups: FormattedPartGroup[],
+    overallSummary: SearchSummary,
+    vehicleContext?: any
+  ): string {
+    const lines: string[] = [];
+    const vehicle = vehicleContext
+      ? `for your ${vehicleContext.year} ${vehicleContext.make} ${vehicleContext.model}`
+      : '';
+
+    const totalParts = partGroups.reduce((sum, g) => sum + g.parts.length, 0);
+    lines.push(`I searched for ${partGroups.length} items ${vehicle} and found ${totalParts} total results.`);
+    lines.push('');
+
+    for (const group of partGroups) {
+      lines.push(`**${group.label}** (${group.parts.length} result${group.parts.length === 1 ? '' : 's'}):`);
+      if (group.parts.length === 0) {
+        lines.push('  No matches found for this item.');
+      } else {
+        group.parts.slice(0, 3).forEach((part, i) => {
+          lines.push(`  ${i + 1}. **${part.partNumber}** - ${part.description}`);
+          if (part.priceFormatted) {
+            lines.push(`     Price: ${part.priceFormatted} | ${part.availability}`);
+          }
+        });
+        if (group.parts.length > 3) {
+          lines.push(`  ... and ${group.parts.length - 3} more`);
+        }
+      }
+      lines.push('');
+    }
+
+    if (overallSummary.inStockCount > 0) {
+      lines.push('Would you like to add any of these to your quote request?');
+    }
+
+    return lines.join('\n');
+  }
+
+  private generateGroupedMessageHtml(
+    query: string,
+    partGroups: FormattedPartGroup[],
+    overallSummary: SearchSummary,
+    vehicleContext?: any
+  ): string {
+    const vehicle = vehicleContext
+      ? `for your ${vehicleContext.year} ${vehicleContext.make} ${vehicleContext.model}`
+      : '';
+
+    const totalParts = partGroups.reduce((sum, g) => sum + g.parts.length, 0);
+
+    let html = `
+      <div class="search-results success grouped">
+        <p>I searched for <strong>${partGroups.length}</strong> items ${vehicle} and found <strong>${totalParts}</strong> total results.</p>`;
+
+    for (const group of partGroups) {
+      html += `
+        <div class="part-group">
+          <h4>${group.label} <span class="badge badge-default">${group.parts.length} result${group.parts.length === 1 ? '' : 's'}</span></h4>`;
+
+      if (group.parts.length === 0) {
+        html += `<p class="no-results">No matches found for this item.</p>`;
+      } else {
+        html += group.parts.slice(0, 3).map((part, i) => `
+            <div class="part-match">
+              <div class="part-header">
+                <span class="part-rank">${i + 1}</span>
+                <strong>${part.partNumber}</strong>
+                ${part.badges.map((badge) => `<span class="badge badge-${badge.variant}">${badge.icon} ${badge.text}</span>`).join('')}
+              </div>
+              <p class="part-description">${part.description}</p>
+              <div class="part-meta">
+                ${part.priceFormatted ? `<span class="price">${part.priceFormatted}</span>` : ''}
+                <span class="availability ${part.stockStatus}">${part.availability}</span>
+              </div>
+            </div>
+          `).join('');
+
+        if (group.parts.length > 3) {
+          html += `<p class="more-results">... and ${group.parts.length - 3} more</p>`;
+        }
+      }
+
+      html += `</div>`;
+    }
+
+    html += `
+        ${overallSummary.inStockCount > 0 ? '<p class="cta">Would you like to add any of these to your quote request?</p>' : ''}
       </div>
     `;
 

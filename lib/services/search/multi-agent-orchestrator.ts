@@ -2,16 +2,25 @@ import { PostgresSearchAgent, type VehicleContext, type PartResult } from './pos
 import { PineconeSearchAgent } from './pinecone-client';
 import { Neo4jSearchAgent } from './neo4j-client';
 import { WebSearchAgent } from './web-search-agent';
-import { QueryUnderstandingAgent, type ProcessedQuery } from './query-understanding';
+import { QueryUnderstandingAgent, type ProcessedQuery, type PartIntent } from './query-understanding';
 import { SmartReranker } from './smart-reranker';
 import { OpenRouterClient } from '../llm/openrouter-client';
 import { PROMPTS } from '../llm/prompt-templates';
 import { ResponseFormatter, type FormattedSearchResponse } from './response-formatter';
 import { prisma } from '@/lib/prisma';
 
+export interface PartGroup {
+  label: string;
+  queryUsed: string;
+  results: EnrichedPartResult[];
+  webResults?: EnrichedPartResult[];
+  resultCount: number;
+}
+
 export interface SearchResult {
   results: EnrichedPartResult[];
   webResults?: EnrichedPartResult[];
+  partGroups?: PartGroup[];
   suggestedFilters: string[];
   relatedQueries: string[];
   searchMetadata: {
@@ -19,6 +28,8 @@ export interface SearchResult {
     searchTime: number;
     sourcesUsed: string[];
     queryIntent?: string;
+    isMultiPartQuery?: boolean;
+    partCount?: number;
   };
 }
 
@@ -192,10 +203,19 @@ export class MultiAgentOrchestrator {
         partTypes: processedQuery.partTypes,
         expandedTerms: processedQuery.expandedTerms.slice(0, 5),
         shouldSearchWeb: processedQuery.shouldSearchWeb,
+        partIntents: processedQuery.partIntents?.map(pi => pi.label),
       });
 
       // ============================================================
-      // Step 2: Parallel internal search
+      // Multi-part branch: if multiple parts detected, fan out per-part
+      // ============================================================
+      const isMultiPart = (processedQuery.partIntents?.length || 0) > 1;
+      if (isMultiPart) {
+        return this.searchMultiPart(processedQuery, query, organizationId, vehicleContext, startTime, sourcesUsed);
+      }
+
+      // ============================================================
+      // Step 2: Parallel internal search (single-part flow, unchanged)
       // Use processedQuery for Postgres (expanded terms for keyword search)
       // Pass raw query to Pinecone/Neo4j (as per plan: don't change their query generation)
       // ============================================================
@@ -379,6 +399,208 @@ export class MultiAgentOrchestrator {
         await this.neo4jAgent.close();
       }
     }
+  }
+
+  // ============================================================
+  // Multi-part search: fan out per-part, then regroup
+  // ============================================================
+
+  private static readonly MAX_PART_INTENTS = 5;
+
+  private async searchMultiPart(
+    processedQuery: ProcessedQuery,
+    originalQuery: string,
+    organizationId: string,
+    vehicleContext: VehicleContext | undefined,
+    startTime: number,
+    sourcesUsed: string[]
+  ): Promise<SearchResult> {
+    const partIntents = processedQuery.partIntents!.slice(0, MultiAgentOrchestrator.MAX_PART_INTENTS);
+
+    if (processedQuery.partIntents!.length > MultiAgentOrchestrator.MAX_PART_INTENTS) {
+      console.warn(`[MultiAgentOrchestrator] Capped from ${processedQuery.partIntents!.length} to ${MultiAgentOrchestrator.MAX_PART_INTENTS} part intents`);
+    }
+
+    console.log('[MultiAgentOrchestrator] Multi-part search with', partIntents.length, 'intents:',
+      partIntents.map(pi => pi.label));
+
+    // Fan out: run all part intents in parallel
+    const groupPromises = partIntents.map(intent =>
+      this.searchSinglePartIntent(intent, organizationId, vehicleContext, processedQuery)
+    );
+
+    const groupResults = await Promise.allSettled(groupPromises);
+
+    // Build PartGroup array and flat results
+    const partGroups: PartGroup[] = [];
+    const allResults: EnrichedPartResult[] = [];
+    const allWebResults: EnrichedPartResult[] = [];
+
+    for (let i = 0; i < partIntents.length; i++) {
+      const settled = groupResults[i];
+      if (settled.status === 'fulfilled') {
+        const group = settled.value;
+        partGroups.push(group);
+        allResults.push(...group.results);
+        if (group.webResults) allWebResults.push(...group.webResults);
+      } else {
+        console.warn(`[MultiAgentOrchestrator] Part group "${partIntents[i].label}" failed:`, settled.reason);
+        partGroups.push({
+          label: partIntents[i].label,
+          queryUsed: partIntents[i].queryText,
+          results: [],
+          resultCount: 0,
+        });
+      }
+    }
+
+    // Build flat deduped results for backwards compat
+    const flatResults = this.deduplicateAcrossGroups(allResults);
+    const flatWebResults = allWebResults.length > 0 ? this.deduplicateAcrossGroups(allWebResults) : undefined;
+
+    const searchTime = Date.now() - startTime;
+
+    console.log('[MultiAgentOrchestrator] Multi-part search complete:', {
+      groups: partGroups.map(g => ({ label: g.label, count: g.results.length })),
+      totalFlat: flatResults.length,
+      searchTime: `${searchTime}ms`,
+    });
+
+    return {
+      results: flatResults.slice(0, 20),
+      webResults: flatWebResults?.slice(0, 10),
+      partGroups,
+      suggestedFilters: [],
+      relatedQueries: [],
+      searchMetadata: {
+        totalResults: flatResults.length + (flatWebResults?.length || 0),
+        searchTime,
+        sourcesUsed,
+        queryIntent: processedQuery.intent,
+        isMultiPartQuery: true,
+        partCount: partIntents.length,
+      },
+    };
+  }
+
+  private async searchSinglePartIntent(
+    intent: PartIntent,
+    organizationId: string,
+    vehicleContext: VehicleContext | undefined,
+    processedQuery: ProcessedQuery
+  ): Promise<PartGroup> {
+    const { queryText, expandedTerms, label } = intent;
+
+    console.log(`[MultiAgentOrchestrator] Searching for "${label}"...`);
+
+    // Build focused Postgres query with per-part synonyms
+    const postgresQuery = expandedTerms.length > 0
+      ? `${queryText} ${expandedTerms.join(' ')}`
+      : queryText;
+
+    // Fan out to all agents for this single part
+    const searchPromises: Promise<PartResult[]>[] = [
+      this.postgresAgent.search(postgresQuery, organizationId, vehicleContext),
+    ];
+
+    if (this.pineconeAgent) {
+      searchPromises.push(
+        this.pineconeAgent.hybridSearch(queryText, organizationId, vehicleContext)
+      );
+    }
+
+    if (this.neo4jAgent) {
+      searchPromises.push(
+        this.neo4jAgent.graphSearch(queryText, organizationId, vehicleContext)
+      );
+    }
+
+    const settledResults = await Promise.allSettled(searchPromises);
+
+    const results = {
+      postgres: settledResults[0].status === 'fulfilled' ? settledResults[0].value : [],
+      pinecone: settledResults[1]?.status === 'fulfilled' ? settledResults[1].value : [],
+      neo4j: settledResults[2]?.status === 'fulfilled' ? settledResults[2].value : [],
+    };
+
+    console.log(`[MultiAgentOrchestrator] "${label}" raw results:`, {
+      postgres: results.postgres.length,
+      pinecone: results.pinecone.length,
+      neo4j: results.neo4j.length,
+    });
+
+    // Merge & calculate confidence (reuse existing methods)
+    const mergedResults = this.mergeResults(results);
+    const rankedResults = this.calculateConfidence(mergedResults);
+
+    // Per-group web search if < 3 results
+    let webResults: EnrichedPartResult[] = [];
+    if (this.webSearchAgent && rankedResults.length < 3) {
+      try {
+        const intentProcessedQuery: ProcessedQuery = {
+          ...processedQuery,
+          processedQuery: queryText,
+          partTypes: intent.partType ? [intent.partType] : [],
+          partNumbers: intent.partNumber ? [intent.partNumber] : [],
+          expandedTerms: expandedTerms,
+        };
+
+        const rawWebResults = await this.webSearchAgent.search(
+          intentProcessedQuery, vehicleContext, this.llmClient
+        );
+
+        webResults = rawWebResults.map(r => ({
+          ...r,
+          confidence: r.score,
+          foundBy: ['web'] as Array<'postgres' | 'pinecone' | 'neo4j' | 'web'>,
+          reason: 'Found via web search — unverified',
+          isWebResult: true,
+        }));
+      } catch (error: any) {
+        console.warn(`[MultiAgentOrchestrator] Web search for "${label}" failed:`, error.message);
+      }
+    }
+
+    // Per-group re-ranking
+    let finalResults = rankedResults;
+    let finalWebResults = webResults;
+
+    if (this.llmClient && (rankedResults.length > 0 || webResults.length > 0)) {
+      try {
+        const allGroupResults = [...rankedResults, ...webResults];
+        const rerankResult = await this.reranker.rerank(
+          queryText, // Focused query for better re-ranking
+          processedQuery,
+          allGroupResults,
+          this.llmClient,
+          vehicleContext
+        );
+
+        finalResults = rerankResult.results.filter(r => !r.isWebResult);
+        finalWebResults = rerankResult.results.filter(r => r.isWebResult);
+      } catch (error) {
+        console.warn(`[MultiAgentOrchestrator] Re-ranking for "${label}" failed, using ranked results`);
+      }
+    }
+
+    return {
+      label,
+      queryUsed: queryText,
+      results: finalResults.slice(0, 10),
+      webResults: finalWebResults.length > 0 ? finalWebResults.slice(0, 5) : undefined,
+      resultCount: finalResults.length + finalWebResults.length,
+    };
+  }
+
+  private deduplicateAcrossGroups(results: EnrichedPartResult[]): EnrichedPartResult[] {
+    const seen = new Map<string, EnrichedPartResult>();
+    for (const result of results) {
+      const existing = seen.get(result.partNumber);
+      if (!existing || result.confidence > existing.confidence) {
+        seen.set(result.partNumber, result);
+      }
+    }
+    return [...seen.values()].sort((a, b) => b.confidence - a.confidence);
   }
 
   private async initializeAgents(organizationId: string) {

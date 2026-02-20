@@ -202,5 +202,205 @@ describe('QueryUnderstandingAgent', () => {
       expect(result.expandedTerms).toContain('hyd pump');
       expect(result.intent).toBe('part_description');
     });
+
+    it('should build partIntents from LLM response when multiple parts detected', async () => {
+      const mockLlmClient = {
+        generateStructuredOutput: vi.fn().mockResolvedValue({
+          partTypes: ['fuel filter', 'oil filter'],
+          partNumbers: [],
+          attributes: [],
+          urgent: false,
+          intent: 'part_description',
+          processedQuery: 'fuel filter oil filter',
+          expandedTerms: ['fuel element', 'oil element'],
+          shouldSearchWeb: false,
+        }),
+      } as any;
+
+      const result = await QueryUnderstandingAgent.analyze(
+        'I need a fuel filter and an oil filter',
+        undefined,
+        mockLlmClient
+      );
+
+      expect(result.partIntents).toBeDefined();
+      expect(result.partIntents!.length).toBe(2);
+      expect(result.partIntents![0].label).toBe('Fuel Filter');
+      expect(result.partIntents![0].queryText).toBe('fuel filter');
+      expect(result.partIntents![0].partType).toBe('fuel filter');
+      expect(result.partIntents![1].label).toBe('Oil Filter');
+      expect(result.partIntents![1].queryText).toBe('oil filter');
+    });
+
+    it('should use LLM-provided partIntents directly when present', async () => {
+      const mockLlmClient = {
+        generateStructuredOutput: vi.fn().mockResolvedValue({
+          partTypes: ['fuel filter', 'belt'],
+          partNumbers: [],
+          attributes: [],
+          urgent: false,
+          intent: 'part_description',
+          processedQuery: 'fuel filter and belt',
+          expandedTerms: ['fuel element', 'drive belt'],
+          shouldSearchWeb: false,
+          partIntents: [
+            { label: 'Fuel Filter', queryText: 'fuel filter', partType: 'fuel filter', expandedTerms: ['fuel element', 'fuel strainer'] },
+            { label: 'Drive Belt', queryText: 'belt', partType: 'belt', expandedTerms: ['drive belt', 'v-belt'] },
+          ],
+        }),
+      } as any;
+
+      const result = await QueryUnderstandingAgent.analyze(
+        'I need a fuel filter and a belt',
+        undefined,
+        mockLlmClient
+      );
+
+      expect(result.partIntents).toBeDefined();
+      expect(result.partIntents!.length).toBe(2);
+      expect(result.partIntents![0].label).toBe('Fuel Filter');
+      expect(result.partIntents![0].expandedTerms).toContain('fuel element');
+      expect(result.partIntents![0].expandedTerms).toContain('fuel strainer');
+      expect(result.partIntents![1].label).toBe('Drive Belt');
+      expect(result.partIntents![1].expandedTerms).toContain('v-belt');
+    });
+
+    it('should not set partIntents for single-part LLM response', async () => {
+      const mockLlmClient = {
+        generateStructuredOutput: vi.fn().mockResolvedValue({
+          partTypes: ['fuel filter'],
+          partNumbers: [],
+          attributes: [],
+          urgent: false,
+          intent: 'part_description',
+          processedQuery: 'fuel filter',
+          expandedTerms: ['fuel element'],
+          shouldSearchWeb: false,
+        }),
+      } as any;
+
+      const result = await QueryUnderstandingAgent.analyze(
+        'I need a fuel filter',
+        undefined,
+        mockLlmClient
+      );
+
+      expect(result.partIntents).toBeUndefined();
+    });
+  });
+
+  describe('buildPartIntents', () => {
+    it('should return undefined for single part type', () => {
+      const result = QueryUnderstandingAgent.buildPartIntents(['fuel filter'], []);
+      expect(result).toBeUndefined();
+    });
+
+    it('should return undefined for single part number', () => {
+      const result = QueryUnderstandingAgent.buildPartIntents([], ['AT-123456']);
+      expect(result).toBeUndefined();
+    });
+
+    it('should return undefined for no parts at all', () => {
+      const result = QueryUnderstandingAgent.buildPartIntents([], []);
+      expect(result).toBeUndefined();
+    });
+
+    it('should build intents for multiple part types', () => {
+      const result = QueryUnderstandingAgent.buildPartIntents(['fuel filter', 'oil filter'], []);
+
+      expect(result).toBeDefined();
+      expect(result!.length).toBe(2);
+
+      expect(result![0].label).toBe('Fuel Filter');
+      expect(result![0].queryText).toBe('fuel filter');
+      expect(result![0].partType).toBe('fuel filter');
+      expect(result![0].partNumber).toBeUndefined();
+      expect(result![0].expandedTerms).toContain('fuel element');
+      expect(result![0].expandedTerms).toContain('fuel strainer');
+
+      expect(result![1].label).toBe('Oil Filter');
+      expect(result![1].queryText).toBe('oil filter');
+      expect(result![1].expandedTerms).toContain('oil element');
+      expect(result![1].expandedTerms).toContain('lube filter');
+    });
+
+    it('should build intents for multiple part numbers', () => {
+      const result = QueryUnderstandingAgent.buildPartIntents([], ['AT-123456', 'RE54321']);
+
+      expect(result).toBeDefined();
+      expect(result!.length).toBe(2);
+
+      expect(result![0].label).toBe('AT-123456');
+      expect(result![0].queryText).toBe('AT-123456');
+      expect(result![0].partNumber).toBe('AT-123456');
+      expect(result![0].partType).toBeUndefined();
+      expect(result![0].expandedTerms).toEqual([]);
+
+      expect(result![1].label).toBe('RE54321');
+      expect(result![1].partNumber).toBe('RE54321');
+    });
+
+    it('should build intents for mixed part types and part numbers', () => {
+      const result = QueryUnderstandingAgent.buildPartIntents(['fuel filter'], ['RE54321']);
+
+      expect(result).toBeDefined();
+      expect(result!.length).toBe(2);
+
+      // First intent: part type
+      expect(result![0].partType).toBe('fuel filter');
+      expect(result![0].expandedTerms.length).toBeGreaterThan(0);
+
+      // Second intent: part number
+      expect(result![1].partNumber).toBe('RE54321');
+      expect(result![1].expandedTerms).toEqual([]);
+    });
+
+    it('should title-case labels for part types', () => {
+      const result = QueryUnderstandingAgent.buildPartIntents(['hydraulic filter', 'air filter'], []);
+
+      expect(result![0].label).toBe('Hydraulic Filter');
+      expect(result![1].label).toBe('Air Filter');
+    });
+  });
+
+  describe('regexFallback with partIntents', () => {
+    it('should generate partIntents for multi-part type query', () => {
+      const result = QueryUnderstandingAgent.regexFallback('I need a fuel filter and an oil filter');
+
+      expect(result.partIntents).toBeDefined();
+      expect(result.partIntents!.length).toBeGreaterThanOrEqual(2);
+      expect(result.partIntents!.some(pi => pi.partType === 'fuel filter')).toBe(true);
+      expect(result.partIntents!.some(pi => pi.partType === 'oil filter')).toBe(true);
+    });
+
+    it('should generate partIntents for multi-part-number query', () => {
+      const result = QueryUnderstandingAgent.regexFallback('Compare AT-123456 and RE54321');
+
+      expect(result.partIntents).toBeDefined();
+      expect(result.partIntents!.some(pi => pi.partNumber === 'AT-123456')).toBe(true);
+      expect(result.partIntents!.some(pi => pi.partNumber === 'RE54321')).toBe(true);
+    });
+
+    it('should NOT generate partIntents for truly single-part query', () => {
+      // "belt" matches only one entry in PART_SYNONYMS
+      const result = QueryUnderstandingAgent.regexFallback('belt');
+      expect(result.partIntents).toBeUndefined();
+    });
+
+    it('should give each partIntent its own expanded terms', () => {
+      const result = QueryUnderstandingAgent.regexFallback('I need a fuel filter and a belt');
+
+      expect(result.partIntents).toBeDefined();
+      const fuelIntent = result.partIntents!.find(pi => pi.partType === 'fuel filter');
+      const beltIntent = result.partIntents!.find(pi => pi.partType === 'belt');
+
+      expect(fuelIntent).toBeDefined();
+      expect(fuelIntent!.expandedTerms).toContain('fuel element');
+      expect(fuelIntent!.expandedTerms).not.toContain('drive belt');
+
+      expect(beltIntent).toBeDefined();
+      expect(beltIntent!.expandedTerms).toContain('drive belt');
+      expect(beltIntent!.expandedTerms).not.toContain('fuel element');
+    });
   });
 });

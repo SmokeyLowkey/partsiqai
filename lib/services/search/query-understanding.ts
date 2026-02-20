@@ -2,6 +2,14 @@ import { OpenRouterClient } from '../llm/openrouter-client';
 import { PROMPTS } from '../llm/prompt-templates';
 import type { VehicleContext } from './postgres-search';
 
+export interface PartIntent {
+  label: string;           // Human-readable label, e.g. "Fuel Filter" or "AT-123456"
+  queryText: string;       // Focused search text for this part
+  partType?: string;       // If this intent is a part type/description
+  partNumber?: string;     // If this intent is a specific part number
+  expandedTerms: string[]; // Synonyms specific to THIS part only
+}
+
 export interface ProcessedQuery {
   originalQuery: string;
   intent: 'exact_part_number' | 'part_description' | 'compatibility_check' | 'alternatives' | 'general_question';
@@ -12,6 +20,7 @@ export interface ProcessedQuery {
   processedQuery: string;
   urgent: boolean;
   shouldSearchWeb: boolean;
+  partIntents?: PartIntent[]; // Populated when multiple parts detected
 }
 
 // Common part number patterns for heavy equipment
@@ -142,16 +151,36 @@ export class QueryUnderstandingAgent {
       'general_question': 'general_question',
     };
 
+    const extractedPartTypes = result.partTypes || [];
+    const extractedPartNumbers = result.partNumbers || [];
+
+    // Build per-part intents from LLM response or fall back to PART_SYNONYMS
+    let partIntents: PartIntent[] | undefined;
+    if ((result as any).partIntents && Array.isArray((result as any).partIntents) && (result as any).partIntents.length > 1) {
+      // LLM returned per-part intents directly
+      partIntents = (result as any).partIntents.map((pi: any) => ({
+        label: pi.label || pi.queryText || '',
+        queryText: pi.queryText || '',
+        partType: pi.partType || undefined,
+        partNumber: pi.partNumber || undefined,
+        expandedTerms: pi.expandedTerms || [],
+      }));
+    } else {
+      // Fall back to building from partTypes/partNumbers + PART_SYNONYMS
+      partIntents = this.buildPartIntents(extractedPartTypes, extractedPartNumbers);
+    }
+
     return {
       originalQuery: query,
       intent: intentMap[result.intent] || 'general_question',
-      partNumbers: result.partNumbers || [],
-      partTypes: result.partTypes || [],
+      partNumbers: extractedPartNumbers,
+      partTypes: extractedPartTypes,
       expandedTerms: result.expandedTerms || [],
       attributes: result.attributes || [],
       processedQuery: result.processedQuery || query,
       urgent: result.urgent || false,
       shouldSearchWeb: result.shouldSearchWeb || false,
+      partIntents,
     };
   }
 
@@ -222,6 +251,9 @@ export class QueryUnderstandingAgent {
       if (!processedQuery) processedQuery = query;
     }
 
+    // Build per-part intents when multiple parts detected
+    const partIntents = this.buildPartIntents(partTypes, uniquePartNumbers);
+
     return {
       originalQuery: query,
       intent,
@@ -232,6 +264,38 @@ export class QueryUnderstandingAgent {
       processedQuery,
       urgent,
       shouldSearchWeb,
+      partIntents,
     };
+  }
+
+  /**
+   * Build per-part intents when multiple parts are detected.
+   * Each intent gets its own focused query and synonyms.
+   */
+  static buildPartIntents(partTypes: string[], partNumbers: string[]): PartIntent[] | undefined {
+    const totalParts = partTypes.length + partNumbers.length;
+    if (totalParts <= 1) return undefined;
+
+    const intents: PartIntent[] = [];
+
+    for (const pt of partTypes) {
+      intents.push({
+        label: pt.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+        queryText: pt,
+        partType: pt,
+        expandedTerms: PART_SYNONYMS[pt] || [],
+      });
+    }
+
+    for (const pn of partNumbers) {
+      intents.push({
+        label: pn,
+        queryText: pn,
+        partNumber: pn,
+        expandedTerms: [],
+      });
+    }
+
+    return intents;
   }
 }

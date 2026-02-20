@@ -71,10 +71,27 @@ interface Message {
   };
 }
 
+interface FormattedPartGroup {
+  label: string;
+  queryUsed: string;
+  parts: FormattedPart[];
+  webParts?: FormattedPart[];
+  summary: {
+    totalFound: number;
+    topMatch?: string;
+    averagePrice?: number;
+    avgConfidence?: number;
+    inStockCount: number;
+    categoryBreakdown: Record<string, number>;
+  };
+  resultCount: number;
+}
+
 interface FormattedSearchResponse {
   messageText: string;
   messageHtml: string;
   parts: FormattedPart[];
+  partGroups?: FormattedPartGroup[];
   summary: {
     totalFound: number;
     topMatch?: string;
@@ -91,6 +108,8 @@ interface FormattedSearchResponse {
     searchTime: number;
     sourcesUsed: string[];
     hasMoreResults: boolean;
+    isMultiPartQuery?: boolean;
+    partCount?: number;
   };
   webSearchOnly?: boolean;
 }
@@ -651,6 +670,333 @@ export default function AIChatPage() {
     }
   };
 
+  // Shared part card renderer used by both flat and grouped views
+  const renderPartCard = (part: FormattedPart, partKey: string) => {
+    const isExpanded = expandedParts[partKey] || false;
+
+    return (
+      <div
+        key={partKey}
+        className="bg-card border border-border p-3 rounded"
+      >
+        <div className="flex items-start justify-between mb-2">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <p className="font-medium text-foreground">
+                {part.partNumber}
+              </p>
+              {part.badges && part.badges.length > 0 && (
+                <div className="flex gap-1 flex-wrap">
+                  {part.badges.map((badge, i) => (
+                    <Badge
+                      key={i}
+                      variant={badge.variant === 'success' ? 'default' : 'secondary'}
+                      className="text-xs"
+                    >
+                      {badge.icon && <span className="mr-1">{badge.icon}</span>}
+                      {badge.text}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {part.description}
+            </p>
+
+            {/* Source Attribution */}
+            {part.foundBy && part.foundBy.length > 0 && (
+              <div className="flex gap-1 mt-1">
+                {part.foundBy.map((source, i) => (
+                  <Badge key={i} variant="outline" className="text-xs">
+                    {source}
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+          <Badge
+            variant={
+              part.confidence >= 90
+                ? "default"
+                : part.confidence >= 70
+                  ? "secondary"
+                  : "outline"
+            }
+          >
+            {part.confidence}%
+          </Badge>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          {part.price && (
+            <div>
+              <span className="text-muted-foreground">Price: </span>
+              <span className="font-medium text-green-600">
+                ${part.price.toFixed(2)}
+              </span>
+            </div>
+          )}
+          <div>
+            <span className="text-muted-foreground">Stock: </span>
+            <span className="font-medium">{part.availability || part.stockStatus}</span>
+          </div>
+          {part.supplier && (
+            <div className="col-span-2">
+              <span className="text-muted-foreground">Supplier: </span>
+              <span className="font-medium">{part.supplier}</span>
+            </div>
+          )}
+          {part.category && (
+            <div className="col-span-2">
+              <span className="text-muted-foreground">Category: </span>
+              <span className="font-medium">{part.category}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Expandable Rich Metadata Section */}
+        {(part.metadata || part.compatibility) && (
+          <>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="w-full mt-2 h-7 text-xs"
+              onClick={() => setExpandedParts(prev => ({
+                ...prev,
+                [partKey]: !isExpanded
+              }))}
+            >
+              {isExpanded ? (
+                <>
+                  <ChevronUp className="h-3 w-3 mr-1" />
+                  Hide Details
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="h-3 w-3 mr-1" />
+                  Show More Details
+                </>
+              )}
+            </Button>
+
+            {isExpanded && (
+              <div className="mt-3 space-y-3 pt-3 border-t">
+                {/* Pinecone Rich Metadata */}
+                {part.metadata && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold">Additional Information:</p>
+                    {part.metadata.categoryBreadcrumb && (
+                      <div className="text-xs">
+                        <span className="text-muted-foreground">Category Path: </span>
+                        <span className="text-xs">{part.metadata.categoryBreadcrumb}</span>
+                      </div>
+                    )}
+                    {part.metadata.text && (
+                      <div className="text-xs">
+                        <span className="text-muted-foreground">Description: </span>
+                        <span>{part.metadata.text}</span>
+                      </div>
+                    )}
+
+                    {/* Merged entries — show all locations when part appears in multiple diagrams */}
+                    {part.metadata.mergedEntries && part.metadata.mergedEntries.length > 1 ? (
+                      <div className="space-y-1.5">
+                        <p className="text-xs font-semibold text-muted-foreground">
+                          Found in {part.metadata.mergedEntries.length} locations:
+                        </p>
+                        {part.metadata.mergedEntries.map((entry, entryIdx) => (
+                          <div key={entryIdx} className="text-xs bg-muted/50 rounded p-2 space-y-0.5 border border-border/50">
+                            {entry.diagramTitle && (
+                              <div>
+                                <span className="text-muted-foreground">Diagram: </span>
+                                <span>{entry.diagramTitle}</span>
+                              </div>
+                            )}
+                            {entry.quantity && (
+                              <div>
+                                <span className="text-muted-foreground">Qty: </span>
+                                <span>{entry.quantity}</span>
+                              </div>
+                            )}
+                            {entry.remarks && (
+                              <div>
+                                <span className="text-muted-foreground">Remarks: </span>
+                                <span>{entry.remarks}</span>
+                              </div>
+                            )}
+                            {entry.sourceUrl && (
+                              <a
+                                href={entry.sourceUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:underline flex items-center gap-1"
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                                Source
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <>
+                        {/* Single-entry display (no mergedEntries or only 1 entry) */}
+                        {part.metadata.diagramTitle && (
+                          <div className="text-xs">
+                            <span className="text-muted-foreground">Diagram: </span>
+                            <span>{part.metadata.diagramTitle}</span>
+                          </div>
+                        )}
+                        {part.metadata.quantity && (
+                          <div className="text-xs">
+                            <span className="text-muted-foreground">Quantity: </span>
+                            <span>{part.metadata.quantity}</span>
+                          </div>
+                        )}
+                        {part.metadata.remarks && (
+                          <div className="text-xs">
+                            <span className="text-muted-foreground">Remarks: </span>
+                            <span>{part.metadata.remarks}</span>
+                          </div>
+                        )}
+                        {part.metadata.sourceUrl && (
+                          <div className="text-xs">
+                            <a
+                              href={part.metadata.sourceUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:underline flex items-center gap-1"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                              View Source Documentation
+                            </a>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Neo4j Compatibility & Relationships */}
+                {part.compatibility && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold">Compatibility:</p>
+                    {part.compatibility.models && part.compatibility.models.length > 0 && (
+                      <div className="text-xs">
+                        <span className="text-muted-foreground">Models: </span>
+                        <span>{part.compatibility.models.join(", ")}</span>
+                      </div>
+                    )}
+                    {part.compatibility.manufacturers && part.compatibility.manufacturers.length > 0 && (
+                      <div className="text-xs">
+                        <span className="text-muted-foreground">Manufacturers: </span>
+                        <span>{part.compatibility.manufacturers.join(", ")}</span>
+                      </div>
+                    )}
+                    {part.compatibility.serialRanges && part.compatibility.serialRanges.length > 0 && (
+                      <div className="text-xs">
+                        <span className="text-muted-foreground">Serial Ranges: </span>
+                        <span>{part.compatibility.serialRanges.join(", ")}</span>
+                      </div>
+                    )}
+                    {part.compatibility.domains && part.compatibility.domains.length > 0 && (
+                      <div className="text-xs">
+                        <span className="text-muted-foreground">Domains: </span>
+                        <span>{part.compatibility.domains.join(", ")}</span>
+                      </div>
+                    )}
+                    {part.compatibility.relationships && part.compatibility.relationships.length > 0 && (
+                      <div className="text-xs">
+                        <span className="text-muted-foreground mb-1 block">Related Parts:</span>
+                        <div className="pl-2 space-y-1">
+                          {part.compatibility.relationships.map((rel: any, i: number) => (
+                            <div key={i} className="flex items-center gap-1">
+                              <LinkIcon className="h-3 w-3" />
+                              <span className="font-medium">{rel.partNumber}</span>
+                              {rel.description && (
+                                <span className="text-muted-foreground">- {rel.description}</span>
+                              )}
+                              {rel.type && (
+                                <Badge variant="outline" className="text-xs ml-1">
+                                  {rel.type}
+                                </Badge>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        <div className="flex gap-2 mt-3">
+          <Button
+            size="sm"
+            className="flex-1"
+            onClick={() => addToPickList(part)}
+          >
+            <Package className="h-3 w-3 mr-1" />
+            Add to Pick List
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="flex-1 bg-transparent"
+          >
+            Request Quote
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
+  // Renders a list of parts with show more/less controls
+  const renderPartList = (parts: FormattedPart[], listKey: string, defaultVisible: number = 5) => {
+    const showAll = showAllResults[listKey] || false;
+    const displayedParts = showAll ? parts : parts.slice(0, defaultVisible);
+
+    return (
+      <div className="space-y-2">
+        {displayedParts.map((part, index) =>
+          renderPartCard(part, `${listKey}-${index}`)
+        )}
+
+        {parts.length > defaultVisible && !showAll && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={() => setShowAllResults(prev => ({
+              ...prev,
+              [listKey]: true
+            }))}
+          >
+            Show {parts.length - defaultVisible} More Results
+          </Button>
+        )}
+
+        {showAll && parts.length > defaultVisible && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={() => setShowAllResults(prev => ({
+              ...prev,
+              [listKey]: false
+            }))}
+          >
+            Show Less
+          </Button>
+        )}
+      </div>
+    );
+  };
+
   const renderAssistantMessage = (message: Message) => {
     const formattedResponse = message.metadata?.formattedResponse;
 
@@ -659,8 +1005,7 @@ export default function AIChatPage() {
     }
 
     const messageKey = message.id;
-    const showAll = showAllResults[messageKey] || false;
-    const displayedParts = showAll ? formattedResponse.parts : formattedResponse.parts.slice(0, 5);
+    const hasGroups = formattedResponse.partGroups && formattedResponse.partGroups.length > 1;
 
     return (
       <div className="space-y-3">
@@ -678,7 +1023,10 @@ export default function AIChatPage() {
           <div className="text-xs bg-muted p-2 rounded">
             <div className="flex justify-between">
               <span>
-                Found {formattedResponse.summary.totalFound} results
+                {hasGroups
+                  ? `Searched for ${formattedResponse.partGroups!.length} items — ${formattedResponse.summary.totalFound} total results`
+                  : `Found ${formattedResponse.summary.totalFound} results`
+                }
               </span>
               {formattedResponse.summary.avgConfidence !== undefined && (
                 <span>
@@ -689,358 +1037,90 @@ export default function AIChatPage() {
             {formattedResponse.metadata && (
               <div className="text-muted-foreground mt-1">
                 Search time: {formattedResponse.metadata.searchTime.toFixed(2)}s
-                • Sources: {formattedResponse.metadata.sourcesUsed.join(", ")}
+                {' '}• Sources: {formattedResponse.metadata.sourcesUsed.join(", ")}
               </div>
             )}
           </div>
         )}
 
-        {/* Filters */}
-        {formattedResponse.filters && formattedResponse.filters.length > 0 && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-xs font-medium">
-              <Filter className="h-3 w-3" />
-              <span>Filter Results:</span>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {formattedResponse.filters.map((filter, idx) => (
-                <Button
-                  key={idx}
-                  size="sm"
-                  variant={activeFilters.includes(filter.value) ? "default" : "outline"}
-                  className="h-7 text-xs"
-                  onClick={() => {
-                    setActiveFilters(prev =>
-                      prev.includes(filter.value)
-                        ? prev.filter(f => f !== filter.value)
-                        : [...prev, filter.value]
-                    );
-                  }}
-                >
-                  {filter.label} ({filter.count})
-                </Button>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Grouped Results (multi-part query) */}
+        {hasGroups && (
+          <div className="space-y-3">
+            {formattedResponse.partGroups!.map((group, groupIdx) => {
+              const groupKey = `${messageKey}-group-${groupIdx}`;
 
-        {/* Part Results */}
-        {formattedResponse.parts && formattedResponse.parts.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-xs font-medium">Parts Found:</p>
-            {displayedParts.map((part, index) => {
-              const partKey = `${messageKey}-${index}`;
-              const isExpanded = expandedParts[partKey] || false;
-              
               return (
-                <div
-                  key={index}
-                  className="bg-card border border-border p-3 rounded"
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <p className="font-medium text-foreground">
-                          {part.partNumber}
-                        </p>
-                        {part.badges && part.badges.length > 0 && (
-                          <div className="flex gap-1 flex-wrap">
-                            {part.badges.map((badge, i) => (
-                              <Badge
-                                key={i}
-                                variant={badge.variant === 'success' ? 'default' : 'secondary'}
-                                className="text-xs"
-                              >
-                                {badge.icon && <span className="mr-1">{badge.icon}</span>}
-                                {badge.text}
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {part.description}
+                <div key={groupIdx} className="border border-border rounded-lg overflow-hidden">
+                  {/* Group Header */}
+                  <div className="bg-muted/50 px-3 py-2 border-b border-border flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Package className="h-4 w-4 text-primary" />
+                      <span className="font-medium text-sm">{group.label}</span>
+                      <Badge variant="outline" className="text-xs">
+                        {group.parts.length} found
+                      </Badge>
+                    </div>
+                    {group.summary.inStockCount > 0 && (
+                      <Badge variant="default" className="text-xs">
+                        {group.summary.inStockCount} in stock
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Group Results */}
+                  <div className="p-2">
+                    {group.parts.length === 0 ? (
+                      <p className="text-sm text-muted-foreground py-2 px-1">
+                        No matches found. Try a different description or check the spelling.
                       </p>
-                      
-                      {/* Source Attribution */}
-                      {part.foundBy && part.foundBy.length > 0 && (
-                        <div className="flex gap-1 mt-1">
-                          {part.foundBy.map((source, i) => (
-                            <Badge key={i} variant="outline" className="text-xs">
-                              {source}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <Badge
-                      variant={
-                        part.confidence >= 90
-                          ? "default"
-                          : part.confidence >= 70
-                            ? "secondary"
-                            : "outline"
-                      }
-                    >
-                      {part.confidence}%
-                    </Badge>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    {part.price && (
-                      <div>
-                        <span className="text-muted-foreground">Price: </span>
-                        <span className="font-medium text-green-600">
-                          ${part.price.toFixed(2)}
-                        </span>
-                      </div>
+                    ) : (
+                      renderPartList(group.parts, groupKey, 3)
                     )}
-                    <div>
-                      <span className="text-muted-foreground">Stock: </span>
-                      <span className="font-medium">{part.availability || part.stockStatus}</span>
-                    </div>
-                    {part.supplier && (
-                      <div className="col-span-2">
-                        <span className="text-muted-foreground">Supplier: </span>
-                        <span className="font-medium">{part.supplier}</span>
-                      </div>
-                    )}
-                    {part.category && (
-                      <div className="col-span-2">
-                        <span className="text-muted-foreground">Category: </span>
-                        <span className="font-medium">{part.category}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Expandable Rich Metadata Section */}
-                  {(part.metadata || part.compatibility) && (
-                    <>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="w-full mt-2 h-7 text-xs"
-                        onClick={() => setExpandedParts(prev => ({
-                          ...prev,
-                          [partKey]: !isExpanded
-                        }))}
-                      >
-                        {isExpanded ? (
-                          <>
-                            <ChevronUp className="h-3 w-3 mr-1" />
-                            Hide Details
-                          </>
-                        ) : (
-                          <>
-                            <ChevronDown className="h-3 w-3 mr-1" />
-                            Show More Details
-                          </>
-                        )}
-                      </Button>
-
-                      {isExpanded && (
-                        <div className="mt-3 space-y-3 pt-3 border-t">
-                          {/* Pinecone Rich Metadata */}
-                          {part.metadata && (
-                            <div className="space-y-2">
-                              <p className="text-xs font-semibold">Additional Information:</p>
-                              {part.metadata.categoryBreadcrumb && (
-                                <div className="text-xs">
-                                  <span className="text-muted-foreground">Category Path: </span>
-                                  <span className="text-xs">{part.metadata.categoryBreadcrumb}</span>
-                                </div>
-                              )}
-                              {part.metadata.text && (
-                                <div className="text-xs">
-                                  <span className="text-muted-foreground">Description: </span>
-                                  <span>{part.metadata.text}</span>
-                                </div>
-                              )}
-
-                              {/* Merged entries — show all locations when part appears in multiple diagrams */}
-                              {part.metadata.mergedEntries && part.metadata.mergedEntries.length > 1 ? (
-                                <div className="space-y-1.5">
-                                  <p className="text-xs font-semibold text-muted-foreground">
-                                    Found in {part.metadata.mergedEntries.length} locations:
-                                  </p>
-                                  {part.metadata.mergedEntries.map((entry, entryIdx) => (
-                                    <div key={entryIdx} className="text-xs bg-muted/50 rounded p-2 space-y-0.5 border border-border/50">
-                                      {entry.diagramTitle && (
-                                        <div>
-                                          <span className="text-muted-foreground">Diagram: </span>
-                                          <span>{entry.diagramTitle}</span>
-                                        </div>
-                                      )}
-                                      {entry.quantity && (
-                                        <div>
-                                          <span className="text-muted-foreground">Qty: </span>
-                                          <span>{entry.quantity}</span>
-                                        </div>
-                                      )}
-                                      {entry.remarks && (
-                                        <div>
-                                          <span className="text-muted-foreground">Remarks: </span>
-                                          <span>{entry.remarks}</span>
-                                        </div>
-                                      )}
-                                      {entry.sourceUrl && (
-                                        <a
-                                          href={entry.sourceUrl}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="text-blue-600 hover:underline flex items-center gap-1"
-                                        >
-                                          <ExternalLink className="h-3 w-3" />
-                                          Source
-                                        </a>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <>
-                                  {/* Single-entry display (no mergedEntries or only 1 entry) */}
-                                  {part.metadata.diagramTitle && (
-                                    <div className="text-xs">
-                                      <span className="text-muted-foreground">Diagram: </span>
-                                      <span>{part.metadata.diagramTitle}</span>
-                                    </div>
-                                  )}
-                                  {part.metadata.quantity && (
-                                    <div className="text-xs">
-                                      <span className="text-muted-foreground">Quantity: </span>
-                                      <span>{part.metadata.quantity}</span>
-                                    </div>
-                                  )}
-                                  {part.metadata.remarks && (
-                                    <div className="text-xs">
-                                      <span className="text-muted-foreground">Remarks: </span>
-                                      <span>{part.metadata.remarks}</span>
-                                    </div>
-                                  )}
-                                  {part.metadata.sourceUrl && (
-                                    <div className="text-xs">
-                                      <a
-                                        href={part.metadata.sourceUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-blue-600 hover:underline flex items-center gap-1"
-                                      >
-                                        <ExternalLink className="h-3 w-3" />
-                                        View Source Documentation
-                                      </a>
-                                    </div>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Neo4j Compatibility & Relationships */}
-                          {part.compatibility && (
-                            <div className="space-y-2">
-                              <p className="text-xs font-semibold">Compatibility:</p>
-                              {part.compatibility.models && part.compatibility.models.length > 0 && (
-                                <div className="text-xs">
-                                  <span className="text-muted-foreground">Models: </span>
-                                  <span>{part.compatibility.models.join(", ")}</span>
-                                </div>
-                              )}
-                              {part.compatibility.manufacturers && part.compatibility.manufacturers.length > 0 && (
-                                <div className="text-xs">
-                                  <span className="text-muted-foreground">Manufacturers: </span>
-                                  <span>{part.compatibility.manufacturers.join(", ")}</span>
-                                </div>
-                              )}
-                              {part.compatibility.serialRanges && part.compatibility.serialRanges.length > 0 && (
-                                <div className="text-xs">
-                                  <span className="text-muted-foreground">Serial Ranges: </span>
-                                  <span>{part.compatibility.serialRanges.join(", ")}</span>
-                                </div>
-                              )}
-                              {part.compatibility.domains && part.compatibility.domains.length > 0 && (
-                                <div className="text-xs">
-                                  <span className="text-muted-foreground">Domains: </span>
-                                  <span>{part.compatibility.domains.join(", ")}</span>
-                                </div>
-                              )}
-                              {part.compatibility.relationships && part.compatibility.relationships.length > 0 && (
-                                <div className="text-xs">
-                                  <span className="text-muted-foreground mb-1 block">Related Parts:</span>
-                                  <div className="pl-2 space-y-1">
-                                    {part.compatibility.relationships.map((rel: any, i: number) => (
-                                      <div key={i} className="flex items-center gap-1">
-                                        <LinkIcon className="h-3 w-3" />
-                                        <span className="font-medium">{rel.partNumber}</span>
-                                        {rel.description && (
-                                          <span className="text-muted-foreground">- {rel.description}</span>
-                                        )}
-                                        {rel.type && (
-                                          <Badge variant="outline" className="text-xs ml-1">
-                                            {rel.type}
-                                          </Badge>
-                                        )}
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  <div className="flex gap-2 mt-3">
-                    <Button
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => addToPickList(part)}
-                    >
-                      <Package className="h-3 w-3 mr-1" />
-                      Add to Pick List
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="flex-1 bg-transparent"
-                    >
-                      Request Quote
-                    </Button>
                   </div>
                 </div>
               );
             })}
-
-            {formattedResponse.parts.length > 5 && !showAll && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                onClick={() => setShowAllResults(prev => ({
-                  ...prev,
-                  [messageKey]: true
-                }))}
-              >
-                Show {formattedResponse.parts.length - 5} More Results
-              </Button>
-            )}
-            
-            {showAll && formattedResponse.parts.length > 5 && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                onClick={() => setShowAllResults(prev => ({
-                  ...prev,
-                  [messageKey]: false
-                }))}
-              >
-                Show Less
-              </Button>
-            )}
           </div>
+        )}
+
+        {/* Flat Results (single-part query — existing behavior) */}
+        {!hasGroups && formattedResponse.parts && formattedResponse.parts.length > 0 && (
+          <>
+            {/* Filters */}
+            {formattedResponse.filters && formattedResponse.filters.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-xs font-medium">
+                  <Filter className="h-3 w-3" />
+                  <span>Filter Results:</span>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {formattedResponse.filters.map((filter, idx) => (
+                    <Button
+                      key={idx}
+                      size="sm"
+                      variant={activeFilters.includes(filter.value) ? "default" : "outline"}
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        setActiveFilters(prev =>
+                          prev.includes(filter.value)
+                            ? prev.filter(f => f !== filter.value)
+                            : [...prev, filter.value]
+                        );
+                      }}
+                    >
+                      {filter.label} ({filter.count})
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Part Results */}
+            <div className="space-y-2">
+              <p className="text-xs font-medium">Parts Found:</p>
+              {renderPartList(formattedResponse.parts, messageKey)}
+            </div>
+          </>
         )}
 
         {/* Recommendations Section */}

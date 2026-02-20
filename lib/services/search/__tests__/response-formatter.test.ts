@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ResponseFormatter } from '../response-formatter';
-import type { SearchResult, EnrichedPartResult } from '../multi-agent-orchestrator';
+import type { SearchResult, EnrichedPartResult, PartGroup } from '../multi-agent-orchestrator';
 
 describe('ResponseFormatter', () => {
   const formatter = new ResponseFormatter();
@@ -288,6 +288,273 @@ describe('ResponseFormatter', () => {
 
       expect(formatted.messageHtml).toContain('part-explanation');
       expect(formatted.messageHtml).toContain('Exact match for fuel filter category');
+    });
+  });
+
+  describe('formatSearchResults with partGroups (multi-part query)', () => {
+    it('should format partGroups when present', () => {
+      const searchResult: SearchResult = {
+        results: [
+          makeResult('FF-001', 'Fuel Filter', 90, { category: 'Filters' }),
+          makeResult('OF-001', 'Oil Filter', 85, { category: 'Filters' }),
+        ],
+        partGroups: [
+          {
+            label: 'Fuel Filter',
+            queryUsed: 'fuel filter',
+            results: [makeResult('FF-001', 'Fuel Filter', 90, { category: 'Filters' })],
+            resultCount: 1,
+          },
+          {
+            label: 'Oil Filter',
+            queryUsed: 'oil filter',
+            results: [makeResult('OF-001', 'Oil Filter', 85, { category: 'Filters' })],
+            resultCount: 1,
+          },
+        ],
+        suggestedFilters: [],
+        relatedQueries: [],
+        searchMetadata: {
+          totalResults: 2,
+          searchTime: 200,
+          sourcesUsed: ['postgres', 'pinecone'],
+          queryIntent: 'part_description',
+          isMultiPartQuery: true,
+          partCount: 2,
+        },
+      };
+
+      const formatted = formatter.formatSearchResults(searchResult, 'fuel filter and oil filter');
+
+      // Should have partGroups
+      expect(formatted.partGroups).toBeDefined();
+      expect(formatted.partGroups!.length).toBe(2);
+
+      // First group
+      expect(formatted.partGroups![0].label).toBe('Fuel Filter');
+      expect(formatted.partGroups![0].parts.length).toBe(1);
+      expect(formatted.partGroups![0].parts[0].partNumber).toBe('FF-001');
+
+      // Second group
+      expect(formatted.partGroups![1].label).toBe('Oil Filter');
+      expect(formatted.partGroups![1].parts.length).toBe(1);
+      expect(formatted.partGroups![1].parts[0].partNumber).toBe('OF-001');
+
+      // Flat parts should still be populated
+      expect(formatted.parts.length).toBe(2);
+
+      // Metadata should reflect multi-part
+      expect(formatted.metadata.isMultiPartQuery).toBe(true);
+      expect(formatted.metadata.partCount).toBe(2);
+    });
+
+    it('should generate grouped messageText', () => {
+      const searchResult: SearchResult = {
+        results: [
+          makeResult('FF-001', 'Fuel Filter', 90, { price: 24.99, stockQuantity: 5 }),
+          makeResult('OF-001', 'Oil Filter', 85),
+        ],
+        partGroups: [
+          {
+            label: 'Fuel Filter',
+            queryUsed: 'fuel filter',
+            results: [makeResult('FF-001', 'Fuel Filter', 90, { price: 24.99, stockQuantity: 5 })],
+            resultCount: 1,
+          },
+          {
+            label: 'Oil Filter',
+            queryUsed: 'oil filter',
+            results: [makeResult('OF-001', 'Oil Filter', 85)],
+            resultCount: 1,
+          },
+        ],
+        suggestedFilters: [],
+        relatedQueries: [],
+        searchMetadata: {
+          totalResults: 2,
+          searchTime: 200,
+          sourcesUsed: ['postgres'],
+          isMultiPartQuery: true,
+          partCount: 2,
+        },
+      };
+
+      const formatted = formatter.formatSearchResults(searchResult, 'fuel filter and oil filter');
+
+      expect(formatted.messageText).toContain('2 items');
+      expect(formatted.messageText).toContain('2 total results');
+      expect(formatted.messageText).toContain('**Fuel Filter**');
+      expect(formatted.messageText).toContain('**Oil Filter**');
+      expect(formatted.messageText).toContain('FF-001');
+      expect(formatted.messageText).toContain('OF-001');
+    });
+
+    it('should generate grouped messageHtml', () => {
+      const searchResult: SearchResult = {
+        results: [
+          makeResult('FF-001', 'Fuel Filter', 90),
+        ],
+        partGroups: [
+          {
+            label: 'Fuel Filter',
+            queryUsed: 'fuel filter',
+            results: [makeResult('FF-001', 'Fuel Filter', 90)],
+            resultCount: 1,
+          },
+          {
+            label: 'Oil Filter',
+            queryUsed: 'oil filter',
+            results: [],
+            resultCount: 0,
+          },
+        ],
+        suggestedFilters: [],
+        relatedQueries: [],
+        searchMetadata: {
+          totalResults: 1,
+          searchTime: 200,
+          sourcesUsed: ['postgres'],
+          isMultiPartQuery: true,
+          partCount: 2,
+        },
+      };
+
+      const formatted = formatter.formatSearchResults(searchResult, 'fuel filter and oil filter');
+
+      expect(formatted.messageHtml).toContain('grouped');
+      expect(formatted.messageHtml).toContain('part-group');
+      expect(formatted.messageHtml).toContain('Fuel Filter');
+      expect(formatted.messageHtml).toContain('Oil Filter');
+      expect(formatted.messageHtml).toContain('No matches found');
+    });
+
+    it('should handle empty group gracefully', () => {
+      const searchResult: SearchResult = {
+        results: [],
+        partGroups: [
+          {
+            label: 'Turbocharger',
+            queryUsed: 'turbo',
+            results: [],
+            resultCount: 0,
+          },
+        ],
+        suggestedFilters: [],
+        relatedQueries: [],
+        searchMetadata: {
+          totalResults: 0,
+          searchTime: 100,
+          sourcesUsed: ['postgres'],
+          isMultiPartQuery: true,
+          partCount: 1,
+        },
+      };
+
+      const formatted = formatter.formatSearchResults(searchResult, 'turbo');
+
+      expect(formatted.partGroups).toBeDefined();
+      expect(formatted.partGroups![0].parts.length).toBe(0);
+      expect(formatted.messageText).toContain('No matches found');
+    });
+
+    it('should generate per-group summaries', () => {
+      const searchResult: SearchResult = {
+        results: [
+          makeResult('FF-001', 'Fuel Filter', 90, { price: 24.99, stockQuantity: 5, category: 'Filters' }),
+          makeResult('FF-002', 'Fuel Strainer', 75, { price: 19.99, stockQuantity: 0, category: 'Filters' }),
+          makeResult('OF-001', 'Oil Filter', 85, { price: 12.99, stockQuantity: 3, category: 'Filters' }),
+        ],
+        partGroups: [
+          {
+            label: 'Fuel Filter',
+            queryUsed: 'fuel filter',
+            results: [
+              makeResult('FF-001', 'Fuel Filter', 90, { price: 24.99, stockQuantity: 5, category: 'Filters' }),
+              makeResult('FF-002', 'Fuel Strainer', 75, { price: 19.99, stockQuantity: 0, category: 'Filters' }),
+            ],
+            resultCount: 2,
+          },
+          {
+            label: 'Oil Filter',
+            queryUsed: 'oil filter',
+            results: [
+              makeResult('OF-001', 'Oil Filter', 85, { price: 12.99, stockQuantity: 3, category: 'Filters' }),
+            ],
+            resultCount: 1,
+          },
+        ],
+        suggestedFilters: [],
+        relatedQueries: [],
+        searchMetadata: {
+          totalResults: 3,
+          searchTime: 200,
+          sourcesUsed: ['postgres'],
+          isMultiPartQuery: true,
+          partCount: 2,
+        },
+      };
+
+      const formatted = formatter.formatSearchResults(searchResult, 'fuel filter and oil filter');
+
+      // Fuel filter group summary
+      const fuelGroup = formatted.partGroups![0];
+      expect(fuelGroup.summary.totalFound).toBe(2);
+      expect(fuelGroup.summary.inStockCount).toBe(1); // Only FF-001 has stock > 0
+
+      // Oil filter group summary
+      const oilGroup = formatted.partGroups![1];
+      expect(oilGroup.summary.totalFound).toBe(1);
+      expect(oilGroup.summary.inStockCount).toBe(1);
+    });
+
+    it('should NOT set partGroups when not present in SearchResult', () => {
+      const searchResult: SearchResult = {
+        results: [makeResult('PART-A', 'Single Part', 90)],
+        suggestedFilters: [],
+        relatedQueries: [],
+        searchMetadata: {
+          totalResults: 1,
+          searchTime: 100,
+          sourcesUsed: ['postgres'],
+        },
+      };
+
+      const formatted = formatter.formatSearchResults(searchResult, 'single part');
+
+      expect(formatted.partGroups).toBeUndefined();
+      expect(formatted.metadata.isMultiPartQuery).toBeUndefined();
+    });
+
+    it('should include web parts in groups when present', () => {
+      const searchResult: SearchResult = {
+        results: [makeResult('FF-001', 'Fuel Filter', 90)],
+        partGroups: [
+          {
+            label: 'Fuel Filter',
+            queryUsed: 'fuel filter',
+            results: [makeResult('FF-001', 'Fuel Filter', 90)],
+            webResults: [
+              makeWebResult('WEB-FF-1', 'Web Fuel Filter', 50, 'https://example.com'),
+            ],
+            resultCount: 2,
+          },
+        ],
+        suggestedFilters: [],
+        relatedQueries: [],
+        searchMetadata: {
+          totalResults: 2,
+          searchTime: 200,
+          sourcesUsed: ['postgres', 'web'],
+          isMultiPartQuery: true,
+          partCount: 1,
+        },
+      };
+
+      const formatted = formatter.formatSearchResults(searchResult, 'fuel filter');
+
+      expect(formatted.partGroups![0].webParts).toBeDefined();
+      expect(formatted.partGroups![0].webParts!.length).toBe(1);
+      expect(formatted.partGroups![0].webParts![0].isWebResult).toBe(true);
     });
   });
 });
