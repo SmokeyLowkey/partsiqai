@@ -2,7 +2,7 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 
 import { Worker, Job } from 'bullmq';
-import { redisConnection } from '@/lib/queue/connection';
+import { createWorkerConnection } from '@/lib/queue/connection';
 import { AnalyticsCollectionJobData } from '@/lib/queue/types';
 import { prisma } from '@/lib/prisma';
 import { finalizeOrderCostSavings } from '@/lib/services/cost-savings';
@@ -254,7 +254,7 @@ export const analyticsCollectionWorker = new Worker<AnalyticsCollectionJobData>(
     }
   },
   {
-    connection: redisConnection,
+    connection: createWorkerConnection(),
     concurrency: 5,
     drainDelay: 30,
     limiter: {

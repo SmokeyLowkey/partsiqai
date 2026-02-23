@@ -46,6 +46,14 @@ export async function PATCH(
       );
     }
 
+    // Prevent non-master admins from setting MASTER_ADMIN role
+    if (currentUser.role !== "MASTER_ADMIN" && body.role === "MASTER_ADMIN") {
+      return NextResponse.json(
+        { error: "Cannot assign Master Admin role" },
+        { status: 403 }
+      );
+    }
+
     // Prepare update data
     const updateData: any = {};
 

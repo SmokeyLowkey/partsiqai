@@ -17,14 +17,14 @@ export async function POST(req: NextRequest) {
   try {
     // Verify webhook secret (configured in Vapi dashboard under Server URL settings)
     const webhookSecret = process.env.VAPI_WEBHOOK_SECRET;
-    if (webhookSecret) {
-      const vapiSecret = req.headers.get('x-vapi-secret');
-      if (vapiSecret !== webhookSecret) {
-        logger.warn('Webhook request with invalid or missing secret');
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
-    } else if (process.env.NODE_ENV === 'production') {
-      logger.warn('VAPI_WEBHOOK_SECRET not configured — webhook verification disabled in production');
+    if (!webhookSecret) {
+      logger.error('VAPI_WEBHOOK_SECRET not configured — rejecting webhook request');
+      return NextResponse.json({ error: 'Webhook secret not configured' }, { status: 500 });
+    }
+    const vapiSecret = req.headers.get('x-vapi-secret');
+    if (vapiSecret !== webhookSecret) {
+      logger.warn('Webhook request with invalid or missing secret');
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const event = await req.json();

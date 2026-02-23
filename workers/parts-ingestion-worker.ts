@@ -2,7 +2,7 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 
 import { Worker, Job } from 'bullmq';
-import { redisConnection } from '@/lib/queue/connection';
+import { createWorkerConnection } from '@/lib/queue/connection';
 import { PartsIngestionJobData } from '@/lib/queue/types';
 import { runIngestion } from '@/lib/services/ingestion/pipeline';
 import { prisma } from '@/lib/prisma';
@@ -70,7 +70,7 @@ export const partsIngestionWorker = new Worker<PartsIngestionJobData>(
     await processIngestionJob(job);
   },
   {
-    connection: redisConnection,
+    connection: createWorkerConnection(),
     concurrency: 1,
     drainDelay: 30,
   }

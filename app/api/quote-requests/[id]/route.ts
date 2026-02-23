@@ -292,7 +292,26 @@ export async function PATCH(
       );
     }
 
+    // Only allow updates on DRAFT quotes (or limited fields on other statuses)
+    const nonEditableStatuses = ['CONVERTED_TO_ORDER', 'EXPIRED'];
+    const draftOnlyFields = ['title', 'description', 'supplierId', 'vehicleId', 'expiryDate', 'additionalSupplierIds'];
     const data = validationResult.data;
+
+    if (existingQuoteRequest.status !== 'DRAFT') {
+      const hasRestrictedFields = draftOnlyFields.some(field => data[field as keyof typeof data] !== undefined);
+      if (nonEditableStatuses.includes(existingQuoteRequest.status)) {
+        return NextResponse.json(
+          { error: `Cannot update quote request in ${existingQuoteRequest.status} status` },
+          { status: 400 }
+        );
+      }
+      if (hasRestrictedFields && !['SENT', 'RECEIVED', 'UNDER_REVIEW'].includes(existingQuoteRequest.status)) {
+        return NextResponse.json(
+          { error: `Cannot update these fields in ${existingQuoteRequest.status} status` },
+          { status: 400 }
+        );
+      }
+    }
 
     // Verify supplier exists if being updated
     if (data.supplierId) {

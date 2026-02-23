@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { redisConnection } from '@/lib/queue/connection';
+import { createWorkerConnection } from '@/lib/queue/connection';
 import { QUEUE_NAMES } from '@/lib/queue/queues';
 import { VoipCallInitiationJobData } from '@/lib/queue/types';
 import { workerLogger } from '@/lib/logger';
@@ -861,7 +861,7 @@ export function startVoipCallInitiationWorker() {
       return await processVoipCallInitiation(job);
     },
     {
-      connection: redisConnection,
+      connection: createWorkerConnection(),
       concurrency: 5, // Process up to 5 calls simultaneously
       drainDelay: 30,
       limiter: {

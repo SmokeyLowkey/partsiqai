@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { sendEmail, getBaseUrl } from '@/lib/email/resend';
+import { escapeHtml } from '@/lib/sanitize';
 
 interface NotifyQuoteReceivedParams {
   quoteRequestId: string;
@@ -189,9 +190,9 @@ function getQuoteReceivedEmailHtml(params: {
     </div>
 
     <div class="content">
-      <h2>Hi ${userName},</h2>
+      <h2>Hi ${escapeHtml(userName)},</h2>
 
-      <p><strong>${supplierName}</strong> has responded to your quote request <strong>${quoteNumber}</strong> via ${channelLabel}.</p>
+      <p><strong>${escapeHtml(supplierName)}</strong> has responded to your quote request <strong>${escapeHtml(quoteNumber)}</strong> via ${escapeHtml(channelLabel)}.</p>
 
       <p>${detailLine}</p>
 

@@ -105,7 +105,7 @@ export async function POST(
       emailClient = await getEmailClientForUser(session.user.id);
     } catch (error: any) {
       return NextResponse.json(
-        { error: error.message || 'Email not configured. Please ask an admin to set up your email integration.' },
+        { error: 'Email not configured. Please ask an admin to set up your email integration.' },
         { status: 400 }
       );
     }

@@ -2,7 +2,7 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 
 import { Worker, Job } from 'bullmq';
-import { redisConnection } from '@/lib/queue/connection';
+import { createWorkerConnection } from '@/lib/queue/connection';
 import { MaintenancePdfJobData } from '@/lib/queue/types';
 import { OpenRouterClient } from '@/lib/services/llm/openrouter-client';
 import { extractPdfTextFromS3 } from '@/lib/services/document/pdf-parser';
@@ -324,7 +324,7 @@ const worker = new Worker<MaintenancePdfJobData>(
     await processMaintenancePdf(job);
   },
   {
-    connection: redisConnection,
+    connection: createWorkerConnection(),
     concurrency: 2, // Process up to 2 PDFs at a time
     drainDelay: 30,
   }

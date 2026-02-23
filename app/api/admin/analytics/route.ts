@@ -189,11 +189,12 @@ export async function GET(request: Request) {
         )
       ),
 
-      // Parts - not org-specific, show all
-      prisma.part.count(),
+      // Parts - filtered by org for non-master admins
+      prisma.part.count({ where: orgFilter }),
       prisma.part.count({
         where: {
           stockQuantity: { lte: prisma.part.fields.minStockLevel },
+          ...orgFilter,
         },
       }),
 
@@ -228,7 +229,7 @@ export async function GET(request: Request) {
         _count: { status: true },
       }),
       prisma.vehicleSearchMapping.count({
-        where: { verifiedAt: null },
+        where: { verifiedAt: null, ...orgFilter },
       }),
     ]);
 

@@ -24,6 +24,11 @@ export async function GET(request: Request) {
 
     const where: any = {};
 
+    // Scope to org for non-MASTER_ADMIN users
+    if (currentUser.role !== "MASTER_ADMIN") {
+      where.organizationId = currentUser.organizationId;
+    }
+
     if (search) {
       where.OR = [
         { partNumber: { contains: search, mode: "insensitive" } },

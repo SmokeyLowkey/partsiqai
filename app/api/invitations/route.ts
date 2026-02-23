@@ -1,9 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { randomUUID, randomBytes } from "crypto";
 import { sendEmail, getBaseUrl } from "@/lib/email/resend";
 import bcrypt from "bcryptjs";
+import { checkOrigin } from "@/lib/csrf";
+import { checkRateLimit, rateLimits } from "@/lib/rate-limit";
+import { escapeHtml } from "@/lib/sanitize";
 
 // Generate a random temporary password
 function generateTemporaryPassword(): string {
@@ -54,11 +57,11 @@ async function sendInvitationEmail(
           <h1>🎉 You're Invited to PartsIQ!</h1>
         </div>
         <div class="content">
-          <p><strong>${inviterName}</strong> has invited you to join <strong>${organizationName}</strong> on PartsIQ.</p>
+          <p><strong>${escapeHtml(inviterName)}</strong> has invited you to join <strong>${escapeHtml(organizationName)}</strong> on PartsIQ.</p>
 
           <div class="info-box">
-            <p><strong>Your Role:</strong> ${role}</p>
-            ${message ? `<p><strong>Message:</strong> ${message}</p>` : ''}
+            <p><strong>Your Role:</strong> ${escapeHtml(role)}</p>
+            ${message ? `<p><strong>Message:</strong> ${escapeHtml(message)}</p>` : ''}
           </div>
 
           <div class="password-box">
@@ -100,8 +103,11 @@ async function sendInvitationEmail(
 }
 
 // POST /api/invitations - Create team invitation
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    const originError = checkOrigin(request);
+    if (originError) return originError;
+
     const session = await getServerSession();
 
     if (!session?.user) {
@@ -115,6 +121,9 @@ export async function POST(request: Request) {
         { status: 403 }
       );
     }
+
+    const rateCheck = await checkRateLimit(`invitation:${session.user.id}`, rateLimits.invitation);
+    if (!rateCheck.success) return rateCheck.response;
 
     const body = await request.json();
     const { email, role, message } = body;
@@ -222,7 +231,7 @@ export async function POST(request: Request) {
 }
 
 // GET /api/invitations - List organization's invitations
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const session = await getServerSession();
 
@@ -238,30 +247,44 @@ export async function GET() {
       );
     }
 
-    const invitations = await prisma.invitation.findMany({
-      where: {
-        organizationId: session.user.organizationId,
-      },
-      include: {
-        inviter: {
-          select: {
-            name: true,
-            email: true,
-          },
-        },
-        recipient: {
-          select: {
-            name: true,
-            email: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+    const { searchParams } = new URL(request.url);
+    const page = parseInt(searchParams.get("page") || "1");
+    const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 200);
 
-    return NextResponse.json({ invitations });
+    const where = {
+      organizationId: session.user.organizationId,
+    };
+
+    const [invitations, total] = await Promise.all([
+      prisma.invitation.findMany({
+        where,
+        include: {
+          inviter: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+          recipient: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.invitation.count({ where }),
+    ]);
+
+    return NextResponse.json({
+      invitations,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    });
   } catch (error) {
     console.error("Error fetching invitations:", error);
     return NextResponse.json(

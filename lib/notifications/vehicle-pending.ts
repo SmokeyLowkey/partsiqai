@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { sendEmail, getBaseUrl } from '@/lib/email/resend';
+import { escapeHtml } from '@/lib/sanitize';
 
 interface NotifyVehiclePendingParams {
   vehicleId: string;
@@ -176,9 +177,9 @@ function getVehiclePendingEmailHtml(params: {
     </div>
 
     <div class="content">
-      <h2>Hi ${adminName},</h2>
+      <h2>Hi ${escapeHtml(adminName)},</h2>
 
-      <p><strong>${createdByName}</strong> has added a new vehicle: <strong>${vehicleName}</strong>.</p>
+      <p><strong>${escapeHtml(createdByName)}</strong> has added a new vehicle: <strong>${escapeHtml(vehicleName)}</strong>.</p>
 
       <p>This vehicle needs its search mappings configured before it can be used for parts lookups. Please review and set up the Pinecone, Neo4j, and catalog mappings.</p>
 

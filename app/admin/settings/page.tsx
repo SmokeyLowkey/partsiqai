@@ -223,9 +223,13 @@ export default function SettingsPage() {
   const [savingPlatformIntegration, setSavingPlatformIntegration] = useState<string | null>(null);
 
   // Organization Pinecone mapping state (Master Admin only)
-  const [organizations, setOrganizations] = useState<Array<{id: string; name: string; pineconeHost: string | null}>>([]);
+  const [organizations, setOrganizations] = useState<Array<{id: string; name: string; pineconeHost: string | null; vapiPhoneNumberId: string | null; vapiAssistantId: string | null}>>([]);
   const [pineconeHostMappings, setPineconeHostMappings] = useState<Record<string, string>>({});
   const [savingPineconeMappings, setSavingPineconeMappings] = useState(false);
+  // Organization VAPI mapping state (Master Admin only)
+  const [vapiPhoneNumberMappings, setVapiPhoneNumberMappings] = useState<Record<string, string>>({});
+  const [vapiAssistantIdMappings, setVapiAssistantIdMappings] = useState<Record<string, string>>({});
+  const [savingVapiMappings, setSavingVapiMappings] = useState(false);
   const [testingPlatformIntegration, setTestingPlatformIntegration] = useState<string | null>(null);
 
   useEffect(() => {
@@ -421,6 +425,15 @@ export default function SettingsPage() {
           }
         });
         setPineconeHostMappings(mappings);
+        // Initialize VAPI mappings
+        const phoneMappings: Record<string, string> = {};
+        const assistantMappings: Record<string, string> = {};
+        (data.organizations || []).forEach((org: any) => {
+          if (org.vapiPhoneNumberId) phoneMappings[org.id] = org.vapiPhoneNumberId;
+          if (org.vapiAssistantId) assistantMappings[org.id] = org.vapiAssistantId;
+        });
+        setVapiPhoneNumberMappings(phoneMappings);
+        setVapiAssistantIdMappings(assistantMappings);
       }
     } catch (error) {
       console.error("Error fetching organizations:", error);
@@ -850,6 +863,68 @@ export default function SettingsPage() {
       });
     } finally {
       setSavingPineconeMappings(false);
+    }
+  };
+
+  const handleUpdateVapiMapping = (orgId: string, field: "phone" | "assistant", value: string) => {
+    if (field === "phone") {
+      setVapiPhoneNumberMappings((prev) => ({ ...prev, [orgId]: value }));
+    } else {
+      setVapiAssistantIdMappings((prev) => ({ ...prev, [orgId]: value }));
+    }
+  };
+
+  const handleRemoveVapiMapping = (orgId: string) => {
+    setVapiPhoneNumberMappings((prev) => {
+      const updated = { ...prev };
+      delete updated[orgId];
+      return updated;
+    });
+    setVapiAssistantIdMappings((prev) => {
+      const updated = { ...prev };
+      delete updated[orgId];
+      return updated;
+    });
+  };
+
+  const handleSaveVapiMappings = async () => {
+    try {
+      setSavingVapiMappings(true);
+
+      const promises = organizations.map(async (org) => {
+        const newPhone = vapiPhoneNumberMappings[org.id] || null;
+        const newAssistant = vapiAssistantIdMappings[org.id] || null;
+        if (newPhone !== org.vapiPhoneNumberId || newAssistant !== org.vapiAssistantId) {
+          const response = await fetch(`/api/admin/organizations/${org.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              vapiPhoneNumberId: newPhone,
+              vapiAssistantId: newAssistant,
+            }),
+          });
+          if (!response.ok) {
+            throw new Error(`Failed to update ${org.name}`);
+          }
+        }
+      });
+
+      await Promise.all(promises);
+
+      toast({
+        title: "Success",
+        description: "VAPI phone number and assistant ID mappings saved successfully",
+      });
+
+      fetchOrganizations();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setSavingVapiMappings(false);
     }
   };
 
@@ -2046,6 +2121,93 @@ export default function SettingsPage() {
               disabled={savingPineconeMappings}
             >
               {savingPineconeMappings ? (
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4 mr-2" />
+              )}
+              Save All Mappings
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Separator />
+
+      {/* Organization VAPI Phone & Assistant Mapping */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Zap className="h-5 w-5" />
+            Organization VAPI Mapping
+          </CardTitle>
+          <CardDescription>
+            Assign dedicated VAPI phone numbers and assistant IDs to specific organizations. Leave blank to use the platform defaults.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-lg border">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="text-left p-3 font-medium">Organization</th>
+                    <th className="text-left p-3 font-medium">Phone Number ID</th>
+                    <th className="text-left p-3 font-medium">Assistant ID</th>
+                    <th className="text-right p-3 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {organizations.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="p-8 text-center text-muted-foreground">
+                        No organizations found
+                      </td>
+                    </tr>
+                  ) : (
+                    organizations.map((org) => (
+                      <tr key={org.id} className="hover:bg-muted/30">
+                        <td className="p-3 font-medium">{org.name}</td>
+                        <td className="p-3">
+                          <Input
+                            value={vapiPhoneNumberMappings[org.id] || ""}
+                            onChange={(e) => handleUpdateVapiMapping(org.id, "phone", e.target.value)}
+                            placeholder="e.g. abc123-def456..."
+                            className="max-w-xs"
+                          />
+                        </td>
+                        <td className="p-3">
+                          <Input
+                            value={vapiAssistantIdMappings[org.id] || ""}
+                            onChange={(e) => handleUpdateVapiMapping(org.id, "assistant", e.target.value)}
+                            placeholder="e.g. xyz789-uvw012..."
+                            className="max-w-xs"
+                          />
+                        </td>
+                        <td className="p-3 text-right">
+                          {(vapiPhoneNumberMappings[org.id] || vapiAssistantIdMappings[org.id]) && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveVapiMapping(org.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-4">
+            <Button
+              onClick={handleSaveVapiMappings}
+              disabled={savingVapiMappings}
+            >
+              {savingVapiMappings ? (
                 <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
               ) : (
                 <Save className="h-4 w-4 mr-2" />

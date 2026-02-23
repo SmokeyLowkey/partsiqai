@@ -2,7 +2,7 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 
 import { Worker, Job } from 'bullmq';
-import { redisConnection } from '@/lib/queue/connection';
+import { createWorkerConnection } from '@/lib/queue/connection';
 import { QUEUE_NAMES } from '@/lib/queue/queues';
 import { CommanderEventJobData } from '@/lib/queue/types';
 import { OpenRouterClient } from '@/lib/services/llm/openrouter-client';
@@ -187,7 +187,7 @@ export function startCommanderWorker() {
       await processCommanderEvent(job);
     },
     {
-      connection: redisConnection,
+      connection: createWorkerConnection(),
       concurrency: 1, // Sequential processing — Commander must see events in order
     },
   );

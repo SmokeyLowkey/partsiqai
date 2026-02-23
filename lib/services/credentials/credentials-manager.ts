@@ -23,6 +23,8 @@ export class CredentialsManager {
       select: {
         usePlatformKeys: true,
         pineconeHost: true,
+        vapiPhoneNumberId: true,
+        vapiAssistantId: true,
       },
     });
 
@@ -127,7 +129,7 @@ export class CredentialsManager {
    * Get platform-wide credentials from IntegrationCredential with SYSTEM_ORG_ID
    * Non-sensitive config (host URLs, model names) still come from SystemSettings
    */
-  private async getPlatformCredentials<T>(type: IntegrationType, organization?: { pineconeHost?: string | null }): Promise<T | null> {
+  private async getPlatformCredentials<T>(type: IntegrationType, organization?: { pineconeHost?: string | null; vapiPhoneNumberId?: string | null; vapiAssistantId?: string | null }): Promise<T | null> {
     console.log(`[CredentialsManager] Getting platform credentials for ${type}`);
 
     // Get encrypted credentials from IntegrationCredential table (SYSTEM org)
@@ -144,6 +146,18 @@ export class CredentialsManager {
     if (type === 'PINECONE' && organization?.pineconeHost) {
       platformCred.host = organization.pineconeHost;
       console.log(`[CredentialsManager] Using org-specific Pinecone host: ${organization.pineconeHost}`);
+    }
+
+    // For VAPI, check if org has custom phone number or assistant ID overrides
+    if (type === 'VAPI') {
+      if (organization?.vapiPhoneNumberId) {
+        platformCred.phoneNumberId = organization.vapiPhoneNumberId;
+        console.log(`[CredentialsManager] Using org-specific VAPI phone number: ${organization.vapiPhoneNumberId}`);
+      }
+      if (organization?.vapiAssistantId) {
+        platformCred.assistantId = organization.vapiAssistantId;
+        console.log(`[CredentialsManager] Using org-specific VAPI assistant ID: ${organization.vapiAssistantId}`);
+      }
     }
 
     return platformCred as T;
@@ -279,6 +293,8 @@ export class CredentialsManager {
       select: {
         usePlatformKeys: true,
         pineconeHost: true,
+        vapiPhoneNumberId: true,
+        vapiAssistantId: true,
       },
     });
 
@@ -345,6 +361,8 @@ export class CredentialsManager {
       select: {
         usePlatformKeys: true,
         pineconeHost: true,
+        vapiPhoneNumberId: true,
+        vapiAssistantId: true,
       },
     });
 

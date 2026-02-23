@@ -1,8 +1,12 @@
 import { CredentialsManager } from '../credentials/credentials-manager';
 import { OpenRouterClient } from '../llm/openrouter-client';
 import { PROMPTS } from '../llm/prompt-templates';
+import { withRetry } from '@/lib/utils/retry';
+import { withTimeout } from '@/lib/utils/timeout';
 import type { PartResult, VehicleContext } from './postgres-search';
 import type { ProcessedQuery } from './query-understanding';
+import { apiLogger } from '@/lib/logger';
+const log = apiLogger.child({ service: 'web-search' });
 
 interface SerperSearchResult {
   title: string;
@@ -68,14 +72,50 @@ export class WebSearchAgent {
       );
 
       if (!creds?.apiKey) {
-        console.log('[WebSearchAgent] No Serper credentials found');
+        log.info('No Serper credentials found');
         return null;
       }
 
       return new WebSearchAgent(creds.apiKey);
     } catch (error: any) {
-      console.warn('[WebSearchAgent] Failed to initialize:', error.message);
+      log.warn({ err: error }, 'Failed to initialize');
       return null;
+    }
+  }
+
+  /**
+   * Search the web for diagnostic/troubleshooting information.
+   * Returns raw snippets (not parts) for use as LLM context.
+   */
+  async searchDiagnostic(
+    query: string,
+    vehicleContext?: VehicleContext
+  ): Promise<{ title: string; snippet: string; link: string }[]> {
+    try {
+      const parts: string[] = [query];
+      if (vehicleContext) {
+        parts.push(`${vehicleContext.make} ${vehicleContext.model}`);
+      }
+      parts.push('troubleshooting');
+      const searchQuery = parts.join(' ');
+
+      log.info({ query: searchQuery }, 'Diagnostic search');
+
+      const serperResults = await this.callSerper(searchQuery);
+
+      if (!serperResults.organic || serperResults.organic.length === 0) {
+        log.info('No diagnostic results from Serper');
+        return [];
+      }
+
+      return serperResults.organic.slice(0, 6).map(r => ({
+        title: r.title,
+        snippet: r.snippet,
+        link: r.link,
+      }));
+    } catch (error: any) {
+      log.error({ err: error }, 'Diagnostic search failed');
+      return [];
     }
   }
 
@@ -91,7 +131,7 @@ export class WebSearchAgent {
     const processedQuery = typeof query === 'string' ? null : query;
     const searchText = typeof query === 'string' ? query : query.processedQuery;
 
-    console.log('[WebSearchAgent] Starting web search for:', searchText);
+    log.info({ query: searchText }, 'Starting web search');
 
     try {
       // Build search query optimized for parts
@@ -101,11 +141,11 @@ export class WebSearchAgent {
       const serperResults = await this.callSerper(searchQuery);
 
       if (!serperResults.organic || serperResults.organic.length === 0) {
-        console.log('[WebSearchAgent] No organic results from Serper');
+        log.info('No organic results from Serper');
         return [];
       }
 
-      console.log('[WebSearchAgent] Serper returned', serperResults.organic.length, 'results');
+      log.info({ resultCount: serperResults.organic.length }, 'Serper returned results');
 
       // Filter to top relevant results
       const topResults = serperResults.organic.slice(0, 8);
@@ -121,7 +161,7 @@ export class WebSearchAgent {
       // Convert to PartResult format
       return this.toPartResults(extractedParts, processedQuery);
     } catch (error: any) {
-      console.error('[WebSearchAgent] Search failed:', error.message);
+      log.error({ err: error }, 'Search failed');
       return [];
     }
   }
@@ -159,24 +199,31 @@ export class WebSearchAgent {
    * Call Serper API for organic search results
    */
   private async callSerper(query: string): Promise<SerperResponse> {
-    const response = await fetch('https://google.serper.dev/search', {
-      method: 'POST',
-      headers: {
-        'X-API-KEY': this.apiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        q: query,
-        num: 10,
-      }),
-    });
+    return withRetry(
+      () => withTimeout(async () => {
+        const response = await fetch('https://google.serper.dev/search', {
+          method: 'POST',
+          headers: {
+            'X-API-KEY': this.apiKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            q: query,
+            num: 10,
+          }),
+        });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Serper API error: ${response.status} ${errorText}`);
-    }
+        if (!response.ok) {
+          const errorText = await response.text();
+          const err = new Error(`Serper API error: ${response.status} ${errorText}`);
+          (err as any).status = response.status;
+          throw err;
+        }
 
-    return response.json();
+        return response.json();
+      }, 8_000, 'callSerper'),
+      { maxRetries: 2 }
+    );
   }
 
   /**
@@ -212,7 +259,7 @@ export class WebSearchAgent {
 
       return extracted.extractedParts || [];
     } catch (error: any) {
-      console.warn('[WebSearchAgent] LLM extraction failed, using basic extraction:', error.message);
+      log.warn({ err: error }, 'LLM extraction failed, using basic extraction');
       return this.basicExtract(results, null);
     }
   }

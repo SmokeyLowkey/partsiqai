@@ -393,26 +393,26 @@ export async function POST(req: NextRequest) {
     const authHeader = req.headers.get('authorization');
     const webhookSecret = process.env.VOIP_WEBHOOK_SECRET;
 
-    // Only enforce auth if VOIP_WEBHOOK_SECRET is configured
-    if (webhookSecret) {
-      const expectedAuth = `Bearer ${webhookSecret}`;
-
-      if (authHeader !== expectedAuth) {
-        logger.warn({
-          authHeaderPreview: authHeader?.substring(0, 20),
-        }, 'Unauthorized LangGraph handler request - auth mismatch');
-        return NextResponse.json({
-          error: 'Unauthorized',
-          message: 'Invalid authorization header'
-        }, { status: 401 });
-      }
-
-      logger.debug('Authorization check passed');
-    } else {
-      logger.warn(
-        'VOIP_WEBHOOK_SECRET not configured - skipping auth check (set in Vercel environment variables for production)'
-      );
+    if (!webhookSecret) {
+      logger.error('VOIP_WEBHOOK_SECRET not configured — rejecting request');
+      return NextResponse.json({
+        error: 'Server configuration error',
+        message: 'Webhook secret not configured'
+      }, { status: 500 });
     }
+
+    const expectedAuth = `Bearer ${webhookSecret}`;
+    if (authHeader !== expectedAuth) {
+      logger.warn({
+        authHeaderPreview: authHeader?.substring(0, 20),
+      }, 'Unauthorized LangGraph handler request - auth mismatch');
+      return NextResponse.json({
+        error: 'Unauthorized',
+        message: 'Invalid authorization header'
+      }, { status: 401 });
+    }
+
+    logger.debug('Authorization check passed');
 
     const body = await req.json();
 
@@ -693,7 +693,6 @@ export async function GET(req: NextRequest) {
     message: 'LangGraph Custom LLM Handler is running',
     timestamp: new Date().toISOString(),
     env: process.env.NODE_ENV,
-    expectedAuth: process.env.VOIP_WEBHOOK_SECRET ? 'configured' : 'missing',
   });
 }
 
@@ -706,7 +705,7 @@ export async function OPTIONS(req: NextRequest) {
   return new NextResponse(null, {
     status: 200,
     headers: {
-      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Origin': process.env.VAPI_ALLOWED_ORIGIN || 'https://api.vapi.ai',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     },

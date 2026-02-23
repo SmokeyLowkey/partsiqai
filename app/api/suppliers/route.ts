@@ -47,6 +47,8 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status');
     const type = searchParams.get('type');
     const search = searchParams.get('search');
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 200);
 
     const where: any = {
       organizationId: session.user.organizationId,
@@ -68,14 +70,22 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    const suppliers = await prisma.supplier.findMany({
-      where,
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+    const [suppliers, total] = await Promise.all([
+      prisma.supplier.findMany({
+        where,
+        orderBy: {
+          createdAt: 'desc',
+        },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.supplier.count({ where }),
+    ]);
 
-    return NextResponse.json({ suppliers });
+    return NextResponse.json({
+      suppliers,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    });
   } catch (error: any) {
     console.error('Get suppliers API error:', error);
 

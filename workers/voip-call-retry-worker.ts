@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { redisConnection } from '@/lib/queue/connection';
+import { createWorkerConnection } from '@/lib/queue/connection';
 import { QUEUE_NAMES, voipFallbackQueue } from '@/lib/queue/queues';
 import { VoipCallRetryJobData } from '@/lib/queue/types';
 import { workerLogger } from '@/lib/logger';
@@ -310,7 +310,7 @@ export function startVoipCallRetryWorker() {
       return await processVoipCallRetry(job);
     },
     {
-      connection: redisConnection,
+      connection: createWorkerConnection(),
       concurrency: 3, // Process up to 3 retry calls simultaneously
       drainDelay: 30,
       limiter: {

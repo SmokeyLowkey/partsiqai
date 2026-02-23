@@ -1,7 +1,10 @@
-import neo4j, { Driver } from 'neo4j-driver';
+import neo4j, { Driver, Session } from 'neo4j-driver';
 import { credentialsManager } from '../credentials/credentials-manager';
 import { prisma } from '@/lib/prisma';
+import { withRetry } from '@/lib/utils/retry';
 import type { VehicleContext, PartResult } from './postgres-search';
+import { apiLogger } from '@/lib/logger';
+const log = apiLogger.child({ service: 'neo4j' });
 
 export class Neo4jSearchAgent {
   private driver: Driver;
@@ -29,6 +32,29 @@ export class Neo4jSearchAgent {
       credentials.username,
       credentials.password,
       credentials.database
+    );
+  }
+
+  /**
+   * Run a Cypher query with retry on transient connection errors.
+   */
+  private async runWithRetry(session: Session, cypher: string, params: Record<string, unknown>) {
+    return withRetry(
+      () => session.run(cypher, params),
+      {
+        maxRetries: 2,
+        shouldRetry: (error: any) => {
+          const msg = error.message || '';
+          return (
+            msg.includes('ECONNREFUSED') ||
+            msg.includes('ECONNRESET') ||
+            msg.includes('ServiceUnavailable') ||
+            msg.includes('SessionExpired') ||
+            error.code === 'ServiceUnavailable' ||
+            error.code === 'Neo.TransientError.General.DatabaseUnavailable'
+          );
+        },
+      }
     );
   }
 
@@ -63,9 +89,9 @@ export class Neo4jSearchAgent {
         });
 
         if (mapping) {
-          console.log('[Neo4jSearchAgent] Using search mapping for vehicle:', vehicleContext.vehicleId);
+          log.info({ vehicleId: vehicleContext.vehicleId }, 'Using search mapping for vehicle');
         } else {
-          console.warn('[Neo4jSearchAgent] No search mapping found, using basic query');
+          log.warn('No search mapping found, using basic query');
         }
       }
 
@@ -75,7 +101,7 @@ export class Neo4jSearchAgent {
         .split(/\s+/)
         .filter(term => term.length > 1 && !Neo4jSearchAgent.STOP_WORDS.has(term));
 
-      console.log('[Neo4jSearchAgent] Search terms:', searchTerms);
+      log.info({ searchTerms }, 'Extracted search terms');
 
       // Build a cleaned query from keywords (for phrase-level matching in Cypher)
       const cleanedQuery = searchTerms.join(' ');
@@ -240,18 +266,18 @@ export class Neo4jSearchAgent {
         `;
       }
 
-      console.log('[Neo4jSearchAgent] Executing Cypher query with params:', JSON.stringify(params, null, 2));
+      log.debug({ params }, 'Executing Cypher query');
 
-      const result = await session.run(cypher, params);
+      const result = await this.runWithRetry(session, cypher, params);
 
-      console.log('[Neo4jSearchAgent] Query returned', result.records.length, 'results');
+      log.info({ count: result.records.length }, 'Query returned results');
       
       // If no results with the main query, try fallback strategies
       if (result.records.length === 0 && mapping) {
-        console.log('[Neo4jSearchAgent] No results found. Trying fallback strategies...');
+        log.info('No results found, trying fallback strategies');
 
         // Fallback 1: Try reverse relationship direction (TechnicalDomain may CONTAIN_PART, not Part CONTAINS_PART)
-        console.log('[Neo4jSearchAgent] Fallback 1: Trying reverse relationship directions...');
+        log.info('Fallback 1: Trying reverse relationship directions');
         try {
           const reverseCypher = `
             MATCH (domain:TechnicalDomain)-[:CONTAINS_PART]->(p:Part)
@@ -296,19 +322,19 @@ export class Neo4jSearchAgent {
             LIMIT 20
           `;
 
-          const reverseResult = await session.run(reverseCypher, params);
-          console.log('[Neo4jSearchAgent] Reverse relationship search returned', reverseResult.records.length, 'results');
+          const reverseResult = await this.runWithRetry(session, reverseCypher, params);
+          log.info({ count: reverseResult.records.length }, 'Reverse relationship search returned results');
 
           if (reverseResult.records.length > 0) {
             return this.parseNeo4jResults(reverseResult);
           }
         } catch (e) {
-          console.log('[Neo4jSearchAgent] Reverse relationship search failed:', e);
+          log.warn({ err: e }, 'Reverse relationship search failed');
         }
 
         // Fallback 2: Search by namespace + keywords (still scoped to the vehicle's catalog)
         if (mapping.neo4jNamespace) {
-          console.log('[Neo4jSearchAgent] Fallback 2: Namespace + keyword search...');
+          log.info('Fallback 2: Namespace + keyword search');
           try {
             const namespaceCypher = `
               MATCH (p:Part)
@@ -354,8 +380,8 @@ export class Neo4jSearchAgent {
               LIMIT 20
             `;
 
-            const namespaceResult = await session.run(namespaceCypher, params);
-            console.log('[Neo4jSearchAgent] Namespace search returned', namespaceResult.records.length, 'results');
+            const namespaceResult = await this.runWithRetry(session, namespaceCypher, params);
+            log.info({ count: namespaceResult.records.length }, 'Namespace search returned results');
 
             if (namespaceResult.records.length > 0) {
               return this.parseNeo4jResults(namespaceResult);
@@ -400,19 +426,19 @@ export class Neo4jSearchAgent {
               LIMIT 20
             `;
 
-            const namespaceAnyResult = await session.run(namespaceAnyCypher, params);
-            console.log('[Neo4jSearchAgent] Namespace ANY keyword search returned', namespaceAnyResult.records.length, 'results');
+            const namespaceAnyResult = await this.runWithRetry(session, namespaceAnyCypher, params);
+            log.info({ count: namespaceAnyResult.records.length }, 'Namespace ANY keyword search returned results');
 
             if (namespaceAnyResult.records.length > 0) {
               return this.parseNeo4jResults(namespaceAnyResult);
             }
           } catch (e) {
-            console.log('[Neo4jSearchAgent] Namespace search failed:', e);
+            log.warn({ err: e }, 'Namespace search failed');
           }
         }
 
         // Fallback 3: Broad search by keywords only (last resort, no vehicle scoping)
-        console.log('[Neo4jSearchAgent] Fallback 3: Broad keyword search (last resort)...');
+        log.info('Fallback 3: Broad keyword search (last resort)');
         try {
           const broadCypher = `
             MATCH (p:Part)
@@ -448,20 +474,20 @@ export class Neo4jSearchAgent {
             LIMIT 10
           `;
 
-          const broadResult = await session.run(broadCypher, params);
-          console.log('[Neo4jSearchAgent] Broad keyword search returned', broadResult.records.length, 'results');
+          const broadResult = await this.runWithRetry(session, broadCypher, params);
+          log.info({ count: broadResult.records.length }, 'Broad keyword search returned results');
 
           if (broadResult.records.length > 0) {
             return this.parseNeo4jResults(broadResult);
           }
         } catch (e) {
-          console.log('[Neo4jSearchAgent] Broad keyword search failed:', e);
+          log.warn({ err: e }, 'Broad keyword search failed');
         }
       }
 
       return this.parseNeo4jResults(result);
     } catch (error: any) {
-      console.error('[Neo4jSearchAgent] Search error:', error);
+      log.error({ err: error }, 'Search error');
 
       // If Neo4j is not set up yet, return empty results instead of failing
       if (
@@ -469,7 +495,7 @@ export class Neo4jSearchAgent {
         error.message?.includes('Connection refused') ||
         error.message?.includes('ECONNREFUSED')
       ) {
-        console.warn('[Neo4jSearchAgent] Neo4j not configured or unavailable, returning empty results');
+        log.warn('Neo4j not configured or unavailable, returning empty results');
         return [];
       }
 

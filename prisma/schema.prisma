@@ -29,6 +29,8 @@ model Organization {
   openrouterApiKey       String?
   elevenLabsApiKey       String?
   pineconeHost           String?
+  vapiPhoneNumberId      String?
+  vapiAssistantId        String?
   settings               Json?
   logo                   String?
   primaryColor           String?                 @default("#2563eb")
@@ -224,9 +226,9 @@ model Invitation {
   acceptedAt        DateTime?
   createdAt         DateTime         @default(now())
   recipientId       String?          @unique
-  inviter           User             @relation("InvitationCreatedBy", fields: [invitedBy], references: [id])
+  inviter           User             @relation("InvitationCreatedBy", fields: [invitedBy], references: [id], onDelete: Restrict)
   organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  recipient         User?            @relation("InvitationRecipient", fields: [recipientId], references: [id])
+  recipient         User?            @relation("InvitationRecipient", fields: [recipientId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, email])
   @@index([token])
@@ -277,7 +279,7 @@ model Vehicle {
   alerts                   VehicleAlert[]
   searchMapping            VehicleSearchMapping?
   organization             Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  owner                    User                      @relation(fields: [ownerId], references: [id])
+  owner                    User                      @relation(fields: [ownerId], references: [id], onDelete: Restrict)
 
   @@unique([organizationId, vehicleId])
   @@unique([organizationId, serialNumber])
@@ -327,9 +329,9 @@ model VehicleSearchMapping {
   lastTestResults       Json?
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
-  organization          Organization @relation(fields: [organizationId], references: [id])
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   vehicle               Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  verifier              User?        @relation("VehicleSearchMappingVerifier", fields: [verifiedBy], references: [id])
+  verifier              User?        @relation("VehicleSearchMappingVerifier", fields: [verifiedBy], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([verifiedBy])
@@ -355,7 +357,7 @@ model MaintenanceSchedule {
   updatedAt            DateTime                 @updatedAt
   intervals            MaintenanceInterval[]
   organization         Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  reviewer             User?                    @relation("MaintenanceScheduleReviewer", fields: [reviewedBy], references: [id])
+  reviewer             User?                    @relation("MaintenanceScheduleReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
   vehicle              Vehicle                  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
@@ -391,7 +393,7 @@ model MaintenanceIntervalPart {
   matchedPartId         String?
   createdAt             DateTime            @default(now())
   maintenanceInterval   MaintenanceInterval @relation(fields: [maintenanceIntervalId], references: [id], onDelete: Cascade)
-  matchedPart           Part?               @relation(fields: [matchedPartId], references: [id])
+  matchedPart           Part?               @relation(fields: [matchedPartId], references: [id], onDelete: SetNull)
 
   @@index([maintenanceIntervalId])
   @@index([partNumber])
@@ -543,11 +545,11 @@ model Order {
   completedBy        String?
   orderAnalytics     OrderAnalytics?
   orderItems         OrderItem[]
-  createdBy          User              @relation(fields: [createdById], references: [id])
-  emailThread        EmailThread?      @relation(fields: [emailThreadId], references: [id])
+  createdBy          User              @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  emailThread        EmailThread?      @relation(fields: [emailThreadId], references: [id], onDelete: SetNull)
   organization       Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  supplier           Supplier          @relation(fields: [supplierId], references: [id])
-  vehicle            Vehicle?          @relation(fields: [vehicleId], references: [id])
+  supplier           Supplier          @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  vehicle            Vehicle?          @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, orderNumber])
   @@index([organizationId])
@@ -581,7 +583,7 @@ model OrderItem {
   originalPartNumber String?
   supplierPartNumber String?
   order              Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  part               Part?              @relation(fields: [partId], references: [id])
+  part               Part?              @relation(fields: [partId], references: [id], onDelete: SetNull)
 
   @@map("order_items")
 }
@@ -673,6 +675,27 @@ model ActivityLog {
   @@map("activity_logs")
 }
 
+model SearchLog {
+  id                String   @id @default(cuid())
+  organizationId    String
+  userId            String?
+  query             String
+  intent            String?
+  searchTimeMs      Int
+  totalResults      Int      @default(0)
+  sourcesUsed       String[] @default([])
+  cacheHit          Boolean  @default(false)
+  spellingCorrected Boolean  @default(false)
+  isMultiPart       Boolean  @default(false)
+  partCount         Int?     @default(1)
+  vehicleId         String?
+  createdAt         DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, intent])
+  @@map("search_logs")
+}
+
 model ChatConversation {
   id             String              @id @default(cuid())
   title          String?
@@ -686,8 +709,8 @@ model ChatConversation {
   updatedAt      DateTime            @updatedAt
   vehicleId      String?
   organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User                @relation(fields: [userId], references: [id])
-  vehicle        Vehicle?            @relation(fields: [vehicleId], references: [id])
+  user           User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  vehicle        Vehicle?            @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   messages       ChatMessage[]
   pickLists      ChatPickList[]
 
@@ -731,7 +754,7 @@ model ChatPickList {
   vehicleId      String?
   items          ChatPickListItem[]
   conversation   ChatConversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  vehicle        Vehicle?           @relation(fields: [vehicleId], references: [id])
+  vehicle        Vehicle?           @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   quoteRequests  QuoteRequest[]
 
   @@map("chat_pick_lists")
@@ -752,7 +775,7 @@ model ChatPickListItem {
   updatedAt      DateTime     @updatedAt
   notes          String?
   source         ItemSource   @default(CATALOG)
-  message        ChatMessage? @relation(fields: [messageId], references: [id])
+  message        ChatMessage? @relation(fields: [messageId], references: [id], onDelete: SetNull)
   pickList       ChatPickList @relation(fields: [pickListId], references: [id], onDelete: Cascade)
 
   @@index([pickListId, isOrdered])
@@ -836,11 +859,11 @@ model EmailThread {
   updatedAt                DateTime                 @updatedAt
   ownerUserId              String?
   messages                 EmailMessage[]
-  createdBy                User                     @relation("EmailThreadCreatedBy", fields: [createdById], references: [id])
+  createdBy                User                     @relation("EmailThreadCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   organization             Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  ownerUser                User?                    @relation("EmailThreadOwner", fields: [ownerUserId], references: [id])
-  quoteRequest             QuoteRequest?            @relation(fields: [quoteRequestId], references: [id])
-  supplier                 Supplier?                @relation(fields: [supplierId], references: [id])
+  ownerUser                User?                    @relation("EmailThreadOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  quoteRequest             QuoteRequest?            @relation(fields: [quoteRequestId], references: [id], onDelete: SetNull)
+  supplier                 Supplier?                @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   order                    Order?
   quoteRequestEmailThreads QuoteRequestEmailThread?
 
@@ -934,14 +957,14 @@ model QuoteRequest {
   emailThread                EmailThread[]
   emailThreads               QuoteRequestEmailThread[]
   items                      QuoteRequestItem[]
-  approvedBy                 User?                     @relation("QuoteRequestApprovedBy", fields: [approvedById], references: [id])
-  createdBy                  User                      @relation("QuoteRequestCreatedBy", fields: [createdById], references: [id])
-  managerTakeover            User?                     @relation("QuoteRequestManagerTakeover", fields: [managerTakeoverId], references: [id])
+  approvedBy                 User?                     @relation("QuoteRequestApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  createdBy                  User                      @relation("QuoteRequestCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  managerTakeover            User?                     @relation("QuoteRequestManagerTakeover", fields: [managerTakeoverId], references: [id], onDelete: SetNull)
   organization               Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  pickList                   ChatPickList?             @relation(fields: [pickListId], references: [id])
-  selectedSupplier           Supplier?                 @relation("SelectedQuoteSupplier", fields: [selectedSupplierId], references: [id])
-  supplier                   Supplier?                 @relation("PrimaryQuoteSupplier", fields: [supplierId], references: [id])
-  vehicle                    Vehicle?                  @relation(fields: [vehicleId], references: [id])
+  pickList                   ChatPickList?             @relation(fields: [pickListId], references: [id], onDelete: SetNull)
+  selectedSupplier           Supplier?                 @relation("SelectedQuoteSupplier", fields: [selectedSupplierId], references: [id], onDelete: SetNull)
+  supplier                   Supplier?                 @relation("PrimaryQuoteSupplier", fields: [supplierId], references: [id], onDelete: SetNull)
+  vehicle                    Vehicle?                  @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   supplierCalls              SupplierCall[]
 
   @@unique([organizationId, quoteNumber])
@@ -976,9 +999,9 @@ model QuoteRequestItem {
   supplierNotes              String?
   supplierId                 String?
   source                     ItemSource          @default(CATALOG)
-  part                       Part?               @relation(fields: [partId], references: [id])
+  part                       Part?               @relation(fields: [partId], references: [id], onDelete: SetNull)
   quoteRequest               QuoteRequest        @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
-  supplier                   Supplier?           @relation(fields: [supplierId], references: [id])
+  supplier                   Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   supplierQuotes             SupplierQuoteItem[]
 
   @@index([quoteRequestId])
@@ -1003,9 +1026,9 @@ model SupplierQuoteItem {
   extractedFromEmailId String?
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
-  extractedFromEmail   EmailMessage?    @relation(fields: [extractedFromEmailId], references: [id])
+  extractedFromEmail   EmailMessage?    @relation(fields: [extractedFromEmailId], references: [id], onDelete: SetNull)
   quoteRequestItem     QuoteRequestItem @relation(fields: [quoteRequestItemId], references: [id], onDelete: Cascade)
-  supplier             Supplier         @relation(fields: [supplierId], references: [id])
+  supplier             Supplier         @relation(fields: [supplierId], references: [id], onDelete: Restrict)
 
   @@unique([quoteRequestItemId, supplierId])
   @@index([quoteRequestItemId])
@@ -1029,12 +1052,12 @@ model QuoteRequestEmailThread {
   visibleToCreator Boolean                   @default(true)
   takeoverAt       DateTime?
   takeoverById     String?
-  emailThread      EmailThread               @relation(fields: [emailThreadId], references: [id])
+  emailThread      EmailThread               @relation(fields: [emailThreadId], references: [id], onDelete: Restrict)
   parentThread     QuoteRequestEmailThread?  @relation("ThreadHierarchy", fields: [parentThreadId], references: [id])
   childThreads     QuoteRequestEmailThread[] @relation("ThreadHierarchy")
   quoteRequest     QuoteRequest              @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
-  supplier         Supplier                  @relation(fields: [supplierId], references: [id])
-  takeoverBy       User?                     @relation(fields: [takeoverById], references: [id])
+  supplier         Supplier                  @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  takeoverBy       User?                     @relation(fields: [takeoverById], references: [id], onDelete: SetNull)
 
   @@unique([quoteRequestId, supplierId, threadRole])
   @@index([quoteRequestId])
@@ -1053,7 +1076,7 @@ model EditedEmail {
   updatedAt      DateTime     @updatedAt
   supplierId     String?
   quoteRequest   QuoteRequest @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
-  supplier       Supplier?    @relation(fields: [supplierId], references: [id])
+  supplier       Supplier?    @relation(fields: [supplierId], references: [id], onDelete: SetNull)
 
   @@index([quoteRequestId])
   @@index([supplierId])
@@ -1119,10 +1142,10 @@ model SupplierCall {
   organizationId   String
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
-  caller           User          @relation(fields: [callerId], references: [id])
+  caller           User          @relation(fields: [callerId], references: [id], onDelete: Restrict)
   organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   quoteRequest     QuoteRequest? @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
-  supplier         Supplier      @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  supplier         Supplier      @relation(fields: [supplierId], references: [id], onDelete: Restrict)
 
   @@index([quoteRequestId])
   @@index([supplierId])
@@ -1151,7 +1174,7 @@ model JobQueue {
   completedAt    DateTime?
   failedAt       DateTime?
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User?        @relation(fields: [userId], references: [id])
+  user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, status])
   @@index([queueName, status])
@@ -1200,7 +1223,7 @@ model IntegrationCredential {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   createdBy       String
-  creator         User            @relation("IntegrationCredentialCreator", fields: [createdBy], references: [id])
+  creator         User            @relation("IntegrationCredentialCreator", fields: [createdBy], references: [id], onDelete: Restrict)
   organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, integrationType])
@@ -1323,7 +1346,7 @@ model IngestionJob {
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
   organization     Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user             User                 @relation(fields: [userId], references: [id])
+  user             User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([organizationId, status])
   @@index([status, createdAt])

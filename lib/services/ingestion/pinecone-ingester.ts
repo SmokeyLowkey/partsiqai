@@ -135,20 +135,32 @@ export async function ingestToPinecone(
           }
         }
 
+        // Store namespace on vector for grouping (will be removed before upsert)
+        vector._namespace = record.namespace || '';
         vectors.push(vector);
       }
 
-      // Upsert vectors in sub-batches
-      for (let k = 0; k < vectors.length; k += UPSERT_BATCH_SIZE) {
-        const upsertBatch = vectors.slice(k, k + UPSERT_BATCH_SIZE);
-        const namespace = batch[0].namespace || '';
+      // Group vectors by namespace before upserting
+      const vectorsByNamespace = new Map<string, typeof vectors>();
+      for (const vec of vectors) {
+        const ns = (vec as any)._namespace || '';
+        delete (vec as any)._namespace;
+        if (!vectorsByNamespace.has(ns)) vectorsByNamespace.set(ns, []);
+        vectorsByNamespace.get(ns)!.push(vec);
+      }
 
-        await upsertWithRetry(host, apiKey, upsertBatch, namespace, logger);
-        success += upsertBatch.length;
+      // Upsert vectors in sub-batches, grouped by namespace
+      for (const [namespace, nsVectors] of vectorsByNamespace) {
+        for (let k = 0; k < nsVectors.length; k += UPSERT_BATCH_SIZE) {
+          const upsertBatch = nsVectors.slice(k, k + UPSERT_BATCH_SIZE);
 
-        // Delay between upsert sub-batches
-        if (k + UPSERT_BATCH_SIZE < vectors.length) {
-          await sleep(BATCH_DELAY_MS);
+          await upsertWithRetry(host, apiKey, upsertBatch, namespace, logger);
+          success += upsertBatch.length;
+
+          // Delay between upsert sub-batches
+          if (k + UPSERT_BATCH_SIZE < nsVectors.length) {
+            await sleep(BATCH_DELAY_MS);
+          }
         }
       }
     } catch (error: any) {

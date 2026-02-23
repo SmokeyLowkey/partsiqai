@@ -14,8 +14,8 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const vehicle = await prisma.vehicle.findUnique({
-      where: { id },
+    const vehicle = await prisma.vehicle.findFirst({
+      where: { id, organizationId: session.user.organizationId },
       include: { searchMapping: true },
     });
 
@@ -86,8 +86,8 @@ export async function PUT(
       postgresModel: trimOrNull(body.postgresModel),
     };
 
-    const vehicle = await prisma.vehicle.findUnique({
-      where: { id },
+    const vehicle = await prisma.vehicle.findFirst({
+      where: { id, organizationId: session.user.organizationId },
     });
 
     if (!vehicle) {

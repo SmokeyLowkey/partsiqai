@@ -42,7 +42,7 @@ export async function GET() {
   } catch (error: any) {
     console.error("Error fetching platform credentials:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to fetch platform credentials" },
+      { error: "Failed to fetch platform credentials" },
       { status: 500 }
     );
   }
@@ -101,7 +101,7 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error("Error saving platform credentials:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to save platform credentials" },
+      { error: "Failed to save platform credentials" },
       { status: 500 }
     );
   }
@@ -140,7 +140,7 @@ export async function DELETE(request: Request) {
   } catch (error: any) {
     console.error("Error deleting platform credentials:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to delete platform credentials" },
+      { error: "Failed to delete platform credentials" },
       { status: 500 }
     );
   }

@@ -458,7 +458,7 @@ IMPORTANT: Numbers should be numbers, not strings.`;
           supplierName: supplier.name,
           itemsExtracted: 0,
           success: false,
-          error: error.message,
+          error: 'Failed to extract prices from call',
         });
       }
     }

@@ -5,6 +5,7 @@ import { UserRole } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { sendEmail, getBaseUrl } from "@/lib/email/resend";
+import { escapeHtml } from "@/lib/sanitize";
 
 // Generate a random temporary password
 function generateTemporaryPassword(): string {
@@ -239,11 +240,11 @@ export async function POST(request: Request) {
               <h1>Welcome to PartsIQ!</h1>
             </div>
             <div class="content">
-              <p>An account has been created for you at <strong>${newUser.organization.name}</strong>.</p>
+              <p>An account has been created for you at <strong>${escapeHtml(newUser.organization.name)}</strong>.</p>
 
               <div class="info-box">
-                <p><strong>Email:</strong> ${email}</p>
-                <p><strong>Role:</strong> ${role}</p>
+                <p><strong>Email:</strong> ${escapeHtml(email)}</p>
+                <p><strong>Role:</strong> ${escapeHtml(role)}</p>
               </div>
 
               <div class="password-box">

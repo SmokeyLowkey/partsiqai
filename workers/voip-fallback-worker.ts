@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { redisConnection } from '@/lib/queue/connection';
+import { createWorkerConnection } from '@/lib/queue/connection';
 import { QUEUE_NAMES } from '@/lib/queue/queues';
 import { VoipFallbackJobData } from '@/lib/queue/types';
 import { workerLogger } from '@/lib/logger';
@@ -157,10 +157,8 @@ ${new Date().toLocaleString()}
       'Error sending VOIP fallback email'
     );
 
-    return {
-      success: false,
-      error: error.message,
-    };
+    // Throw so BullMQ marks the job as failed and retries it
+    throw error;
   }
 }
 
@@ -186,7 +184,7 @@ export function startVoipFallbackWorker() {
       }
     },
     {
-      connection: redisConnection,
+      connection: createWorkerConnection(),
       concurrency: 3,
       drainDelay: 30,
       removeOnComplete: {

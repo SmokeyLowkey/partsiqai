@@ -1,4 +1,6 @@
 import type { SearchResult, EnrichedPartResult, PartGroup } from './multi-agent-orchestrator';
+import type { SpellingCorrection } from './query-understanding';
+import { escapeHtml } from '@/lib/sanitize';
 
 export interface FormattedPartGroup {
   label: string;
@@ -32,6 +34,8 @@ export interface FormattedSearchResponse {
     queryIntent?: string;
     isMultiPartQuery?: boolean;
     partCount?: number;
+    spellingCorrection?: SpellingCorrection;
+    cacheHit?: boolean;
   };
 
   // Flag indicating only web results are available (vehicle not configured)
@@ -519,7 +523,7 @@ export class ResponseFormatter {
     if (parts.length === 0 && (!webParts || webParts.length === 0)) {
       return `
         <div class="search-results empty">
-          <p>I couldn't find any parts matching <strong>"${query}"</strong>.</p>
+          <p>I couldn't find any parts matching <strong>"${escapeHtml(query)}"</strong>.</p>
           <p><strong>Try:</strong></p>
           <ul>
             <li>Checking the part number spelling</li>
@@ -536,7 +540,7 @@ export class ResponseFormatter {
 
     let html = `
       <div class="search-results success">
-        <p>I found <strong>${summary.totalFound}</strong> part${summary.totalFound === 1 ? '' : 's'} matching <strong>"${query}"</strong> ${vehicle}.</p>
+        <p>I found <strong>${summary.totalFound}</strong> part${summary.totalFound === 1 ? '' : 's'} matching <strong>"${escapeHtml(query)}"</strong> ${vehicle}.</p>
 
         <div class="search-summary">
           ${summary.inStockCount > 0 ? `<div class="summary-item success">✓ ${summary.inStockCount} in stock</div>` : ''}
@@ -585,7 +589,7 @@ export class ResponseFormatter {
               <p class="part-description">${part.description}</p>
               <div class="part-meta">
                 ${part.priceFormatted ? `<span class="price">${part.priceFormatted}</span>` : ''}
-                ${part.metadata?.sourceUrl ? `<a href="${part.metadata.sourceUrl}" target="_blank" class="source-link">View Source</a>` : ''}
+                ${part.metadata?.sourceUrl && part.metadata.sourceUrl.startsWith('http') ? `<a href="${escapeHtml(part.metadata.sourceUrl)}" target="_blank" rel="noopener noreferrer" class="source-link">View Source</a>` : ''}
               </div>
             </div>
           `
@@ -661,7 +665,7 @@ export class ResponseFormatter {
     for (const group of partGroups) {
       html += `
         <div class="part-group">
-          <h4>${group.label} <span class="badge badge-default">${group.parts.length} result${group.parts.length === 1 ? '' : 's'}</span></h4>`;
+          <h4>${escapeHtml(group.label)} <span class="badge badge-default">${group.parts.length} result${group.parts.length === 1 ? '' : 's'}</span></h4>`;
 
       if (group.parts.length === 0) {
         html += `<p class="no-results">No matches found for this item.</p>`;

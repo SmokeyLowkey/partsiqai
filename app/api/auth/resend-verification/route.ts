@@ -5,36 +5,8 @@ import { randomUUID } from "crypto";
 import { sendEmail, getVerificationEmailHtml, getBaseUrl } from "@/lib/email/resend";
 import { checkRateLimit as checkIpRateLimit, getClientIp, rateLimits } from "@/lib/rate-limit";
 
-// Rate limiting storage (in-memory for now - consider Redis in production)
-const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
-
-function checkRateLimit(email: string): { allowed: boolean; remainingTime?: number } {
-  const now = Date.now();
-  const limit = rateLimitMap.get(email);
-
-  // Clean up expired entries
-  if (limit && now > limit.resetTime) {
-    rateLimitMap.delete(email);
-  }
-
-  // Check rate limit (3 emails per hour)
-  if (limit && now <= limit.resetTime) {
-    if (limit.count >= 3) {
-      const remainingTime = Math.ceil((limit.resetTime - now) / 1000 / 60); // minutes
-      return { allowed: false, remainingTime };
-    }
-    limit.count++;
-    return { allowed: true };
-  }
-
-  // First request or after reset
-  rateLimitMap.set(email, {
-    count: 1,
-    resetTime: now + 60 * 60 * 1000, // 1 hour from now
-  });
-
-  return { allowed: true };
-}
+// Per-email rate limiting now uses the shared Redis-backed rate limiter.
+// The in-memory Map approach was unreliable in serverless (each invocation gets a fresh Map).
 
 // Helper to send verification email
 async function sendVerificationEmail(
@@ -57,7 +29,7 @@ export async function POST(request: NextRequest) {
   try {
     // Rate limit by IP to prevent abuse
     const ip = getClientIp(request);
-    const ipRateCheck = checkIpRateLimit(`resend-verify:${ip}`, rateLimits.authAction);
+    const ipRateCheck = await checkIpRateLimit(`resend-verify:${ip}`, rateLimits.authAction);
     if (!ipRateCheck.success) return ipRateCheck.response;
 
     const session = await getServerSession();
@@ -114,16 +86,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check rate limit
-    const rateLimit = checkRateLimit(user.email);
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        {
-          error: `Too many verification emails sent. Please try again in ${rateLimit.remainingTime} minutes.`,
-        },
-        { status: 429 }
-      );
-    }
+    // Per-email rate limit using Redis-backed limiter
+    const emailRateCheck = await checkIpRateLimit(`resend-verify:${user.email}`, rateLimits.authAction);
+    if (!emailRateCheck.success) return emailRateCheck.response;
 
     // Generate new verification token
     const verificationToken = randomUUID();

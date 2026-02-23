@@ -19,24 +19,38 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const organizations = await prisma.organization.findMany({
-      select: {
-        id: true,
-        name: true,
-        pineconeHost: true,
-        usePlatformKeys: true,
-        createdAt: true,
-      },
-      orderBy: {
-        name: "asc",
-      },
-    });
+    const { searchParams } = new URL(req.url);
+    const page = parseInt(searchParams.get("page") || "1");
+    const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 200);
 
-    return NextResponse.json({ organizations });
+    const [organizations, total] = await Promise.all([
+      prisma.organization.findMany({
+        select: {
+          id: true,
+          name: true,
+          pineconeHost: true,
+          vapiPhoneNumberId: true,
+          vapiAssistantId: true,
+          usePlatformKeys: true,
+          createdAt: true,
+        },
+        orderBy: {
+          name: "asc",
+        },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.organization.count(),
+    ]);
+
+    return NextResponse.json({
+      organizations,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    });
   } catch (error: any) {
     console.error("Error fetching organizations:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to fetch organizations" },
+      { error: "Failed to fetch organizations" },
       { status: 500 }
     );
   }

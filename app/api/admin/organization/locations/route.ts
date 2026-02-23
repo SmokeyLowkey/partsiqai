@@ -10,6 +10,10 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    if (!["MASTER_ADMIN", "ADMIN"].includes(session.user.role)) {
+      return NextResponse.json({ error: "Forbidden - Admin access required" }, { status: 403 });
+    }
+
     const organizationId = session.user.organizationId;
 
     const locations = await prisma.organizationLocation.findMany({

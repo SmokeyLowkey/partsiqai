@@ -81,6 +81,11 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Only admins can delete integration credentials
+    if (!['ADMIN', 'MASTER_ADMIN'].includes(session.user.role)) {
+      return NextResponse.json({ error: 'Forbidden - Admin access required' }, { status: 403 });
+    }
+
     const { type } = await params;
     const integrationType = type.toUpperCase() as any;
 

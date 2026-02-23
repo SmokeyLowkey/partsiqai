@@ -2,12 +2,16 @@ import { PostgresSearchAgent, type VehicleContext, type PartResult } from './pos
 import { PineconeSearchAgent } from './pinecone-client';
 import { Neo4jSearchAgent } from './neo4j-client';
 import { WebSearchAgent } from './web-search-agent';
-import { QueryUnderstandingAgent, type ProcessedQuery, type PartIntent } from './query-understanding';
+import { QueryUnderstandingAgent, type ProcessedQuery, type PartIntent, type SpellingCorrection } from './query-understanding';
 import { SmartReranker } from './smart-reranker';
 import { OpenRouterClient } from '../llm/openrouter-client';
 import { PROMPTS } from '../llm/prompt-templates';
 import { ResponseFormatter, type FormattedSearchResponse } from './response-formatter';
 import { prisma } from '@/lib/prisma';
+import { getCachedSearch, setCachedSearch } from '@/lib/cache/search-cache';
+import { apiLogger } from '@/lib/logger';
+
+const log = apiLogger.child({ service: 'orchestrator' });
 
 export interface PartGroup {
   label: string;
@@ -30,6 +34,7 @@ export interface SearchResult {
     queryIntent?: string;
     isMultiPartQuery?: boolean;
     partCount?: number;
+    spellingCorrection?: SpellingCorrection;
   };
 }
 
@@ -57,7 +62,8 @@ export class MultiAgentOrchestrator {
   }
 
   /**
-   * Search with formatted response (optimized for UI display)
+   * Search with formatted response (optimized for UI display).
+   * Results are cached in Redis for 5 minutes to avoid redundant searches.
    */
   async searchWithFormatting(
     query: string,
@@ -65,6 +71,19 @@ export class MultiAgentOrchestrator {
     vehicleContext?: VehicleContext,
     options?: { webSearchOnly?: boolean }
   ): Promise<FormattedSearchResponse> {
+    // Try cache first (skip for web-search-only since those are for unconfigured vehicles)
+    if (!options?.webSearchOnly) {
+      const cached = await getCachedSearch<FormattedSearchResponse>(
+        query,
+        organizationId,
+        vehicleContext?.vehicleId
+      );
+      if (cached) {
+        cached.metadata = { ...cached.metadata, cacheHit: true };
+        return cached;
+      }
+    }
+
     const rawResults = await this.search(query, organizationId, vehicleContext, options);
     const formatted = this.formatter.formatSearchResults(rawResults, query, vehicleContext);
     if (options?.webSearchOnly) {
@@ -73,6 +92,12 @@ export class MultiAgentOrchestrator {
       const note = `This vehicle is still being configured by your administrator. Showing web search results only.`;
       formatted.messageText = `${note}\n\n${formatted.messageText}`;
     }
+
+    // Cache the result (fire-and-forget, don't block response)
+    if (!options?.webSearchOnly) {
+      setCachedSearch(query, organizationId, vehicleContext?.vehicleId, formatted).catch(() => {});
+    }
+
     return formatted;
   }
 
@@ -85,16 +110,16 @@ export class MultiAgentOrchestrator {
     const startTime = Date.now();
     const sourcesUsed: string[] = [];
 
-    console.log('[MultiAgentOrchestrator] Starting search:', { query, organizationId, vehicleContext, webSearchOnly: options?.webSearchOnly });
+    log.info({ query, organizationId, vehicleContext, webSearchOnly: options?.webSearchOnly }, 'Starting search');
 
     try {
       // If webSearchOnly, skip vehicle check and internal searches — go straight to web
       if (options?.webSearchOnly) {
-        console.log('[MultiAgentOrchestrator] Web search only mode (vehicle not configured)');
+        log.info('Web search only mode (vehicle not configured)');
         await this.initializeAgents(organizationId);
 
         if (!this.webSearchAgent) {
-          console.warn('[MultiAgentOrchestrator] No web search agent available for web-only search');
+          log.warn('No web search agent available for web-only search');
           return {
             results: [],
             suggestedFilters: [],
@@ -133,7 +158,7 @@ export class MultiAgentOrchestrator {
             },
           };
         } catch (error: any) {
-          console.warn('[MultiAgentOrchestrator] Web-only search failed:', error.message);
+          log.warn({ err: error.message }, 'Web-only search failed');
           return {
             results: [],
             suggestedFilters: [],
@@ -155,10 +180,7 @@ export class MultiAgentOrchestrator {
         });
 
         if (vehicle?.searchConfigStatus !== 'SEARCH_READY') {
-          console.warn('[MultiAgentOrchestrator] Vehicle not ready for search:', {
-            vehicleId: vehicleContext.vehicleId,
-            status: vehicle?.searchConfigStatus,
-          });
+          log.warn({ vehicleId: vehicleContext.vehicleId, status: vehicle?.searchConfigStatus }, 'Vehicle not ready for search');
 
           // Return empty results with warning
           return {
@@ -173,19 +195,14 @@ export class MultiAgentOrchestrator {
           };
         }
 
-        console.log('[MultiAgentOrchestrator] Vehicle is SEARCH_READY:', vehicleContext.vehicleId);
+        log.info({ vehicleId: vehicleContext.vehicleId }, 'Vehicle is SEARCH_READY');
       }
 
       sourcesUsed.push('postgres'); // Postgres is always used for full search
       // Initialize optional agents (they may not be configured)
-      console.log('[MultiAgentOrchestrator] Initializing agents...');
+      log.info('Initializing agents');
       await this.initializeAgents(organizationId);
-      console.log('[MultiAgentOrchestrator] Agents initialized:', {
-        hasPinecone: !!this.pineconeAgent,
-        hasNeo4j: !!this.neo4jAgent,
-        hasLLM: !!this.llmClient,
-        hasWebSearch: !!this.webSearchAgent,
-      });
+      log.info({ hasPinecone: !!this.pineconeAgent, hasNeo4j: !!this.neo4jAgent, hasLLM: !!this.llmClient, hasWebSearch: !!this.webSearchAgent }, 'Agents initialized');
 
       // ============================================================
       // Step 1: Query Understanding (NEW - pre-search LLM call)
@@ -197,14 +214,7 @@ export class MultiAgentOrchestrator {
         2000 // 2s timeout
       );
 
-      console.log('[MultiAgentOrchestrator] Query understanding:', {
-        intent: processedQuery.intent,
-        partNumbers: processedQuery.partNumbers,
-        partTypes: processedQuery.partTypes,
-        expandedTerms: processedQuery.expandedTerms.slice(0, 5),
-        shouldSearchWeb: processedQuery.shouldSearchWeb,
-        partIntents: processedQuery.partIntents?.map(pi => pi.label),
-      });
+      log.info({ intent: processedQuery.intent, partNumbers: processedQuery.partNumbers, partTypes: processedQuery.partTypes, expandedTerms: processedQuery.expandedTerms.slice(0, 5), shouldSearchWeb: processedQuery.shouldSearchWeb, partIntents: processedQuery.partIntents?.map(pi => pi.label) }, 'Query understanding complete');
 
       // ============================================================
       // Multi-part branch: if multiple parts detected, fan out per-part
@@ -245,17 +255,12 @@ export class MultiAgentOrchestrator {
         );
       }
 
-      console.log('[MultiAgentOrchestrator] Running', searchPromises.length, 'agents in parallel...');
+      log.info({ agentCount: searchPromises.length }, 'Running agents in parallel');
 
       // Wait for all searches to complete
       const settledResults = await Promise.allSettled(searchPromises);
 
-      console.log('[MultiAgentOrchestrator] Search results:', settledResults.map((r, i) => ({
-        agent: i === 0 ? 'postgres' : i === 1 ? 'pinecone' : 'neo4j',
-        status: r.status,
-        count: r.status === 'fulfilled' ? r.value.length : 0,
-        error: r.status === 'rejected' ? r.reason.message : null,
-      })));
+      log.info({ agentResults: settledResults.map((r, i) => ({ agent: i === 0 ? 'postgres' : i === 1 ? 'pinecone' : 'neo4j', status: r.status, count: r.status === 'fulfilled' ? r.value.length : 0, error: r.status === 'rejected' ? r.reason.message : null })) }, 'Agent search results');
 
       // Extract successful results
       const [postgresResults, pineconeResults, neo4jResults] = settledResults;
@@ -268,31 +273,7 @@ export class MultiAgentOrchestrator {
         neo4j: neo4jResults?.status === 'fulfilled' ? neo4jResults.value : [],
       };
 
-      // Log actual data from each agent
-      console.log('[MultiAgentOrchestrator] PostgreSQL Results:',
-        results.postgres.map(p => ({
-          partNumber: p.partNumber,
-          description: p.description,
-          score: p.score,
-          category: p.category,
-          price: p.price
-        }))
-      );
-      console.log('[MultiAgentOrchestrator] Pinecone Results:',
-        results.pinecone.map(p => ({
-          partNumber: p.partNumber,
-          description: p.description,
-          score: p.score
-        }))
-      );
-      console.log('[MultiAgentOrchestrator] Neo4j Results:',
-        results.neo4j.map(p => ({
-          partNumber: p.partNumber,
-          description: p.description,
-          score: p.score,
-          relationships: p.compatibility?.relationships?.length || 0
-        }))
-      );
+      log.debug({ postgres: results.postgres.length, pinecone: results.pinecone.length, neo4j: results.neo4j.length }, 'Raw result counts');
 
       // ============================================================
       // Step 3: Merge & deduplicate internal results
@@ -312,7 +293,7 @@ export class MultiAgentOrchestrator {
 
       if (shouldRunWebSearch && this.webSearchAgent) {
         sourcesUsed.push('web');
-        console.log('[MultiAgentOrchestrator] Triggering web search (internal results:', internalResultCount, ')');
+        log.info({ internalResultCount }, 'Triggering web search');
 
         try {
           const rawWebResults = await this.webSearchAgent.search(
@@ -330,9 +311,9 @@ export class MultiAgentOrchestrator {
             isWebResult: true,
           }));
 
-          console.log('[MultiAgentOrchestrator] Web search returned', webResults.length, 'results');
+          log.info({ webResultCount: webResults.length }, 'Web search complete');
         } catch (error: any) {
-          console.warn('[MultiAgentOrchestrator] Web search failed:', error.message);
+          log.warn({ err: error.message }, 'Web search failed');
         }
       }
 
@@ -363,20 +344,20 @@ export class MultiAgentOrchestrator {
           suggestedFilters = rerankResult.suggestedFilters;
           relatedQueries = rerankResult.relatedQueries;
         } catch (error) {
-          console.warn('[MultiAgentOrchestrator] Smart re-ranking failed, using ranked results:', error);
+          log.warn({ err: error }, 'Smart re-ranking failed, using ranked results');
           // Fall back to ranked results without re-ranking
         }
       }
 
       const searchTime = Date.now() - startTime;
 
-      console.log('[MultiAgentOrchestrator] Search complete:', {
+      log.info({
         totalResults: finalResults.length,
         webResults: finalWebResults.length,
-        searchTime: `${searchTime}ms`,
+        searchTimeMs: searchTime,
         sourcesUsed,
         queryIntent: processedQuery.intent,
-      });
+      }, 'Search complete');
 
       return {
         results: finalResults.slice(0, 20), // Top 20 internal results
@@ -388,10 +369,11 @@ export class MultiAgentOrchestrator {
           searchTime,
           sourcesUsed,
           queryIntent: processedQuery.intent,
+          spellingCorrection: processedQuery.spellingCorrection,
         },
       };
     } catch (error: any) {
-      console.error('[MultiAgentOrchestrator] Search error:', error);
+      log.error({ err: error }, 'Search error');
       throw new Error(`Search failed: ${error.message}`);
     } finally {
       // Clean up Neo4j connection
@@ -418,11 +400,10 @@ export class MultiAgentOrchestrator {
     const partIntents = processedQuery.partIntents!.slice(0, MultiAgentOrchestrator.MAX_PART_INTENTS);
 
     if (processedQuery.partIntents!.length > MultiAgentOrchestrator.MAX_PART_INTENTS) {
-      console.warn(`[MultiAgentOrchestrator] Capped from ${processedQuery.partIntents!.length} to ${MultiAgentOrchestrator.MAX_PART_INTENTS} part intents`);
+      log.warn({ original: processedQuery.partIntents!.length, max: MultiAgentOrchestrator.MAX_PART_INTENTS }, 'Capped part intents');
     }
 
-    console.log('[MultiAgentOrchestrator] Multi-part search with', partIntents.length, 'intents:',
-      partIntents.map(pi => pi.label));
+    log.info({ intentCount: partIntents.length, labels: partIntents.map(pi => pi.label) }, 'Multi-part search started');
 
     // Fan out: run all part intents in parallel
     const groupPromises = partIntents.map(intent =>
@@ -444,7 +425,7 @@ export class MultiAgentOrchestrator {
         allResults.push(...group.results);
         if (group.webResults) allWebResults.push(...group.webResults);
       } else {
-        console.warn(`[MultiAgentOrchestrator] Part group "${partIntents[i].label}" failed:`, settled.reason);
+        log.warn({ label: partIntents[i].label, err: settled.reason }, 'Part group failed');
         partGroups.push({
           label: partIntents[i].label,
           queryUsed: partIntents[i].queryText,
@@ -460,11 +441,11 @@ export class MultiAgentOrchestrator {
 
     const searchTime = Date.now() - startTime;
 
-    console.log('[MultiAgentOrchestrator] Multi-part search complete:', {
+    log.info({
       groups: partGroups.map(g => ({ label: g.label, count: g.results.length })),
       totalFlat: flatResults.length,
-      searchTime: `${searchTime}ms`,
-    });
+      searchTimeMs: searchTime,
+    }, 'Multi-part search complete');
 
     return {
       results: flatResults.slice(0, 20),
@@ -479,6 +460,7 @@ export class MultiAgentOrchestrator {
         queryIntent: processedQuery.intent,
         isMultiPartQuery: true,
         partCount: partIntents.length,
+        spellingCorrection: processedQuery.spellingCorrection,
       },
     };
   }
@@ -491,7 +473,7 @@ export class MultiAgentOrchestrator {
   ): Promise<PartGroup> {
     const { queryText, expandedTerms, label } = intent;
 
-    console.log(`[MultiAgentOrchestrator] Searching for "${label}"...`);
+    log.info({ label }, 'Searching for part intent');
 
     // Build focused Postgres query with per-part synonyms
     const postgresQuery = expandedTerms.length > 0
@@ -523,11 +505,7 @@ export class MultiAgentOrchestrator {
       neo4j: settledResults[2]?.status === 'fulfilled' ? settledResults[2].value : [],
     };
 
-    console.log(`[MultiAgentOrchestrator] "${label}" raw results:`, {
-      postgres: results.postgres.length,
-      pinecone: results.pinecone.length,
-      neo4j: results.neo4j.length,
-    });
+    log.debug({ label, postgres: results.postgres.length, pinecone: results.pinecone.length, neo4j: results.neo4j.length }, 'Raw results');
 
     // Merge & calculate confidence (reuse existing methods)
     const mergedResults = this.mergeResults(results);
@@ -557,7 +535,7 @@ export class MultiAgentOrchestrator {
           isWebResult: true,
         }));
       } catch (error: any) {
-        console.warn(`[MultiAgentOrchestrator] Web search for "${label}" failed:`, error.message);
+        log.warn({ label, err: error.message }, 'Web search for part intent failed');
       }
     }
 
@@ -579,7 +557,7 @@ export class MultiAgentOrchestrator {
         finalResults = rerankResult.results.filter(r => !r.isWebResult);
         finalWebResults = rerankResult.results.filter(r => r.isWebResult);
       } catch (error) {
-        console.warn(`[MultiAgentOrchestrator] Re-ranking for "${label}" failed, using ranked results`);
+        log.warn({ label }, 'Re-ranking for part intent failed, using ranked results');
       }
     }
 
@@ -607,28 +585,28 @@ export class MultiAgentOrchestrator {
     try {
       this.pineconeAgent = await PineconeSearchAgent.fromOrganization(organizationId);
     } catch (error) {
-      console.warn('Pinecone not configured for this organization');
+      log.warn({ organizationId }, 'Pinecone not configured');
       this.pineconeAgent = null;
     }
 
     try {
       this.neo4jAgent = await Neo4jSearchAgent.fromOrganization(organizationId);
     } catch (error) {
-      console.warn('Neo4j not configured for this organization');
+      log.warn({ organizationId }, 'Neo4j not configured');
       this.neo4jAgent = null;
     }
 
     try {
       this.llmClient = await OpenRouterClient.fromOrganization(organizationId);
     } catch (error) {
-      console.warn('OpenRouter not configured for this organization');
+      log.warn({ organizationId }, 'OpenRouter not configured');
       this.llmClient = null;
     }
 
     try {
       this.webSearchAgent = await WebSearchAgent.fromOrganization(organizationId);
     } catch (error) {
-      console.warn('Serper not configured for this organization');
+      log.warn({ organizationId }, 'Serper not configured');
       this.webSearchAgent = null;
     }
   }

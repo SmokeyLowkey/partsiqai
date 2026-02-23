@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,6 +69,10 @@ interface Message {
   createdAt: string;
   metadata?: {
     formattedResponse?: FormattedSearchResponse;
+    suggestedSearches?: string[];
+    webSources?: { title: string; link: string }[];
+    intent?: string;
+    failedQuery?: string;
   };
 }
 
@@ -110,6 +115,7 @@ interface FormattedSearchResponse {
     hasMoreResults: boolean;
     isMultiPartQuery?: boolean;
     partCount?: number;
+    spellingCorrection?: { original: string; corrected: string };
   };
   webSearchOnly?: boolean;
 }
@@ -276,8 +282,11 @@ export default function AIChatPage() {
   const [expandedParts, setExpandedParts] = useState<Record<string, boolean>>({});
   const [showAllResults, setShowAllResults] = useState<Record<string, boolean>>({});
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
+  const [searchStage, setSearchStage] = useState('Analyzing your query...');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevConversationIdRef = useRef<string | null>(null);
+  const searchStageIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastFailedQueryRef = useRef<string | null>(null);
 
   // Persist pick list when conversation changes
   useEffect(() => {
@@ -463,19 +472,40 @@ export default function AIChatPage() {
           setPickList([]);
         }
       } else {
-        alert("Failed to delete conversation");
+        toast.error("Failed to delete conversation");
       }
     } catch (error) {
       console.error("Error deleting conversation:", error);
-      alert("Failed to delete conversation");
+      toast.error("Failed to delete conversation");
     }
   };
 
-  const handleSendMessage = async () => {
-    if (!input.trim() || isLoading) return;
+  const SEARCH_STAGES = [
+    'Analyzing your query...',
+    'Searching parts database...',
+    'Checking compatibility...',
+    'Ranking results...',
+  ];
 
-    // Save the input value before clearing it
-    const messageText = input.trim();
+  const startSearchStages = () => {
+    let stageIdx = 0;
+    setSearchStage(SEARCH_STAGES[0]);
+    searchStageIntervalRef.current = setInterval(() => {
+      stageIdx = (stageIdx + 1) % SEARCH_STAGES.length;
+      setSearchStage(SEARCH_STAGES[stageIdx]);
+    }, 2500);
+  };
+
+  const stopSearchStages = () => {
+    if (searchStageIntervalRef.current) {
+      clearInterval(searchStageIntervalRef.current);
+      searchStageIntervalRef.current = null;
+    }
+  };
+
+  const handleSendMessage = async (retryMessage?: string) => {
+    const messageText = retryMessage || input.trim();
+    if (!messageText || isLoading) return;
 
     const userMessage: Message = {
       id: `temp-${Date.now()}`,
@@ -485,8 +515,9 @@ export default function AIChatPage() {
     };
 
     setMessages((prev) => [...prev, userMessage]);
-    setInput("");
+    if (!retryMessage) setInput("");
     setIsLoading(true);
+    startSearchStages();
     trackEvent(AnalyticsEvents.AI_CHAT_MESSAGE_SENT);
 
     try {
@@ -525,6 +556,9 @@ export default function AIChatPage() {
         setConversationId(data.conversationId);
       }
 
+      // Clear failed query on success
+      lastFailedQueryRef.current = null;
+
       // Always refresh conversation list to update message counts
       await loadConversations();
 
@@ -541,14 +575,23 @@ export default function AIChatPage() {
             createdAt: data.userMessage.createdAt,
           };
 
+          const rawMeta = data.assistantMessage.metadata;
           const assistantMsg: Message = {
             id: data.assistantMessage.id,
             role: "ASSISTANT",
             content: data.assistantMessage.content,
             createdAt: data.assistantMessage.createdAt,
-            metadata: data.assistantMessage.metadata || data.searchResults ? {
-              formattedResponse: data.searchResults || data.assistantMessage.metadata?.formattedResponse
-            } : undefined,
+            metadata: data.searchResults
+              ? { formattedResponse: data.searchResults }
+              : rawMeta?.formattedResponse
+                ? { formattedResponse: rawMeta.formattedResponse }
+                : rawMeta?.suggestedSearches || rawMeta?.webSources || rawMeta?.intent
+                  ? {
+                      suggestedSearches: rawMeta.suggestedSearches,
+                      webSources: rawMeta.webSources,
+                      intent: rawMeta.intent,
+                    }
+                  : undefined,
           };
 
           return [...filtered, savedUserMsg, assistantMsg];
@@ -559,19 +602,23 @@ export default function AIChatPage() {
       }
     } catch (error: any) {
       console.error("Error sending message:", error);
+      lastFailedQueryRef.current = messageText;
+      toast.error("Failed to send message. Please try again.");
 
-      // Show error message
+      // Show error message with retry metadata
       const errorMessage: Message = {
         id: `error-${Date.now()}`,
         role: "ASSISTANT",
         content:
-          "Sorry, I encountered an error processing your request. Please try again.",
+          "Sorry, I encountered an error processing your request. You can retry using the button below.",
         createdAt: new Date().toISOString(),
+        metadata: { intent: 'error', failedQuery: messageText } as any,
       };
 
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
+      stopSearchStages();
     }
   };
 
@@ -659,12 +706,13 @@ export default function AIChatPage() {
       // Clear the pick list and redirect to quote request page
       setPickList([]);
       setShowMobilePickList(false);
+      toast.success("Quote request created!");
 
       // Redirect to the quote request detail page
       router.push(`/customer/quote-requests/${quoteRequestData.quoteRequest.id}`);
     } catch (error) {
       console.error("Error creating quote request:", error);
-      alert("Failed to create quote request. Please try again.");
+      toast.error("Failed to create quote request. Please try again.");
     } finally {
       setCreatingQuoteRequest(false);
     }
@@ -716,15 +764,18 @@ export default function AIChatPage() {
             )}
           </div>
           <Badge
-            variant={
+            variant="outline"
+            className={
               part.confidence >= 90
-                ? "default"
+                ? "bg-green-100 text-green-800 border-green-300 dark:bg-green-900 dark:text-green-200 dark:border-green-700"
                 : part.confidence >= 70
-                  ? "secondary"
-                  : "outline"
+                  ? "bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-900 dark:text-yellow-200 dark:border-yellow-700"
+                  : part.confidence >= 50
+                    ? "bg-gray-100 text-gray-700 border-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600"
+                    : "bg-red-100 text-red-800 border-red-300 dark:bg-red-900 dark:text-red-200 dark:border-red-700"
             }
           >
-            {part.confidence}%
+            {part.confidenceLabel} {part.confidence}%
           </Badge>
         </div>
 
@@ -997,11 +1048,96 @@ export default function AIChatPage() {
     );
   };
 
+  const handleSuggestedSearch = (searchTerm: string) => {
+    setInput(searchTerm);
+  };
+
+  const renderDiagnosticMessage = (message: Message) => {
+    const suggestedSearches = message.metadata?.suggestedSearches;
+    const webSources = message.metadata?.webSources;
+
+    return (
+      <div className="space-y-3">
+        <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+
+        {/* Suggested parts to search */}
+        {suggestedSearches && suggestedSearches.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+              <Search className="h-3 w-3" />
+              Search for related parts:
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {suggestedSearches.map((term, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleSuggestedSearch(term)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 transition-colors cursor-pointer"
+                >
+                  <Search className="h-3 w-3" />
+                  {term}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Web sources */}
+        {webSources && webSources.length > 0 && (
+          <details className="text-xs text-muted-foreground">
+            <summary className="cursor-pointer hover:text-foreground transition-colors">
+              Sources ({webSources.length})
+            </summary>
+            <ul className="mt-1 space-y-0.5 pl-4">
+              {webSources.map((source, idx) => (
+                <li key={idx}>
+                  <a
+                    href={source.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline inline-flex items-center gap-1"
+                  >
+                    {source.title}
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </div>
+    );
+  };
+
   const renderAssistantMessage = (message: Message) => {
     const formattedResponse = message.metadata?.formattedResponse;
 
+    // Error message with retry button
+    if (message.metadata?.intent === 'error' && message.metadata?.failedQuery) {
+      return (
+        <div className="space-y-2">
+          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs"
+            onClick={() => handleSendMessage(message.metadata!.failedQuery!)}
+            disabled={isLoading}
+          >
+            <Search className="h-3 w-3 mr-1" />
+            Retry Search
+          </Button>
+        </div>
+      );
+    }
+
+    // Diagnostic/troubleshooting response (no formattedResponse but has diagnostic metadata)
+    if (!formattedResponse && (message.metadata?.suggestedSearches || message.metadata?.intent === 'troubleshooting' || message.metadata?.intent === 'general_question')) {
+      return renderDiagnosticMessage(message);
+    }
+
     if (!formattedResponse) {
-      return <p className="text-sm">{message.content}</p>;
+      return <p className="text-sm whitespace-pre-wrap">{message.content}</p>;
     }
 
     const messageKey = message.id;
@@ -1010,6 +1146,14 @@ export default function AIChatPage() {
     return (
       <div className="space-y-3">
         <p className="text-sm">{formattedResponse.messageText}</p>
+
+        {/* Spelling Correction Hint */}
+        {formattedResponse.metadata?.spellingCorrection && (
+          <div className="text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 px-2 py-1.5 rounded">
+            Showing results for <strong className="text-foreground">&ldquo;{formattedResponse.metadata.spellingCorrection.corrected}&rdquo;</strong>
+            {' '}(searched as &ldquo;{formattedResponse.metadata.spellingCorrection.original}&rdquo;)
+          </div>
+        )}
 
         {/* Web Search Only Banner */}
         {formattedResponse.webSearchOnly && (
@@ -1631,7 +1775,7 @@ export default function AIChatPage() {
                         ></div>
                       </div>
                       <p className="text-xs text-muted-foreground mt-2">
-                        Searching with multi-agent system...
+                        {searchStage}
                       </p>
                     </div>
                   </div>
@@ -1741,7 +1885,7 @@ export default function AIChatPage() {
                 disabled={isLoading}
               />
               <Button
-                onClick={handleSendMessage}
+                onClick={() => handleSendMessage()}
                 disabled={!input.trim() || isLoading}
                 className="h-10 shrink-0"
               >

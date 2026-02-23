@@ -143,7 +143,7 @@ export async function POST(
     } catch (credentialError: any) {
       return NextResponse.json({
         error: 'Cannot convert to order: Email credentials not configured',
-        details: credentialError.message || 'Please set up your email integration in Settings before converting quotes to orders.',
+        details: 'Please set up your email integration in Settings before converting quotes to orders.',
         needsEmailSetup: true,
       }, { status: 400 });
     }
@@ -407,6 +407,24 @@ Output your response as JSON with the following structure:
     });
   } catch (error: any) {
     console.error('Error converting quote to order:', error);
+
+    // Release conversion lock on error
+    try {
+      const session = await getServerSession();
+      if (session?.user) {
+        await prisma.quoteRequest.update({
+          where: { id: (await params).id, organizationId: session.user.organizationId },
+          data: {
+            isConverting: false,
+            convertingBy: null,
+            convertingStartedAt: null,
+          },
+        });
+      }
+    } catch (lockError) {
+      console.error('Failed to release conversion lock:', lockError);
+    }
+
     return NextResponse.json(
       { error: 'Failed to convert quote to order' },
       { status: 500 }

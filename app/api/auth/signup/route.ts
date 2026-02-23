@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
   try {
     // Rate limit by IP to prevent mass account creation
     const ip = getClientIp(request);
-    const rateCheck = checkRateLimit(`signup:${ip}`, rateLimits.signup);
+    const rateCheck = await checkRateLimit(`signup:${ip}`, rateLimits.signup);
     if (!rateCheck.success) return rateCheck.response;
 
     const body = await request.json();

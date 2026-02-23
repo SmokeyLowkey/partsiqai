@@ -2,7 +2,7 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 
 import { Worker, Job } from 'bullmq';
-import { redisConnection } from '@/lib/queue/connection';
+import { createWorkerConnection } from '@/lib/queue/connection';
 import { PartsSearchJobData } from '@/lib/queue/types';
 import { MultiAgentOrchestrator } from '@/lib/services/search/multi-agent-orchestrator';
 import { prisma } from '@/lib/prisma';
@@ -81,7 +81,7 @@ export const partsSearchWorker = new Worker<PartsSearchJobData>(
     }
   },
   {
-    connection: redisConnection,
+    connection: createWorkerConnection(),
     concurrency: 5, // Process up to 5 jobs concurrently
     drainDelay: 30,
     limiter: {

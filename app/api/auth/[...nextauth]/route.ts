@@ -6,7 +6,7 @@ export const { GET } = handlers
 
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req)
-  const rateCheck = checkRateLimit(`login:${ip}`, rateLimits.login)
+  const rateCheck = await checkRateLimit(`login:${ip}`, rateLimits.login)
   if (!rateCheck.success) return rateCheck.response
 
   return handlers.POST(req)

@@ -1,10 +1,54 @@
 import { NextRequest, NextResponse } from 'next/server';
+import Redis from 'ioredis';
 
 /**
- * Simple in-memory sliding window rate limiter.
- * For production with multiple instances, consider @upstash/ratelimit
- * which uses Redis for distributed rate limiting.
+ * Distributed rate limiter backed by Redis (INCR + EXPIRE).
+ * Falls back to in-memory Map if Redis is unavailable (fail-open).
  */
+
+// ─── Redis client (lazy singleton) ──────────────────────────────────
+
+let redis: Redis | null = null;
+let redisUnavailable = false;
+
+function getRedis(): Redis | null {
+  if (redisUnavailable) return null;
+  if (redis) return redis;
+
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  if (!url) {
+    redisUnavailable = true;
+    return null;
+  }
+
+  try {
+    redis = new Redis(url, {
+      maxRetriesPerRequest: 1,
+      enableReadyCheck: false,
+      lazyConnect: true,
+      connectTimeout: 2000,
+      family: 0,
+      tls: {},
+    });
+
+    redis.on('error', (err) => {
+      console.warn('[RateLimit] Redis error:', err.message);
+    });
+
+    redis.connect().catch(() => {
+      console.warn('[RateLimit] Redis connection failed, using in-memory fallback');
+      redis = null;
+      redisUnavailable = true;
+    });
+
+    return redis;
+  } catch {
+    redisUnavailable = true;
+    return null;
+  }
+}
+
+// ─── In-memory fallback ─────────────────────────────────────────────
 
 interface RateLimitEntry {
   count: number;
@@ -23,27 +67,15 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
-interface RateLimitConfig {
-  /** Maximum number of requests allowed in the window */
-  limit: number;
-  /** Window size in seconds */
-  windowSeconds: number;
-}
-
-/**
- * Check rate limit for a given identifier.
- * Returns { success: true } if under limit, or { success: false, response } with a 429 response.
- */
-export function checkRateLimit(
+function checkInMemory(
   identifier: string,
   config: RateLimitConfig
 ): { success: true } | { success: false; response: NextResponse } {
   const now = Date.now();
-  const key = identifier;
-  const entry = store.get(key);
+  const entry = store.get(identifier);
 
   if (!entry || now > entry.resetAt) {
-    store.set(key, { count: 1, resetAt: now + config.windowSeconds * 1000 });
+    store.set(identifier, { count: 1, resetAt: now + config.windowSeconds * 1000 });
     return { success: true };
   }
 
@@ -63,6 +95,61 @@ export function checkRateLimit(
 
   entry.count++;
   return { success: true };
+}
+
+// ─── Public API ─────────────────────────────────────────────────────
+
+interface RateLimitConfig {
+  /** Maximum number of requests allowed in the window */
+  limit: number;
+  /** Window size in seconds */
+  windowSeconds: number;
+}
+
+/**
+ * Check rate limit for a given identifier.
+ * Uses Redis INCR+EXPIRE for distributed limiting. Falls back to in-memory if Redis is unavailable.
+ */
+export async function checkRateLimit(
+  identifier: string,
+  config: RateLimitConfig
+): Promise<{ success: true } | { success: false; response: NextResponse }> {
+  const client = getRedis();
+
+  if (!client) {
+    return checkInMemory(identifier, config);
+  }
+
+  try {
+    const key = `rl:${identifier}`;
+    const count = await client.incr(key);
+
+    // Set expiry on first request in the window
+    if (count === 1) {
+      await client.expire(key, config.windowSeconds);
+    }
+
+    if (count > config.limit) {
+      const ttl = await client.ttl(key);
+      const retryAfter = ttl > 0 ? ttl : config.windowSeconds;
+      return {
+        success: false,
+        response: NextResponse.json(
+          { error: 'Too many requests. Please try again later.' },
+          {
+            status: 429,
+            headers: { 'Retry-After': String(retryAfter) },
+          }
+        ),
+      };
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    // Fail open — don't block requests if Redis is down
+    console.warn('[RateLimit] Redis check failed, allowing request:', error.message);
+    return { success: true };
+  }
 }
 
 /**
@@ -88,4 +175,8 @@ export const rateLimits = {
   api: { limit: 100, windowSeconds: 60 },
   /** Cron: 2 per minute (prevent hammering) */
   cron: { limit: 2, windowSeconds: 60 },
+  /** Chat: 20 messages per minute per user */
+  chat: { limit: 20, windowSeconds: 60 },
+  /** Invitations: 10 per hour per user */
+  invitation: { limit: 10, windowSeconds: 3600 },
 } as const;

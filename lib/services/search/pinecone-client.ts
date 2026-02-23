@@ -1,6 +1,9 @@
 import { credentialsManager } from '../credentials/credentials-manager';
 import { prisma } from '@/lib/prisma';
+import { apiLogger } from '@/lib/logger';
 import type { VehicleContext, PartResult } from './postgres-search';
+
+const log = apiLogger.child({ service: 'pinecone' });
 
 interface PineconeMetadata {
   // Primary fields from John Deere catalog
@@ -82,12 +85,10 @@ export class PineconeSearchAgent {
     vehicleContext?: VehicleContext
   ): Promise<PartResult[]> {
     try {
-      console.log('[PineconeSearchAgent] Search query:', query);
-      console.log('[PineconeSearchAgent] Vehicle context:', vehicleContext);
-      console.log('[PineconeSearchAgent] Host:', this.host);
+      log.info({ query, vehicleContext, host: this.host }, 'Starting hybrid search');
 
       if (!this.host || this.host.trim() === '' || this.host === 'https://') {
-        console.error('[PineconeSearchAgent] Host URL is empty!');
+        log.error('Host URL is empty');
         return [];
       }
 
@@ -102,7 +103,7 @@ export class PineconeSearchAgent {
         });
 
         if (mapping) {
-          console.log('[PineconeSearchAgent] Using search mapping for vehicle:', vehicleContext.vehicleId);
+          log.info({ vehicleId: vehicleContext.vehicleId }, 'Using search mapping for vehicle');
           const filterConditions: any[] = [];
 
           // Use admin-configured nomenclature (skip year - it's optional and causes false negatives)
@@ -121,7 +122,7 @@ export class PineconeSearchAgent {
           // Use namespace if configured (trim to avoid leading/trailing spaces)
           if (mapping.pineconeNamespace) {
             namespace = mapping.pineconeNamespace.trim();
-            console.log('[PineconeSearchAgent] Using namespace:', namespace);
+            log.info({ namespace }, 'Using namespace');
           }
 
           if (filterConditions.length > 1) {
@@ -130,12 +131,12 @@ export class PineconeSearchAgent {
             metadataFilter = filterConditions[0];
           }
 
-          console.log('[PineconeSearchAgent] Using mapping-based filter:', JSON.stringify(metadataFilter, null, 2));
+          log.debug({ metadataFilter }, 'Using mapping-based filter');
         } else {
-          console.warn('[PineconeSearchAgent] No search mapping found for vehicle, skipping filters');
+          log.warn('No search mapping found for vehicle, skipping filters');
         }
       } else {
-        console.log('[PineconeSearchAgent] No vehicle context provided, searching without filters');
+        log.info('No vehicle context provided, searching without filters');
       }
 
       // Generate embeddings using Pinecone's embed API (like n8n workflow)
@@ -146,7 +147,7 @@ export class PineconeSearchAgent {
 
       // If no embedding generated, return empty results
       if (denseEmbedding.length === 0) {
-        console.warn('[PineconeSearchAgent] Dense embedding failed, skipping vector search');
+        log.warn('Dense embedding failed, skipping vector search');
         return [];
       }
 
@@ -157,21 +158,21 @@ export class PineconeSearchAgent {
 
       // Fallback: if no results with model filter and we have a namespace, try with namespace only
       if (results.length === 0 && namespace && Object.keys(metadataFilter).length > 0) {
-        console.log('[PineconeSearchAgent] No results with model filter, retrying with namespace only...');
+        log.info('No results with model filter, retrying with namespace only');
         results = await this.executePineconeQuery(
           denseEmbedding, sparseEmbedding, namespace, {}
         );
       }
 
-      console.log('[PineconeSearchAgent] Final results:', results.length);
+      log.info({ resultCount: results.length }, 'Final results');
 
       return results;
     } catch (error: any) {
-      console.error('Pinecone search error:', error);
+      log.error({ err: error }, 'Pinecone search error');
 
       // If Pinecone is not set up yet, return empty results instead of failing
       if (error.message?.includes('not found') || error.message?.includes('not configured')) {
-        console.warn('Pinecone index not found or not configured, returning empty results');
+        log.warn('Pinecone index not found or not configured, returning empty results');
         return [];
       }
 
@@ -211,11 +212,11 @@ export class PineconeSearchAgent {
       queryBody.filter = metadataFilter;
     }
 
-    console.log('[PineconeSearchAgent] Query body:', JSON.stringify({
+    log.debug({
       ...queryBody,
       vector: `[${denseEmbedding.length} dimensions]`,
       sparseVector: sparseEmbedding.indices.length > 0 ? `[${sparseEmbedding.indices.length} sparse values]` : undefined,
-    }, null, 2));
+    }, 'Query body');
 
     const queryResponse = await fetch(`${this.host}/query`, {
       method: 'POST',
@@ -229,17 +230,17 @@ export class PineconeSearchAgent {
 
     if (!queryResponse.ok) {
       const errorText = await queryResponse.text();
-      console.error('[PineconeSearchAgent] Query failed:', queryResponse.status, errorText);
+      log.error({ status: queryResponse.status, errorText }, 'Query failed');
       throw new Error(`Pinecone query failed: ${queryResponse.status} ${errorText}`);
     }
 
     const queryResults: PineconeQueryResponse = await queryResponse.json();
 
-    console.log('[PineconeSearchAgent] Query returned:', {
+    log.info({
       matchCount: queryResults.matches?.length || 0,
       topScores: queryResults.matches?.slice(0, 3).map(m => m.score) || [],
       filter: Object.keys(metadataFilter).length > 0 ? 'applied' : 'none',
-    });
+    }, 'Query returned');
 
     // Parse results
     const rawResults = (queryResults.matches || []).map((match) => {
@@ -348,7 +349,7 @@ export class PineconeSearchAgent {
    */
   private async generateDenseEmbedding(text: string): Promise<number[]> {
     try {
-      console.log('[PineconeSearchAgent] Generating dense embedding for:', text);
+      log.info({ text }, 'Generating dense embedding');
 
       const response = await fetch('https://api.pinecone.io/embed', {
         method: 'POST',
@@ -369,24 +370,22 @@ export class PineconeSearchAgent {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[PineconeSearchAgent] Dense embed failed:', response.status, errorText);
+        log.error({ status: response.status, errorText }, 'Dense embed failed');
         return [];
       }
 
       const data: PineconeEmbedResponse = await response.json();
 
       if (!data.data || data.data.length === 0 || !data.data[0].values) {
-        console.warn('[PineconeSearchAgent] No dense embedding data returned');
+        log.warn('No dense embedding data returned');
         return [];
       }
 
-      console.log('[PineconeSearchAgent] Dense embedding generated:', {
-        length: data.data[0].values.length,
-      });
+      log.info({ length: data.data[0].values.length }, 'Dense embedding generated');
 
       return data.data[0].values;
     } catch (error: any) {
-      console.error('[PineconeSearchAgent] Failed to generate dense embedding:', error.message);
+      log.error({ err: error }, 'Failed to generate dense embedding');
       return [];
     }
   }
@@ -400,7 +399,7 @@ export class PineconeSearchAgent {
     values: number[];
   }> {
     try {
-      console.log('[PineconeSearchAgent] Generating sparse embedding for:', text);
+      log.info({ text }, 'Generating sparse embedding');
 
       const response = await fetch('https://api.pinecone.io/embed', {
         method: 'POST',
@@ -421,33 +420,31 @@ export class PineconeSearchAgent {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[PineconeSearchAgent] Sparse embed failed:', response.status, errorText);
+        log.error({ status: response.status, errorText }, 'Sparse embed failed');
         return { indices: [], values: [] };
       }
 
       const data: PineconeEmbedResponse = await response.json();
 
       if (!data.data || data.data.length === 0) {
-        console.warn('[PineconeSearchAgent] No sparse embedding data returned');
+        log.warn('No sparse embedding data returned');
         return { indices: [], values: [] };
       }
 
       const sparseData = data.data[0];
       if (!sparseData.sparse_indices || !sparseData.sparse_values) {
-        console.warn('[PineconeSearchAgent] Sparse embedding missing indices or values');
+        log.warn('Sparse embedding missing indices or values');
         return { indices: [], values: [] };
       }
 
-      console.log('[PineconeSearchAgent] Sparse embedding generated:', {
-        indexCount: sparseData.sparse_indices.length,
-      });
+      log.info({ indexCount: sparseData.sparse_indices.length }, 'Sparse embedding generated');
 
       return {
         indices: sparseData.sparse_indices,
         values: sparseData.sparse_values,
       };
     } catch (error: any) {
-      console.error('[PineconeSearchAgent] Failed to generate sparse embedding:', error.message);
+      log.error({ err: error }, 'Failed to generate sparse embedding');
       return { indices: [], values: [] };
     }
   }

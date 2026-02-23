@@ -38,6 +38,8 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status');
     const type = searchParams.get('type');
     const search = searchParams.get('search');
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 200);
 
     const where: any = {
       organizationId: session.user.organizationId,
@@ -60,34 +62,42 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    const vehicles = await prisma.vehicle.findMany({
-      where,
-      orderBy: {
-        createdAt: 'desc',
-      },
-      select: {
-        id: true,
-        vehicleId: true,
-        serialNumber: true,
-        make: true,
-        model: true,
-        year: true,
-        type: true,
-        industryCategory: true,
-        status: true,
-        currentLocation: true,
-        operatingHours: true,
-        healthScore: true,
-        lastServiceDate: true,
-        nextServiceDate: true,
-        serviceInterval: true,
-        engineModel: true,
-        maintenancePdfFileName: true,
-        maintenancePdfUrl: true,
-      },
-    });
+    const [vehicles, total] = await Promise.all([
+      prisma.vehicle.findMany({
+        where,
+        orderBy: {
+          createdAt: 'desc',
+        },
+        select: {
+          id: true,
+          vehicleId: true,
+          serialNumber: true,
+          make: true,
+          model: true,
+          year: true,
+          type: true,
+          industryCategory: true,
+          status: true,
+          currentLocation: true,
+          operatingHours: true,
+          healthScore: true,
+          lastServiceDate: true,
+          nextServiceDate: true,
+          serviceInterval: true,
+          engineModel: true,
+          maintenancePdfFileName: true,
+          maintenancePdfUrl: true,
+        },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.vehicle.count({ where }),
+    ]);
 
-    return NextResponse.json({ vehicles });
+    return NextResponse.json({
+      vehicles,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    });
   } catch (error: any) {
     console.error('Get vehicles API error:', error);
 

@@ -112,8 +112,8 @@ export async function POST(request: Request) {
           tier,
         },
       },
-      success_url: successUrl || `${baseUrl}/customer/billing?success=true`,
-      cancel_url: cancelUrl || `${baseUrl}/customer/billing?canceled=true`,
+      success_url: (successUrl && successUrl.startsWith(baseUrl)) ? successUrl : `${baseUrl}/customer/billing?success=true`,
+      cancel_url: (cancelUrl && cancelUrl.startsWith(baseUrl)) ? cancelUrl : `${baseUrl}/customer/billing?canceled=true`,
       metadata: {
         organizationId: organization.id,
         tier,

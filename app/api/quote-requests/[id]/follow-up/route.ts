@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { getEmailClientForUser } from '@/lib/services/email/email-client-factory';
 import { addBusinessDays, getDaysSince } from '@/lib/utils/business-days';
 import { z } from 'zod';
+import { escapeHtml } from '@/lib/sanitize';
 
 const FollowUpSchema = z.object({
   supplierId: z.string().min(1, 'Supplier ID is required'),
@@ -114,7 +115,7 @@ export async function POST(
       emailClient = await getEmailClientForUser(session.user.id);
     } catch (error: any) {
       return NextResponse.json(
-        { error: error.message || 'Email not configured. Please ask an admin to set up your email integration.' },
+        { error: 'Email not configured. Please ask an admin to set up your email integration.' },
         { status: 400 }
       );
     }
@@ -128,10 +129,7 @@ export async function POST(
       : 0;
 
     // Convert plain text body to HTML
-    const htmlBody = emailBody
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
+    const htmlBody = escapeHtml(emailBody)
       .replace(/\n/g, '<br>');
 
     // Send the follow-up email as a reply in the same thread

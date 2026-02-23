@@ -2,7 +2,7 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 
 import { Worker, Job } from 'bullmq';
-import { redisConnection } from '@/lib/queue/connection';
+import { createWorkerConnection } from '@/lib/queue/connection';
 import { FollowUpJobData } from '@/lib/queue/types';
 import { getEmailClientForUser } from '@/lib/services/email/email-client-factory';
 import { OpenRouterClient } from '@/lib/services/llm/openrouter-client';
@@ -225,7 +225,7 @@ export const followUpWorker = new Worker<FollowUpJobData>(
     }
   },
   {
-    connection: redisConnection,
+    connection: createWorkerConnection(),
     concurrency: 5,
     drainDelay: 30,
   }

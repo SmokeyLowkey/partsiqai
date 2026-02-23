@@ -403,4 +403,165 @@ describe('QueryUnderstandingAgent', () => {
       expect(beltIntent!.expandedTerms).not.toContain('fuel element');
     });
   });
+
+  describe('troubleshooting intent detection', () => {
+    it('should detect troubleshooting intent for diagnostic keywords', () => {
+      const result = QueryUnderstandingAgent.regexFallback('the machine is having trouble lifting a load');
+      expect(result.intent).toBe('troubleshooting');
+    });
+
+    it('should detect troubleshooting for "not working" queries', () => {
+      const result = QueryUnderstandingAgent.regexFallback('engine not working properly');
+      expect(result.intent).toBe('troubleshooting');
+    });
+
+    it('should detect troubleshooting for overheating', () => {
+      const result = QueryUnderstandingAgent.regexFallback('my excavator is overheating');
+      expect(result.intent).toBe('troubleshooting');
+    });
+
+    it('should detect troubleshooting for error codes', () => {
+      const result = QueryUnderstandingAgent.regexFallback('getting error code on the display');
+      expect(result.intent).toBe('troubleshooting');
+    });
+
+    it('should detect troubleshooting for "what\'s wrong"', () => {
+      const result = QueryUnderstandingAgent.regexFallback("what's wrong with my loader?");
+      expect(result.intent).toBe('troubleshooting');
+    });
+
+    it('should detect troubleshooting for leak problems', () => {
+      const result = QueryUnderstandingAgent.regexFallback('hydraulic system is leaking');
+      expect(result.intent).toBe('troubleshooting');
+    });
+
+    it('should detect troubleshooting for noise issues', () => {
+      const result = QueryUnderstandingAgent.regexFallback('strange noise coming from the engine');
+      expect(result.intent).toBe('troubleshooting');
+    });
+
+    it('should prioritize part_description over troubleshooting when part type is detected', () => {
+      const result = QueryUnderstandingAgent.regexFallback('I need a fuel filter, the engine is overheating');
+      expect(result.intent).toBe('part_description');
+      expect(result.partTypes).toContain('fuel filter');
+    });
+
+    it('should prioritize exact_part_number over troubleshooting', () => {
+      const result = QueryUnderstandingAgent.regexFallback('AT-123456 is broken');
+      expect(result.intent).toBe('exact_part_number');
+      expect(result.partNumbers).toContain('AT-123456');
+    });
+
+    it('should keep general_question for vague queries without diagnostic keywords', () => {
+      const result = QueryUnderstandingAgent.regexFallback('How do I maintain my excavator?');
+      expect(result.intent).toBe('general_question');
+    });
+
+    it('should detect troubleshooting for "how to fix"', () => {
+      const result = QueryUnderstandingAgent.regexFallback('how to fix the hydraulic system');
+      expect(result.intent).toBe('troubleshooting');
+    });
+
+    it('should detect troubleshooting for malfunction', () => {
+      const result = QueryUnderstandingAgent.regexFallback('the bucket is malfunctioning');
+      // "bucket" is a part type, so part_description takes priority
+      expect(result.intent).toBe('part_description');
+    });
+
+    it('should detect part_description when "light" synonym is present', () => {
+      // "light" now matches part synonym, so part_description takes priority
+      const result = QueryUnderstandingAgent.regexFallback('warning light on the dashboard');
+      expect(result.partTypes).toContain('light');
+      expect(result.intent).toBe('part_description');
+    });
+  });
+
+  describe('expanded synonym coverage', () => {
+    it('should recognize cabin filter', () => {
+      const result = QueryUnderstandingAgent.regexFallback('cabin filter for my loader');
+      expect(result.partTypes).toContain('cabin filter');
+      expect(result.expandedTerms).toContain('cab filter');
+      expect(result.expandedTerms).toContain('hvac filter');
+    });
+
+    it('should recognize seal kit / rebuild kit', () => {
+      const result = QueryUnderstandingAgent.regexFallback('seal kit for hydraulic cylinder');
+      expect(result.partTypes).toContain('seal kit');
+      expect(result.expandedTerms).toContain('rebuild kit');
+      expect(result.expandedTerms).toContain('repair kit');
+    });
+
+    it('should recognize cutting edge', () => {
+      const result = QueryUnderstandingAgent.regexFallback('cutting edge for bucket');
+      expect(result.partTypes).toContain('cutting edge');
+      expect(result.expandedTerms).toContain('blade edge');
+    });
+
+    it('should recognize turbo from synonym turbocharger', () => {
+      const result = QueryUnderstandingAgent.regexFallback('turbocharger replacement');
+      expect(result.partTypes).toContain('turbo');
+    });
+
+    it('should recognize roller (undercarriage)', () => {
+      const result = QueryUnderstandingAgent.regexFallback('track roller for dozer');
+      expect(result.partTypes).toContain('roller');
+      expect(result.expandedTerms).toContain('bottom roller');
+    });
+
+    it('should recognize sensor', () => {
+      const result = QueryUnderstandingAgent.regexFallback('pressure sensor');
+      expect(result.partTypes).toContain('sensor');
+      expect(result.expandedTerms).toContain('temperature sensor');
+    });
+
+    it('should recognize wiper', () => {
+      const result = QueryUnderstandingAgent.regexFallback('wiper blade for cab');
+      expect(result.partTypes).toContain('wiper');
+      expect(result.expandedTerms).toContain('wiper arm');
+    });
+
+    it('should recognize liner / cylinder sleeve', () => {
+      const result = QueryUnderstandingAgent.regexFallback('cylinder liner');
+      expect(result.partTypes).toContain('liner');
+      expect(result.expandedTerms).toContain('sleeve');
+    });
+  });
+
+  describe('misspelling correction', () => {
+    it('should correct "fule filter" to "fuel filter"', () => {
+      const result = QueryUnderstandingAgent.regexFallback('fule filter for excavator');
+      expect(result.partTypes).toContain('fuel filter');
+      expect(result.intent).toBe('part_description');
+    });
+
+    it('should correct "hydralic" to "hydraulic"', () => {
+      const result = QueryUnderstandingAgent.regexFallback('hydralic filter replacement');
+      expect(result.partTypes).toContain('hydraulic filter');
+    });
+
+    it('should correct "bering" to "bearing"', () => {
+      const result = QueryUnderstandingAgent.regexFallback('bering for final drive');
+      expect(result.partTypes).toContain('bearing');
+    });
+
+    it('should correct "alternater" to "alternator"', () => {
+      const result = QueryUnderstandingAgent.regexFallback('alternater not charging');
+      expect(result.partTypes).toContain('alternator');
+    });
+
+    it('should correct "fliter" to "filter"', () => {
+      const result = QueryUnderstandingAgent.regexFallback('oil fliter');
+      expect(result.partTypes).toContain('oil filter');
+    });
+
+    it('should correct "sproket" to "sprocket"', () => {
+      const result = QueryUnderstandingAgent.regexFallback('drive sproket worn out');
+      expect(result.partTypes).toContain('sprocket');
+    });
+
+    it('should handle multiple misspellings in one query', () => {
+      const result = QueryUnderstandingAgent.regexFallback('hydralic fliter');
+      expect(result.partTypes).toContain('hydraulic filter');
+    });
+  });
 });

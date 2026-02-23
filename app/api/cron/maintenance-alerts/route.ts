@@ -62,10 +62,8 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      const hoursUntilService =
-        vehicle.operatingHours +
-        vehicle.serviceInterval -
-        vehicle.operatingHours;
+      const nextServiceAt = Math.ceil(vehicle.operatingHours / vehicle.serviceInterval) * vehicle.serviceInterval;
+      const hoursUntilService = nextServiceAt - vehicle.operatingHours;
 
       // Create alert if service is due within 50 hours
       if (hoursUntilService <= 50 && hoursUntilService > 0) {

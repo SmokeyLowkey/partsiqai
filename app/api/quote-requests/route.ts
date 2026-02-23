@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { apiError } from '@/lib/api-utils';
 import { z } from 'zod';
 import { generateQuoteNumber } from '@/lib/utils/quote-number';
 
@@ -18,13 +19,15 @@ export async function GET(req: NextRequest) {
     const session = await getServerSession();
 
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return apiError('Unauthorized', 401, { code: 'UNAUTHORIZED' });
     }
 
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
     const search = searchParams.get('search');
     const supplierId = searchParams.get('supplierId');
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 200);
 
     const where: any = {
       organizationId: session.user.organizationId,
@@ -50,53 +53,58 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    const quoteRequests = await prisma.quoteRequest.findMany({
-      where,
-      include: {
-        supplier: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            contactPerson: true,
-            phone: true,
-            rating: true,
+    const [quoteRequests, total] = await Promise.all([
+      prisma.quoteRequest.findMany({
+        where,
+        include: {
+          supplier: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              contactPerson: true,
+              phone: true,
+              rating: true,
+            },
+          },
+          vehicle: {
+            select: {
+              id: true,
+              make: true,
+              model: true,
+              year: true,
+              serialNumber: true,
+              vehicleId: true,
+            },
+          },
+          items: {
+            select: {
+              id: true,
+            },
+          },
+          createdBy: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          managerTakeover: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
           },
         },
-        vehicle: {
-          select: {
-            id: true,
-            make: true,
-            model: true,
-            year: true,
-            serialNumber: true,
-            vehicleId: true,
-          },
+        orderBy: {
+          createdAt: 'desc',
         },
-        items: {
-          select: {
-            id: true,
-          },
-        },
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        managerTakeover: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.quoteRequest.count({ where }),
+    ]);
 
     // Transform to include item count
     const quoteRequestsWithCount = quoteRequests.map((qr) => ({
@@ -105,16 +113,14 @@ export async function GET(req: NextRequest) {
       totalAmount: qr.totalAmount ? Number(qr.totalAmount) : null,
     }));
 
-    return NextResponse.json({ quoteRequests: quoteRequestsWithCount });
+    return NextResponse.json({
+      quoteRequests: quoteRequestsWithCount,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    });
   } catch (error: any) {
     console.error('Get quote requests API error:', error);
 
-    return NextResponse.json(
-      {
-        error: 'Failed to fetch quote requests',
-      },
-      { status: 500 }
-    );
+    return apiError('Failed to fetch quote requests', 500, { code: 'INTERNAL_ERROR' });
   }
 }
 
@@ -124,7 +130,7 @@ export async function POST(req: NextRequest) {
     const session = await getServerSession();
 
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return apiError('Unauthorized', 401, { code: 'UNAUTHORIZED' });
     }
 
     const body = await req.json();
@@ -132,13 +138,10 @@ export async function POST(req: NextRequest) {
     // Validate request body
     const validationResult = CreateQuoteRequestSchema.safeParse(body);
     if (!validationResult.success) {
-      return NextResponse.json(
-        {
-          error: 'Invalid request',
-          details: validationResult.error.errors,
-        },
-        { status: 400 }
-      );
+      return apiError('Invalid request', 400, {
+        code: 'VALIDATION_ERROR',
+        details: validationResult.error.errors,
+      });
     }
 
     const { pickListId, vehicleId, title, description, notes } = validationResult.data;
@@ -158,17 +161,11 @@ export async function POST(req: NextRequest) {
     });
 
     if (!pickList) {
-      return NextResponse.json(
-        { error: 'Pick list not found' },
-        { status: 404 }
-      );
+      return apiError('Pick list not found', 404, { code: 'NOT_FOUND' });
     }
 
     if (pickList.items.length === 0) {
-      return NextResponse.json(
-        { error: 'Pick list has no items' },
-        { status: 400 }
-      );
+      return apiError('Pick list has no items', 400, { code: 'EMPTY_PICK_LIST' });
     }
 
     // Determine vehicle ID (from request, pick list, or null)
@@ -184,10 +181,7 @@ export async function POST(req: NextRequest) {
       });
 
       if (!vehicle) {
-        return NextResponse.json(
-          { error: 'Vehicle not found' },
-          { status: 404 }
-        );
+        return apiError('Vehicle not found', 404, { code: 'NOT_FOUND' });
       }
     }
 
@@ -250,11 +244,6 @@ export async function POST(req: NextRequest) {
   } catch (error: any) {
     console.error('Create quote request API error:', error);
 
-    return NextResponse.json(
-      {
-        error: 'Failed to create quote request',
-      },
-      { status: 500 }
-    );
+    return apiError('Failed to create quote request', 500, { code: 'INTERNAL_ERROR' });
   }
 }

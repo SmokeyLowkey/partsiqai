@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getEmailClientForUser } from '@/lib/services/email/email-client-factory';
+import { escapeHtml } from '@/lib/sanitize';
 
 // POST /api/email-threads/[threadId]/reply - Reply to a supplier message
 export async function POST(
@@ -187,7 +188,7 @@ export async function POST(
     // Convert plain text body to HTML (preserve line breaks)
     const htmlBody = body
       .split('\n')
-      .map((line: string) => `<p>${line || '&nbsp;'}</p>`)
+      .map((line: string) => `<p>${escapeHtml(line) || '&nbsp;'}</p>`)
       .join('');
 
     // Build References header for proper threading
@@ -302,7 +303,7 @@ export async function POST(
     }
     
     return NextResponse.json(
-      { error: error.message || 'Failed to send reply' },
+      { error: 'Failed to send reply' },
       { status: 500 }
     );
   }

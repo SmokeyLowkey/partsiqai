@@ -16,9 +16,7 @@ if (!redisUrl) {
 
 queueLogger.info({ url: redisUrl.replace(/:[^:@]+@/, ':****@') }, 'Connecting to Redis');
 
-// Upstash Redis connection for BullMQ using TCP connection URL
-// The URL format is: rediss://default:password@host:port
-export const redisConnection = new Redis(redisUrl, {
+const redisOptions = {
   maxRetriesPerRequest: null,
   enableReadyCheck: false,
   lazyConnect: true, // Don't connect immediately
@@ -26,7 +24,26 @@ export const redisConnection = new Redis(redisUrl, {
   tls: {
     // Ensure TLS is enabled for rediss:// protocol
   },
-});
+};
+
+// Shared connection for Queue instances (non-blocking operations only)
+export const redisConnection = new Redis(redisUrl, redisOptions);
+
+/**
+ * Create a dedicated Redis connection for a BullMQ Worker.
+ * Workers use blocking commands (BRPOPLPUSH) internally, so each
+ * worker MUST have its own connection to avoid interference.
+ */
+export function createWorkerConnection(): Redis {
+  const conn = new Redis(redisUrl!, redisOptions);
+  conn.on('error', (err) => {
+    queueLogger.error({ err: err.message }, 'Worker Redis connection error');
+  });
+  conn.connect().catch((err) => {
+    queueLogger.error({ err: err.message }, 'Worker Redis connection failed');
+  });
+  return conn;
+}
 
 redisConnection.on('connect', () => {
   queueLogger.info('Connected to Upstash Redis');

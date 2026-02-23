@@ -2,7 +2,7 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 
 import { Worker, Job } from 'bullmq';
-import { redisConnection } from '@/lib/queue/connection';
+import { createWorkerConnection } from '@/lib/queue/connection';
 import { EmailMonitorJobData } from '@/lib/queue/types';
 import { getEmailClientForUser, EmailClient } from '@/lib/services/email/email-client-factory';
 import { EmailData } from '@/lib/services/email/gmail-client';
@@ -670,7 +670,7 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
     }
   },
   {
-    connection: redisConnection,
+    connection: createWorkerConnection(),
     concurrency: 3, // Process up to 3 organizations concurrently
     drainDelay: 30,
     limiter: {

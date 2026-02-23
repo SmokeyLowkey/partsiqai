@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { getEmailClientForUser } from '@/lib/services/email/email-client-factory';
 import { addBusinessDays } from '@/lib/utils/business-days';
 import { z } from 'zod';
+import { escapeHtml } from '@/lib/sanitize';
 
 const SendQuoteRequestSchema = z.object({
   suppliers: z.array(
@@ -98,7 +99,7 @@ export async function POST(
       emailClient = await getEmailClientForUser(session.user.id);
     } catch (error: any) {
       return NextResponse.json(
-        { error: error.message || 'Email not configured. Please ask an admin to set up your email integration.' },
+        { error: 'Email not configured. Please ask an admin to set up your email integration.' },
         { status: 400 }
       );
     }
@@ -127,10 +128,7 @@ export async function POST(
     for (const supplier of suppliers) {
       try {
         // Convert plain text body to HTML (preserve line breaks)
-        const htmlBody = supplier.body
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
+        const htmlBody = escapeHtml(supplier.body)
           .replace(/\n/g, '<br>');
 
         // Send email - returns both messageId and threadId from Gmail
@@ -202,7 +200,7 @@ export async function POST(
         results.push({
           supplierId: supplier.id,
           success: false,
-          error: error.message,
+          error: 'Failed to send email',
         });
       }
     }

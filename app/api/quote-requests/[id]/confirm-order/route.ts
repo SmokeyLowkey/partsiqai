@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { getEmailClientForUser } from '@/lib/services/email/email-client-factory';
 import { generateOrderNumber } from '@/lib/utils/order-number';
 import { checkIdempotency, cacheResponse, getIdempotencyKey } from '@/lib/middleware/idempotency';
+import { escapeHtml } from '@/lib/sanitize';
 
 // POST /api/quote-requests/[id]/confirm-order - Actually create order and send email
 // EDGE CASE #1: Protected by idempotency to prevent duplicate orders from double-clicking
@@ -189,7 +190,7 @@ export async function POST(
     } catch (credentialError: any) {
       return NextResponse.json({
         error: 'Cannot convert to order: Email credentials not configured',
-        details: credentialError.message || 'Please set up your email integration in Settings before converting quotes to orders.',
+        details: 'Please set up your email integration in Settings before converting quotes to orders.',
         needsEmailSetup: true,
       }, { status: 400 });
     }
@@ -396,10 +397,7 @@ export async function POST(
       const emailClient = await getEmailClientForUser(session.user.id);
 
       // Convert plain text body to HTML
-      const htmlBody = emailBody
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
+      const htmlBody = escapeHtml(emailBody)
         .replace(/\n/g, '<br>');
 
       // Get the last message for In-Reply-To

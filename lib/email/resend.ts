@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { escapeHtml } from "@/lib/sanitize";
 
 // Initialize Resend client
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -136,7 +137,7 @@ export function getVerificationEmailHtml(name: string, verificationUrl: string):
     </div>
 
     <div class="content">
-      <h2>Hi ${name}! 👋</h2>
+      <h2>Hi ${escapeHtml(name)}! 👋</h2>
 
       <p>Thanks for signing up for PartsIQ! We're excited to have you on board.</p>
 
@@ -332,9 +333,9 @@ export function getWelcomeEmailHtml(name: string, companyName: string): string {
     </div>
 
     <div class="content">
-      <h2>Hi ${name}!</h2>
+      <h2>Hi ${escapeHtml(name)}!</h2>
 
-      <p>Welcome to PartsIQ! Your account for <strong>${companyName}</strong> has been successfully created.</p>
+      <p>Welcome to PartsIQ! Your account for <strong>${escapeHtml(companyName)}</strong> has been successfully created.</p>
 
       <p>To unlock the full power of PartsIQ's AI-driven parts search and maintenance management, you'll need to configure a few integrations. Don't worry – we've made it super easy!</p>
 
@@ -490,7 +491,7 @@ export function getMasterAdminNotificationHtml(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>New Organization Signup - ${companyName}</title>
+  <title>New Organization Signup - ${escapeHtml(companyName)}</title>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -581,33 +582,33 @@ export function getMasterAdminNotificationHtml(
       <div class="info-grid">
         <div class="info-item">
           <span class="info-label">Company:</span>
-          <span class="info-value"><strong>${companyName}</strong></span>
+          <span class="info-value"><strong>${escapeHtml(companyName)}</strong></span>
         </div>
         <div class="info-item">
           <span class="info-label">Contact Name:</span>
-          <span class="info-value">${contactName}</span>
+          <span class="info-value">${escapeHtml(contactName)}</span>
         </div>
         <div class="info-item">
           <span class="info-label">Email:</span>
-          <span class="info-value"><a href="mailto:${email}">${email}</a></span>
+          <span class="info-value"><a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a></span>
         </div>
         <div class="info-item">
           <span class="info-label">Phone:</span>
-          <span class="info-value"><a href="tel:${phone}">${phone}</a></span>
+          <span class="info-value"><a href="tel:${escapeHtml(phone)}">${escapeHtml(phone)}</a></span>
         </div>
         <div class="info-item">
           <span class="info-label">Industry:</span>
-          <span class="info-value">${industry}</span>
+          <span class="info-value">${escapeHtml(industry)}</span>
         </div>
         <div class="info-item">
           <span class="info-label">Company Size:</span>
-          <span class="info-value">${companySize} employees</span>
+          <span class="info-value">${escapeHtml(companySize)} employees</span>
         </div>
       </div>
 
       <h3>Primary Use Case:</h3>
       <div class="use-case-box">
-        <p>"${primaryUseCase}"</p>
+        <p>"${escapeHtml(primaryUseCase)}"</p>
       </div>
 
       <div class="trial-alert">
@@ -729,7 +730,7 @@ export function getPasswordResetEmailHtml(name: string, resetUrl: string): strin
     </div>
 
     <div class="content">
-      <h2>Hi ${name},</h2>
+      <h2>Hi ${escapeHtml(name)},</h2>
 
       <p>We received a request to reset your PartsIQ password. Click the button below to set a new password:</p>
 

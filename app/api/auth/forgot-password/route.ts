@@ -4,39 +4,15 @@ import { randomUUID } from "crypto";
 import { sendEmail, getPasswordResetEmailHtml, getBaseUrl } from "@/lib/email/resend";
 import { checkRateLimit as checkIpRateLimit, getClientIp, rateLimits } from "@/lib/rate-limit";
 
-// Rate limiting (3 requests per email per hour)
-const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
-
-function checkRateLimit(email: string): { allowed: boolean; remainingTime?: number } {
-  const now = Date.now();
-  const limit = rateLimitMap.get(email);
-
-  if (limit && now > limit.resetTime) {
-    rateLimitMap.delete(email);
-  }
-
-  if (limit && now <= limit.resetTime) {
-    if (limit.count >= 3) {
-      const remainingTime = Math.ceil((limit.resetTime - now) / 1000 / 60);
-      return { allowed: false, remainingTime };
-    }
-    limit.count++;
-    return { allowed: true };
-  }
-
-  rateLimitMap.set(email, {
-    count: 1,
-    resetTime: now + 60 * 60 * 1000,
-  });
-
-  return { allowed: true };
-}
+// Per-email rate limiting using the shared Redis-backed rate limiter
+// The in-memory Map approach is unreliable in serverless (each invocation gets a fresh Map).
+// We now rely on the IP-based rate limit below + the Redis-backed checkIpRateLimit for email-scoped limiting.
 
 export async function POST(request: NextRequest) {
   try {
     // Rate limit by IP to prevent enumeration/abuse
     const ip = getClientIp(request);
-    const ipRateCheck = checkIpRateLimit(`forgot-pwd:${ip}`, rateLimits.authAction);
+    const ipRateCheck = await checkIpRateLimit(`forgot-pwd:${ip}`, rateLimits.authAction);
     if (!ipRateCheck.success) return ipRateCheck.response;
 
     const { email } = await request.json();
@@ -50,14 +26,9 @@ export async function POST(request: NextRequest) {
 
     const normalizedEmail = email.toLowerCase().trim();
 
-    // Check rate limit
-    const rateLimit = checkRateLimit(normalizedEmail);
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: `Too many reset requests. Please try again in ${rateLimit.remainingTime} minutes.` },
-        { status: 429 }
-      );
-    }
+    // Per-email rate limit using Redis-backed limiter (replaces unreliable in-memory Map)
+    const emailRateCheck = await checkIpRateLimit(`forgot-pwd:${normalizedEmail}`, rateLimits.authAction);
+    if (!emailRateCheck.success) return emailRateCheck.response;
 
     // Look up user (don't reveal if not found)
     const user = await prisma.user.findUnique({

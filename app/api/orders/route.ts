@@ -14,6 +14,8 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
     const search = searchParams.get('search');
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 200);
 
     const where: any = {
       organizationId: session.user.organizationId,
@@ -31,30 +33,38 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    const orders = await prisma.order.findMany({
-      where,
-      include: {
-        supplier: {
-          select: {
-            id: true,
-            name: true,
+    const [orders, total] = await Promise.all([
+      prisma.order.findMany({
+        where,
+        include: {
+          supplier: {
+            select: {
+              id: true,
+              name: true,
+            },
           },
-        },
-        orderItems: {
-          include: {
-            part: {
-              select: {
-                id: true,
-                description: true,
+          orderItems: {
+            include: {
+              part: {
+                select: {
+                  id: true,
+                  description: true,
+                },
               },
             },
           },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.order.count({ where }),
+    ]);
 
-    return NextResponse.json({ orders });
+    return NextResponse.json({
+      orders,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    });
   } catch (error: any) {
     console.error('Orders list API error:', error);
     return NextResponse.json(

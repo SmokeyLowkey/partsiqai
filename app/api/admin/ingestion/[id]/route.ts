@@ -40,7 +40,7 @@ export async function GET(
   } catch (error: any) {
     console.error('Ingestion get error:', error);
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
@@ -92,7 +92,7 @@ export async function DELETE(
   } catch (error: any) {
     console.error('Ingestion cancel error:', error);
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

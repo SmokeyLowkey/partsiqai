@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { apiError } from '@/lib/api-utils';
 import { MultiAgentOrchestrator } from '@/lib/services/search/multi-agent-orchestrator';
+import { QueryUnderstandingAgent } from '@/lib/services/search/query-understanding';
+import { WebSearchAgent } from '@/lib/services/search/web-search-agent';
+import { OpenRouterClient } from '@/lib/services/llm/openrouter-client';
+import { PROMPTS } from '@/lib/services/llm/prompt-templates';
 import { z } from 'zod';
+import { createRequestLogger } from '@/lib/logger';
+import { checkOrigin } from '@/lib/csrf';
+import { checkRateLimit, rateLimits } from '@/lib/rate-limit';
 
 const ChatMessageSchema = z.object({
   conversationId: z.string().nullable().optional(),
@@ -20,28 +28,32 @@ const ChatMessageSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const log = createRequestLogger('chat');
   try {
+    const originError = checkOrigin(req);
+    if (originError) return originError;
+
     const session = await getServerSession();
 
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return apiError('Unauthorized', 401, { code: 'UNAUTHORIZED' });
     }
+
+    const rateCheck = await checkRateLimit(`chat:${session.user.id}`, rateLimits.chat);
+    if (!rateCheck.success) return rateCheck.response;
 
     const body = await req.json();
 
-    console.log('Chat message request body:', JSON.stringify(body, null, 2));
+    log.debug({ body }, 'Chat message request');
 
     // Validate request body
     const validationResult = ChatMessageSchema.safeParse(body);
     if (!validationResult.success) {
-      console.error('Validation failed:', validationResult.error.errors);
-      return NextResponse.json(
-        {
-          error: 'Invalid request',
-          details: validationResult.error.errors,
-        },
-        { status: 400 }
-      );
+      log.warn({ errors: validationResult.error.errors }, 'Validation failed');
+      return apiError('Invalid request', 400, {
+        code: 'VALIDATION_ERROR',
+        details: validationResult.error.errors,
+      });
     }
 
     const { conversationId, message, vehicleContext } = validationResult.data;
@@ -53,14 +65,12 @@ export async function POST(req: NextRequest) {
         where: {
           id: conversationId,
           userId: session.user.id,
+          organizationId: session.user.organizationId,
         },
       });
 
       if (!conversation) {
-        return NextResponse.json(
-          { error: 'Conversation not found' },
-          { status: 404 }
-        );
+        return apiError('Conversation not found', 404, { code: 'NOT_FOUND' });
       }
     } else {
       // Create new conversation
@@ -94,25 +104,26 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Determine if this is a parts search query
-    const isSearchQuery = await isPartsSearchQuery(message);
-    console.log('[Chat API] Is search query?', isSearchQuery, 'for message:', message);
+    // Determine query intent using fast regex analysis (no LLM call)
+    const quickIntent = QueryUnderstandingAgent.regexFallback(message);
+    const isTroubleshooting = quickIntent.intent === 'troubleshooting' || quickIntent.intent === 'general_question';
+    log.info({ intent: quickIntent.intent, isTroubleshooting, message }, 'Query intent classified');
 
-    if (isSearchQuery) {
-      console.log('[Chat API] Executing multi-agent search...');
+    if (!isTroubleshooting) {
+      log.info('Executing multi-agent search');
 
       // Check if vehicle is ready for search
       const vehicleId = vehicleContext?.id || vehicleContext?.vehicleId;
       let webSearchOnly = false;
       if (vehicleId) {
-        const vehicle = await prisma.vehicle.findUnique({
-          where: { id: vehicleId },
+        const vehicle = await prisma.vehicle.findFirst({
+          where: { id: vehicleId, organizationId: session.user.organizationId },
           select: { searchConfigStatus: true, make: true, model: true, year: true },
         });
 
         if (vehicle?.searchConfigStatus !== 'SEARCH_READY') {
           // Vehicle not configured — fall back to web search only
-          console.log('[Chat API] Vehicle not SEARCH_READY, falling back to web search only');
+          log.info({ vehicleId }, 'Vehicle not SEARCH_READY, falling back to web search only');
           webSearchOnly = true;
         }
       }
@@ -193,6 +204,24 @@ export async function POST(req: NextRequest) {
           });
         }
 
+        // Fire-and-forget search analytics write
+        prisma.searchLog.create({
+          data: {
+            organizationId: session.user.organizationId,
+            userId: session.user.id,
+            query: message,
+            intent: searchResults.metadata?.queryIntent,
+            searchTimeMs: Math.round(searchResults.metadata?.searchTime || 0),
+            totalResults: searchResults.metadata?.totalResults || 0,
+            sourcesUsed: searchResults.metadata?.sourcesUsed || [],
+            cacheHit: !!searchResults.metadata?.cacheHit,
+            spellingCorrected: !!searchResults.metadata?.spellingCorrection,
+            isMultiPart: !!searchResults.metadata?.isMultiPartQuery,
+            partCount: searchResults.metadata?.partCount || 1,
+            vehicleId: vehicleId || null,
+          },
+        }).catch(() => {}); // Never block the response
+
         return NextResponse.json({
           conversationId: conversation.id,
           userMessage,
@@ -203,7 +232,7 @@ export async function POST(req: NextRequest) {
           searchResults,
         });
       } catch (searchError: any) {
-        console.error('Search error:', searchError);
+        log.error({ err: searchError }, 'Search error');
 
         // Save error message
         const errorMessage = await prisma.chatMessage.create({
@@ -232,74 +261,169 @@ export async function POST(req: NextRequest) {
         });
       }
     } else {
-      // Handle general conversation (non-search)
-      // For now, return a simple response
-      const assistantMessage = await prisma.chatMessage.create({
-        data: {
+      // Handle diagnostic/troubleshooting questions via web search + LLM
+      log.info({ intent: quickIntent.intent }, 'Routing to technical assistant');
+
+      try {
+        const llmClient = await OpenRouterClient.fromOrganization(session.user.organizationId);
+
+        // Search the web for troubleshooting info
+        const searchVehicleCtx = vehicleContext ? {
+          make: vehicleContext.make,
+          model: vehicleContext.model,
+          year: vehicleContext.year,
+        } : undefined;
+
+        let webContext = '';
+        let webSources: { title: string; snippet: string; link: string }[] = [];
+        const webSearchAgent = await WebSearchAgent.fromOrganization(session.user.organizationId);
+        if (webSearchAgent) {
+          webSources = await webSearchAgent.searchDiagnostic(message, searchVehicleCtx);
+          webContext = webSources.map(s => `- ${s.title}: ${s.snippet}`).join('\n');
+        }
+
+        // Build vehicle context string
+        const vehicleStr = vehicleContext
+          ? `${vehicleContext.year} ${vehicleContext.make} ${vehicleContext.model}`
+          : '';
+
+        // Fetch recent conversation history for context
+        const recentMessages = await prisma.chatMessage.findMany({
+          where: { conversationId: conversation.id },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+          select: { role: true, content: true },
+        });
+
+        // Build chat messages (system + history + current)
+        const chatMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+          { role: 'system', content: PROMPTS.TECHNICAL_ASSISTANT(vehicleStr, webContext) },
+        ];
+
+        // Add history in chronological order (reverse the desc-ordered results)
+        for (const msg of recentMessages.reverse()) {
+          if (msg.role === 'USER') {
+            chatMessages.push({ role: 'user', content: msg.content });
+          } else if (msg.role === 'ASSISTANT') {
+            chatMessages.push({ role: 'assistant', content: msg.content });
+          }
+        }
+
+        // The current user message is already in the history (we saved it above),
+        // but add it explicitly if it wasn't included in the recent fetch
+        const lastChatMsg = chatMessages[chatMessages.length - 1];
+        if (lastChatMsg?.role !== 'user' || lastChatMsg?.content !== message) {
+          chatMessages.push({ role: 'user', content: message });
+        }
+
+        const llmResponse = await llmClient.chat(chatMessages, {
+          temperature: 0.7,
+          maxTokens: 1500,
+        });
+
+        // Extract suggested parts from the response
+        const suggestedSearches = extractSuggestedParts(llmResponse);
+
+        // Save assistant message
+        const assistantMessage = await prisma.chatMessage.create({
+          data: {
+            conversationId: conversation.id,
+            role: 'ASSISTANT',
+            content: llmResponse,
+            messageType: 'TEXT',
+            metadata: JSON.parse(JSON.stringify({
+              intent: quickIntent.intent,
+              suggestedSearches,
+              webSources: webSources.map(s => ({ title: s.title, link: s.link })),
+            })),
+          },
+        });
+
+        // Increment message count for assistant message
+        await prisma.chatConversation.update({
+          where: { id: conversation.id },
+          data: {
+            messageCount: { increment: 1 },
+            lastMessageAt: new Date(),
+          },
+        });
+
+        return NextResponse.json({
           conversationId: conversation.id,
-          role: 'ASSISTANT',
-          content:
-            "I'm here to help you find parts! Try asking me about specific part numbers or describing what you need.",
-          messageType: 'TEXT',
-        },
-      });
+          userMessage,
+          assistantMessage,
+        });
+      } catch (techError: any) {
+        log.error({ err: techError }, 'Technical assistant error');
 
-      // Increment message count for assistant message
-      await prisma.chatConversation.update({
-        where: { id: conversation.id },
-        data: {
-          messageCount: { increment: 1 },
-          lastMessageAt: new Date(),
-        },
-      });
+        // Fallback: save a helpful static message
+        const assistantMessage = await prisma.chatMessage.create({
+          data: {
+            conversationId: conversation.id,
+            role: 'ASSISTANT',
+            content: "I wasn't able to process your question right now. You can try rephrasing it, or ask me to search for specific parts instead.",
+            messageType: 'TEXT',
+          },
+        });
 
-      return NextResponse.json({
-        conversationId: conversation.id,
-        userMessage,
-        assistantMessage,
-      });
+        await prisma.chatConversation.update({
+          where: { id: conversation.id },
+          data: {
+            messageCount: { increment: 1 },
+            lastMessageAt: new Date(),
+          },
+        });
+
+        return NextResponse.json({
+          conversationId: conversation.id,
+          userMessage,
+          assistantMessage,
+        });
+      }
     }
   } catch (error: any) {
-    console.error('Chat message API error:', error);
+    log.error({ err: error }, 'Chat message API error');
 
-    return NextResponse.json(
-      {
-        error: 'Failed to process message',
-      },
-      { status: 500 }
-    );
+    return apiError('Failed to process message', 500, { code: 'INTERNAL_ERROR' });
   }
 }
 
 /**
- * Determine if a message is a parts search query
- * Simplified: All messages are treated as search queries by default
- * This is a parts search AI, so we should search for everything
+ * Extract suggested part names from a technical assistant response.
+ * Looks for a "Parts that may need attention:" section and extracts bullet items.
  */
-async function isPartsSearchQuery(message: string): Promise<boolean> {
-  console.log('[isPartsSearchQuery] Message:', message);
-  console.log('[isPartsSearchQuery] Treating all messages as search queries');
+function extractSuggestedParts(response: string): string[] {
+  const parts: string[] = [];
 
-  // All messages are search queries in a parts search AI
-  return true;
+  // Look for "Parts that may need attention:" section
+  const partsSection = response.match(/parts that may need (?:attention|inspection|replacement):?\s*\n([\s\S]*?)(?:\n\n|\n(?=[A-Z])|\Z)/i);
+  if (partsSection) {
+    const lines = partsSection[1].split('\n');
+    for (const line of lines) {
+      const cleaned = line.replace(/^[\s\-*•]+/, '').trim();
+      if (cleaned && cleaned.length > 2 && cleaned.length < 60) {
+        parts.push(cleaned);
+      }
+    }
+  }
+
+  return parts.slice(0, 8); // Cap at 8 suggestions
 }
 
 export async function GET(req: NextRequest) {
+  const log = createRequestLogger('chat');
   try {
     const session = await getServerSession();
 
     if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return apiError('Unauthorized', 401, { code: 'UNAUTHORIZED' });
     }
 
     const { searchParams } = new URL(req.url);
     const conversationId = searchParams.get('conversationId');
 
     if (!conversationId) {
-      return NextResponse.json(
-        { error: 'Conversation ID is required' },
-        { status: 400 }
-      );
+      return apiError('Conversation ID is required', 400, { code: 'MISSING_PARAM' });
     }
 
     // Get conversation
@@ -307,41 +431,43 @@ export async function GET(req: NextRequest) {
       where: {
         id: conversationId,
         userId: session.user.id,
+        organizationId: session.user.organizationId,
       },
     });
 
     if (!conversation) {
-      return NextResponse.json(
-        { error: 'Conversation not found' },
-        { status: 404 }
-      );
+      return apiError('Conversation not found', 404, { code: 'NOT_FOUND' });
     }
 
-    // Get messages
-    const messages = await prisma.chatMessage.findMany({
-      where: {
-        conversationId,
-      },
-      orderBy: {
-        createdAt: 'asc',
-      },
-      include: {
-        pickListItems: true,
-      },
-    });
+    // Get messages with pagination (default 100 for chat, covers typical conversations)
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = Math.min(parseInt(searchParams.get('limit') || '100'), 200);
+
+    const msgWhere = { conversationId };
+
+    const [messages, total] = await Promise.all([
+      prisma.chatMessage.findMany({
+        where: msgWhere,
+        orderBy: {
+          createdAt: 'asc',
+        },
+        include: {
+          pickListItems: true,
+        },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.chatMessage.count({ where: msgWhere }),
+    ]);
 
     return NextResponse.json({
       conversation,
       messages,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
     });
   } catch (error: any) {
-    console.error('Get messages API error:', error);
+    log.error({ err: error }, 'Get messages API error');
 
-    return NextResponse.json(
-      {
-        error: 'Failed to get messages',
-      },
-      { status: 500 }
-    );
+    return apiError('Failed to get messages', 500, { code: 'INTERNAL_ERROR' });
   }
 }

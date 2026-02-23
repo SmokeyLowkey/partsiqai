@@ -16,6 +16,8 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status'); // Filter by approval status
     const parsingStatus = searchParams.get('parsingStatus'); // Filter by parsing status
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 200);
 
     const whereClause: any = {
       organizationId: session.user.organizationId,
@@ -31,46 +33,51 @@ export async function GET(req: NextRequest) {
       whereClause.parsingStatus = parsingStatus;
     }
 
-    const schedules = await prisma.maintenanceSchedule.findMany({
-      where: whereClause,
-      include: {
-        vehicle: {
-          select: {
-            id: true,
-            vehicleId: true,
-            serialNumber: true,
-            make: true,
-            model: true,
-            year: true,
-            operatingHours: true,
-            searchConfigStatus: true,
-            owner: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
+    const [schedules, total] = await Promise.all([
+      prisma.maintenanceSchedule.findMany({
+        where: whereClause,
+        include: {
+          vehicle: {
+            select: {
+              id: true,
+              vehicleId: true,
+              serialNumber: true,
+              make: true,
+              model: true,
+              year: true,
+              operatingHours: true,
+              searchConfigStatus: true,
+              owner: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
               },
             },
           },
-        },
-        reviewer: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
+          reviewer: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          _count: {
+            select: {
+              intervals: true,
+            },
           },
         },
-        _count: {
-          select: {
-            intervals: true,
-          },
-        },
-      },
-      orderBy: [
-        { approvalStatus: 'asc' }, // PENDING_REVIEW first
-        { createdAt: 'desc' },
-      ],
-    });
+        orderBy: [
+          { approvalStatus: 'asc' }, // PENDING_REVIEW first
+          { createdAt: 'desc' },
+        ],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.maintenanceSchedule.count({ where: whereClause }),
+    ]);
 
     // Get status counts for summary
     const approvalStatusCounts = await prisma.maintenanceSchedule.groupBy({
@@ -119,7 +126,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       schedules,
       counts,
-      total: schedules.length,
+      total,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
     });
   } catch (error: any) {
     console.error('Admin get maintenance schedules error:', error);

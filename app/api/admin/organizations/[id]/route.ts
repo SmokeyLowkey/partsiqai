@@ -44,7 +44,15 @@ export async function PATCH(
       // Allow null or empty string to clear the field
       updateData.pineconeHost = body.pineconeHost || null;
     }
-    
+
+    if (body.vapiPhoneNumberId !== undefined) {
+      updateData.vapiPhoneNumberId = body.vapiPhoneNumberId || null;
+    }
+
+    if (body.vapiAssistantId !== undefined) {
+      updateData.vapiAssistantId = body.vapiAssistantId || null;
+    }
+
     if (body.usePlatformKeys !== undefined) {
       updateData.usePlatformKeys = Boolean(body.usePlatformKeys);
     }
@@ -56,6 +64,8 @@ export async function PATCH(
         id: true,
         name: true,
         pineconeHost: true,
+        vapiPhoneNumberId: true,
+        vapiAssistantId: true,
         usePlatformKeys: true,
       },
     });
@@ -64,7 +74,7 @@ export async function PATCH(
   } catch (error: any) {
     console.error("Error updating organization:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to update organization" },
+      { error: "Failed to update organization" },
       { status: 500 }
     );
   }

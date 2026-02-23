@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
   } catch (error: any) {
     console.error('Error fetching cost savings:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch cost savings' },
+      { error: 'Failed to fetch cost savings' },
       { status: 500 }
     );
   }

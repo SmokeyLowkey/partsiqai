@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
   try {
     // Rate limit by IP to prevent token brute force
     const ip = getClientIp(request);
-    const rateCheck = checkRateLimit(`reset-pwd:${ip}`, rateLimits.authAction);
+    const rateCheck = await checkRateLimit(`reset-pwd:${ip}`, rateLimits.authAction);
     if (!rateCheck.success) return rateCheck.response;
 
     const { token, password } = await request.json();

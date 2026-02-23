@@ -1,5 +1,7 @@
 import OpenAI from 'openai';
 import { credentialsManager } from '../credentials/credentials-manager';
+import { withRetry } from '@/lib/utils/retry';
+import { withTimeout } from '@/lib/utils/timeout';
 
 export interface CompletionOptions {
   temperature?: number;
@@ -68,23 +70,23 @@ export class OpenRouterClient {
     prompt: string,
     options?: CompletionOptions & { model?: string }
   ): Promise<string> {
-    try {
-      const response = await this.client.chat.completions.create({
-        model: options?.model || this.defaultModel,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: options?.temperature ?? 0.7,
-        max_tokens: options?.maxTokens ?? 2000,
-        stop: options?.stop,
-        top_p: options?.topP,
-        frequency_penalty: options?.frequencyPenalty,
-        presence_penalty: options?.presencePenalty,
-      });
+    return withRetry(
+      () => withTimeout(async () => {
+        const response = await this.client.chat.completions.create({
+          model: options?.model || this.defaultModel,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: options?.temperature ?? 0.7,
+          max_tokens: options?.maxTokens ?? 2000,
+          stop: options?.stop,
+          top_p: options?.topP,
+          frequency_penalty: options?.frequencyPenalty,
+          presence_penalty: options?.presencePenalty,
+        });
 
-      return response.choices[0].message.content || '';
-    } catch (error: any) {
-      console.error('OpenRouter API error:', error);
-      throw new Error(`LLM generation failed: ${error.message}`);
-    }
+        return response.choices[0].message.content || '';
+      }, 10_000, 'generateCompletion'),
+      { maxRetries: 2 }
+    );
   }
 
   async generateStructuredOutput<T>(
@@ -92,71 +94,66 @@ export class OpenRouterClient {
     schema: any,
     options?: CompletionOptions & { model?: string }
   ): Promise<T> {
-    try {
-      // The prompt should already contain the JSON structure we want
-      // Don't try to stringify Zod schemas - they don't serialize properly
-      const response = await this.client.chat.completions.create({
-        model: options?.model || this.defaultModel,
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a helpful assistant that extracts structured data from text and outputs valid JSON. Always respond with valid JSON that can be parsed. If you cannot find certain information, use null for that field.',
-          },
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        temperature: options?.temperature ?? 0.2, // Lower temp for structured output
-        max_tokens: options?.maxTokens ?? 4000,
-        response_format: { type: 'json_object' } as any,
-      });
+    return withRetry(
+      () => withTimeout(async () => {
+        const response = await this.client.chat.completions.create({
+          model: options?.model || this.defaultModel,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a helpful assistant that extracts structured data from text and outputs valid JSON. Always respond with valid JSON that can be parsed. If you cannot find certain information, use null for that field.',
+            },
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+          temperature: options?.temperature ?? 0.2,
+          max_tokens: options?.maxTokens ?? 4000,
+          response_format: { type: 'json_object' } as any,
+        });
 
-      const content = response.choices[0].message.content || '{}';
-      console.log('LLM response length:', content.length);
+        const content = response.choices[0].message.content || '{}';
+        console.log('LLM response length:', content.length);
 
-      // Parse JSON
-      const parsed = JSON.parse(content);
+        const parsed = JSON.parse(content);
 
-      // If schema has a safeParse method (Zod), use it to validate
-      if (schema && typeof schema.safeParse === 'function') {
-        const result = schema.safeParse(parsed);
-        if (!result.success) {
-          console.warn('Schema validation warning:', result.error.message);
-          // Return parsed data even if validation fails - we'll handle partial data
-        } else {
-          return result.data as T;
+        if (schema && typeof schema.safeParse === 'function') {
+          const result = schema.safeParse(parsed);
+          if (!result.success) {
+            console.warn('Schema validation warning:', result.error.message);
+          } else {
+            return result.data as T;
+          }
         }
-      }
 
-      return parsed as T;
-    } catch (error: any) {
-      console.error('OpenRouter structured output error:', error);
-      throw new Error(`Structured LLM generation failed: ${error.message}`);
-    }
+        return parsed as T;
+      }, 15_000, 'generateStructuredOutput'),
+      { maxRetries: 2 }
+    );
   }
 
   async chat(
     messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
     options?: CompletionOptions & { model?: string }
   ): Promise<string> {
-    try {
-      const response = await this.client.chat.completions.create({
-        model: options?.model || this.defaultModel,
-        messages,
-        temperature: options?.temperature ?? 0.7,
-        max_tokens: options?.maxTokens ?? 2000,
-        stop: options?.stop,
-        top_p: options?.topP,
-        frequency_penalty: options?.frequencyPenalty,
-        presence_penalty: options?.presencePenalty,
-      });
+    return withRetry(
+      () => withTimeout(async () => {
+        const response = await this.client.chat.completions.create({
+          model: options?.model || this.defaultModel,
+          messages,
+          temperature: options?.temperature ?? 0.7,
+          max_tokens: options?.maxTokens ?? 2000,
+          stop: options?.stop,
+          top_p: options?.topP,
+          frequency_penalty: options?.frequencyPenalty,
+          presence_penalty: options?.presencePenalty,
+        });
 
-      return response.choices[0].message.content || '';
-    } catch (error: any) {
-      console.error('OpenRouter chat error:', error);
-      throw new Error(`Chat completion failed: ${error.message}`);
-    }
+        return response.choices[0].message.content || '';
+      }, 10_000, 'chat'),
+      { maxRetries: 2 }
+    );
   }
 
   /**
