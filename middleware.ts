@@ -32,6 +32,8 @@ export async function middleware(request: NextRequest) {
     "/invite/accept",
     "/forgot-password",
     "/reset-password",
+    "/sitemap.xml",
+    "/robots.txt",
   ]
 
   const publicPrefixes = ["/blog", "/solutions"]
