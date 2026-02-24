@@ -1,9 +1,90 @@
+import type { Metadata } from "next"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, BookOpen, Mail, MessageCircle, FileText, HelpCircle, Search } from "lucide-react"
 import Link from "next/link"
+import { JsonLd } from "@/components/seo/json-ld"
+import { BreadcrumbJsonLd } from "@/components/seo/breadcrumb-jsonld"
+
+export const metadata: Metadata = {
+  title: "Support - Parts Inventory Tracking Help & Documentation",
+  description:
+    "Get help with PartsIQ: documentation, email support, and live chat. Find answers about parts inventory tracking, equipment maintenance, preventive maintenance parts scheduling, and AI search.",
+  keywords: [
+    "parts inventory tracking help",
+    "parts inventory system support",
+    "preventive maintenance parts",
+  ],
+  alternates: {
+    canonical: "/support",
+  },
+  openGraph: {
+    title: "PartsIQ Support Center",
+    description:
+      "Documentation, email support, and live chat for PartsIQ's parts inventory management platform.",
+    url: "/support",
+  },
+}
+
+const faqJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: [
+    {
+      "@type": "Question",
+      name: "How do I get started with PartsIQ?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Sign in to your account, add your equipment to the system, and start using the AI search to find parts. Our onboarding guide will walk you through the setup process.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "How does the AI part search work?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Describe the part you need in plain language or upload a photo. Our multi-agent AI searches across multiple databases to find exact matches with confidence scores.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "Can I track multiple vehicles?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Yes, you can add and track unlimited vehicles and equipment. Each piece of equipment has its own maintenance schedule, operating hours, and health score.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "How do quote requests work?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Once you've added parts to your pick list, create a quote request. The system automatically emails your selected suppliers and tracks their responses in one centralized dashboard.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "What if I need help during setup?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Enterprise customers receive dedicated onboarding support. All customers can access our documentation, email support, and live chat during business hours.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "Is my data secure?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Yes. We use enterprise-grade encryption (TLS 1.3, AES-256), role-based access control, and maintain comprehensive audit logs.",
+      },
+    },
+  ],
+}
 
 export default function SupportPage() {
   return (
+    <>
+    <JsonLd data={faqJsonLd} />
+    <BreadcrumbJsonLd items={[{ name: "Home", url: "/" }, { name: "Support", url: "/support" }]} />
     <div className="min-h-screen bg-white">
       {/* Hero Section */}
       <section className="relative bg-slate-950 text-white py-24">
@@ -199,5 +280,6 @@ export default function SupportPage() {
         </div>
       </section>
     </div>
+    </>
   )
 }

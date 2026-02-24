@@ -1,9 +1,28 @@
+import type { Metadata } from "next"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Shield, Lock, Database, Eye, FileCheck, Users } from "lucide-react"
 import Link from "next/link"
+import { BreadcrumbJsonLd } from "@/components/seo/breadcrumb-jsonld"
+
+export const metadata: Metadata = {
+  title: "Enterprise-Grade Security for Parts Procurement Data",
+  description:
+    "PartsIQ security: TLS 1.3 encryption, AES-256 at rest, role-based access control, audit logging, 99.9% uptime SLA, and daily automated backups for your parts procurement data.",
+  alternates: {
+    canonical: "/security",
+  },
+  openGraph: {
+    title: "PartsIQ Security - Enterprise-Grade Protection",
+    description:
+      "Industry-leading security for your parts procurement data. End-to-end encryption, role-based access, and compliance-ready infrastructure.",
+    url: "/security",
+  },
+}
 
 export default function SecurityPage() {
   return (
+    <>
+    <BreadcrumbJsonLd items={[{ name: "Home", url: "/" }, { name: "Security", url: "/security" }]} />
     <div className="min-h-screen bg-white">
       {/* Hero Section */}
       <section className="relative bg-slate-950 text-white py-24">
@@ -174,5 +193,6 @@ export default function SecurityPage() {
         </div>
       </section>
     </div>
+    </>
   )
 }

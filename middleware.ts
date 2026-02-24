@@ -34,8 +34,11 @@ export async function middleware(request: NextRequest) {
     "/reset-password",
   ]
 
+  const publicPrefixes = ["/blog", "/solutions"]
+
   if (
     publicRoutes.includes(pathname) ||
+    publicPrefixes.some(prefix => pathname.startsWith(prefix)) ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api/")
   ) {

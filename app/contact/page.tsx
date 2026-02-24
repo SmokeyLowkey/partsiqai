@@ -1,8 +1,27 @@
+import type { Metadata } from "next"
 import { Button } from "@/components/ui/button"
 import { Mail, MessageSquare, Phone, MapPin } from "lucide-react"
+import { BreadcrumbJsonLd } from "@/components/seo/breadcrumb-jsonld"
+
+export const metadata: Metadata = {
+  title: "Contact PartsIQ - Sales, Support & Partnerships",
+  description:
+    "Get in touch with PartsIQ. Contact our sales team for a demo of our parts inventory management software, reach support for technical help, or discuss partnership opportunities.",
+  alternates: {
+    canonical: "/contact",
+  },
+  openGraph: {
+    title: "Contact PartsIQ",
+    description:
+      "Contact our sales or support team. Schedule a demo of PartsIQ's AI-powered parts procurement platform.",
+    url: "/contact",
+  },
+}
 
 export default function ContactPage() {
   return (
+    <>
+    <BreadcrumbJsonLd items={[{ name: "Home", url: "/" }, { name: "Contact", url: "/contact" }]} />
     <div className="min-h-screen bg-white">
       {/* Hero Section */}
       <section className="relative bg-slate-950 text-white py-24">
@@ -184,5 +203,6 @@ export default function ContactPage() {
         </div>
       </section>
     </div>
+    </>
   )
 }

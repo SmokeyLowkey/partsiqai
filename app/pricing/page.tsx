@@ -1,9 +1,83 @@
+import type { Metadata } from "next"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Check, Mail } from "lucide-react"
 import Link from "next/link"
+import { JsonLd } from "@/components/seo/json-ld"
+import { BreadcrumbJsonLd } from "@/components/seo/breadcrumb-jsonld"
+
+export const metadata: Metadata = {
+  title: "Pricing - Parts Ordering System for Heavy Equipment Dealers",
+  description:
+    "Simple, transparent pricing for PartsIQ's parts procurement software. Starter, Growth, and Enterprise plans for heavy equipment dealer software starting at $199/month.",
+  keywords: [
+    "parts ordering system pricing",
+    "heavy equipment dealer software",
+    "parts procurement software",
+    "parts inventory system pricing",
+  ],
+  alternates: {
+    canonical: "/pricing",
+  },
+  openGraph: {
+    title: "PartsIQ Pricing - Parts Ordering System",
+    description:
+      "Transparent pricing for AI-powered parts procurement. Plans starting at $199/month with voice agent, AI search, and supplier management.",
+    url: "/pricing",
+  },
+}
+
+const faqJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: [
+    {
+      "@type": "Question",
+      name: "How is pricing determined?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Pricing is customized based on your organization's size, number of users, equipment count, and specific feature requirements. Contact our sales team for a tailored quote.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "Is there a free trial?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "We offer product demonstrations to qualified prospects. Schedule a demo to see the platform in action and discuss trial options.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "What's included in implementation?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Implementation includes system setup, data migration assistance, supplier network integration, team training, and ongoing support during the onboarding period.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "Can I upgrade or downgrade my plan?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Yes, plans can be adjusted as your needs change. Contact your account manager to discuss plan modifications.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "What payment methods do you accept?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "We accept major credit cards, ACH transfers, and wire transfers. Enterprise customers can request custom payment terms.",
+      },
+    },
+  ],
+}
 
 export default function PricingPage() {
   return (
+    <>
+    <JsonLd data={faqJsonLd} />
+    <BreadcrumbJsonLd items={[{ name: "Home", url: "/" }, { name: "Pricing", url: "/pricing" }]} />
     <div className="min-h-screen bg-white">
       {/* Hero Section */}
       <section className="relative bg-slate-950 text-white py-24">
@@ -249,5 +323,6 @@ export default function PricingPage() {
         </div>
       </section>
     </div>
+    </>
   )
 }

@@ -1,3 +1,4 @@
+import type { Metadata } from "next"
 import { Button } from "@/components/ui/button"
 import {
   ArrowRight,
@@ -14,9 +15,66 @@ import {
   CheckCircle,
 } from "lucide-react"
 import Link from "next/link"
+import { JsonLd } from "@/components/seo/json-ld"
+import { BreadcrumbJsonLd } from "@/components/seo/breadcrumb-jsonld"
+
+export const metadata: Metadata = {
+  title: "Parts Inventory Management Software Features | Industrial Parts Search Engine",
+  description:
+    "Multi-agent AI parts search, digital parts catalog, supplier quote management, equipment tracking, and parts diagram search. Complete parts inventory management software for industrial operations.",
+  keywords: [
+    "parts inventory management software",
+    "industrial parts search engine",
+    "parts catalog software",
+    "digital parts catalog",
+    "parts diagram search",
+    "semantic parts search",
+    "parts number cross reference",
+    "heavy equipment parts catalog",
+  ],
+  alternates: {
+    canonical: "/features",
+  },
+  openGraph: {
+    title: "Parts Inventory Management Software Features",
+    description:
+      "AI-powered parts search, digital catalog, supplier management, and equipment tracking. Complete industrial parts procurement platform.",
+    url: "/features",
+  },
+}
+
+const softwareJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "PartsIQ",
+  applicationCategory: "BusinessApplication",
+  operatingSystem: "Web",
+  description:
+    "AI-powered parts inventory management software with multi-agent search, voice agent automation, and supplier management for industrial operations.",
+  offers: {
+    "@type": "AggregateOffer",
+    lowPrice: "199",
+    highPrice: "1299",
+    priceCurrency: "USD",
+    offerCount: 3,
+  },
+  featureList: [
+    "Multi-Agent AI Parts Search",
+    "AI Voice Agent for Supplier Calls",
+    "Automated Email Quote Requests",
+    "Price Comparison Dashboard",
+    "Equipment & Fleet Tracking",
+    "Predictive Maintenance Scheduling",
+    "Parts Number Cross Reference",
+    "Order Management & Delivery Tracking",
+  ],
+}
 
 export default function FeaturesPage() {
   return (
+    <>
+    <JsonLd data={softwareJsonLd} />
+    <BreadcrumbJsonLd items={[{ name: "Home", url: "/" }, { name: "Features", url: "/features" }]} />
     <div className="min-h-screen bg-white">
       {/* Hero Section */}
       <section className="relative bg-slate-950 text-white py-24">
@@ -264,5 +322,6 @@ export default function FeaturesPage() {
         </div>
       </section>
     </div>
+    </>
   )
 }

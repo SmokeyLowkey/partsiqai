@@ -1,9 +1,33 @@
+import type { Metadata } from "next"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Target, Lightbulb, Users } from "lucide-react"
 import Link from "next/link"
+import { BreadcrumbJsonLd } from "@/components/seo/breadcrumb-jsonld"
+
+export const metadata: Metadata = {
+  title: "About PartsIQ - Transforming Industrial Parts Procurement",
+  description:
+    "PartsIQ is building the future of heavy equipment aftermarket parts sourcing. AI-powered industrial parts sourcing that reduces procurement time from hours to minutes for operations teams.",
+  keywords: [
+    "heavy equipment aftermarket parts",
+    "industrial parts sourcing",
+    "parts procurement automation",
+  ],
+  alternates: {
+    canonical: "/about",
+  },
+  openGraph: {
+    title: "About PartsIQ - Transforming Industrial Parts Procurement",
+    description:
+      "AI-powered industrial parts sourcing that reduces procurement time from hours to minutes.",
+    url: "/about",
+  },
+}
 
 export default function AboutPage() {
   return (
+    <>
+    <BreadcrumbJsonLd items={[{ name: "Home", url: "/" }, { name: "About", url: "/about" }]} />
     <div className="min-h-screen bg-white">
       {/* Hero Section */}
       <section className="relative bg-slate-950 text-white py-24">
@@ -177,5 +201,6 @@ export default function AboutPage() {
         </div>
       </section>
     </div>
+    </>
   )
 }
