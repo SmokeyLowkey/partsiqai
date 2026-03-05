@@ -1,0 +1,253 @@
+---
+title: "Preventive Maintenance Parts Planning: How to Know What You'll Need Before You Need It"
+description: "Connect parts procurement to maintenance schedules with PM-driven parts lists, kit building, and AI-generated parts requirements. Reduce unplanned downtime by planning parts ahead."
+date: "2026-03-01"
+author: "PartsIQ Team"
+slug: "preventive-maintenance-parts-planning"
+keywords: ["preventive maintenance parts planning", "equipment maintenance parts tracking", "PM parts list", "maintenance parts kit", "planned maintenance parts", "parts planning for maintenance"]
+category: "Fleet Management"
+readTime: "9 min read"
+draft: false
+---
+
+## The Disconnect Between Maintenance and Parts
+
+Two departments. Two systems. **One massive blind spot.**
+
+Your maintenance team knows exactly when every machine is due for service. They have PM schedules, hour meter readings, and service intervals mapped out weeks in advance. They know that 12 excavators need 500-hour service next month and 3 dozers need their undercarriage inspection.
+
+Your parts and procurement team knows what's on the shelf. They have stock levels, reorder points, and supplier contacts.
+
+But these two knowledge bases **rarely connect**. The maintenance schedule sits in the CMMS. The parts inventory sits in a different system. Nobody systematically checks whether the parts needed for next month's PM services are actually in stock until someone tries to do the service and discovers they're missing a filter kit.
+
+<Callout type="stat" title="The Real Cost of Disconnected Planning">
+**30-40% of preventive maintenance delays are caused by parts unavailability.** Not because the parts are hard to get — but because nobody ordered them in advance.
+</Callout>
+
+This is a **planning failure**, not a supply chain failure. And it's entirely fixable.
+
+---
+
+## What PM-Driven Parts Planning Looks Like
+
+The concept is simple: every maintenance task has a parts list, and the system checks inventory against upcoming tasks automatically.
+
+### The Planning Loop
+
+<StepList>
+<Step number={1} title="Maintenance Schedule">
+Defines when each machine needs service and what type of service.
+</Step>
+<Step number={2} title="Parts List">
+For each service type, defines what's needed (filters, fluids, seals, wear items).
+</Step>
+<Step number={3} title="Inventory Check">
+Compares required parts against current stock.
+</Step>
+<Step number={4} title="Shortage Report">
+Flags any parts that need to be ordered.
+</Step>
+<Step number={5} title="Procurement">
+Orders shortages with enough lead time for standard delivery.
+</Step>
+<Step number={6} title="Service Execution">
+Happens on schedule with all parts pre-staged.
+</Step>
+</StepList>
+
+When this loop runs continuously — checking inventory against the **rolling 30/60/90-day maintenance calendar** — surprises disappear. Every PM service has parts waiting before the technician starts the work.
+
+### Why This Works
+
+<Callout type="tip" title="The Key Insight">
+PM parts demand is **100% predictable**. You know which machines need service when. You know what parts each service requires. The only variable is whether you bothered to check stock and order ahead.
+</Callout>
+
+Contrast this with breakdown repairs, where demand is genuinely unpredictable. PM-driven parts planning handles the predictable demand perfectly, **freeing your team to focus on the unpredictable**.
+
+---
+
+## Building Parts Kits for Common PMs
+
+### The Kit Concept
+
+A parts kit is a **pre-assembled package of everything needed** for a specific service on a specific machine. Instead of picking individual parts from the shelf for each service, the technician grabs one kit and has everything they need.
+
+### Example: CAT 320GC 500-Hour Service Kit
+
+| Item | Part Number | Quantity |
+|------|------------|----------|
+| Engine oil filter | 1R-0751 | 1 |
+| Fuel filter (primary) | 1R-0750 | 1 |
+| Fuel filter (secondary) | 326-1644 | 1 |
+| Hydraulic return filter | 1R-0741 | 1 |
+| Air filter (outer) | 6I-2503 | 1 |
+| Engine oil (15W-40) | — | 36 liters |
+| Drain plug gaskets | — | 3 |
+
+### Benefits of Kit-Based Inventory
+
+**Faster service:** The technician doesn't spend 20 minutes gathering parts from different shelf locations. Everything is in one box, pre-verified.
+
+**Fewer forgotten items:** When parts are kitted together, nothing gets overlooked. No more "we did the oil change but forgot to order the air filter."
+
+**Bulk pricing:** Ordering kit components in consistent quantities enables **volume pricing** from suppliers.
+
+**Simplified inventory:** Track and reorder the kit as a single SKU instead of managing 7 individual reorder points. When you know you need 12 kits for next month's PM cycle, ordering is one line item.
+
+**Reduced errors:** Pre-defined kits eliminate the risk of pulling the wrong filter for the wrong machine model.
+
+### How to Define Kits
+
+<StepList>
+<Step number={1} title="List PM Intervals">
+Document every PM interval for each major machine model (250hr, 500hr, 1000hr, 2000hr).
+</Step>
+<Step number={2} title="Map Required Parts">
+For each interval, list every required part with part number and quantity.
+</Step>
+<Step number={3} title="Group Into Kits">
+Organize by machine model and interval.
+</Step>
+<Step number={4} title="Track as Inventory Items">
+Set up each kit as a tracked item in your [inventory system](/solutions/parts-inventory-tracking).
+</Step>
+<Step number={5} title="Set Reorder Points">
+Establish a reorder point based on your PM schedule volume.
+</Step>
+</StepList>
+
+---
+
+## Creating a PM-to-Parts Matrix
+
+The PM-to-parts matrix is your **master reference**: which parts, for which machines, at which service intervals. Building it once saves thousands of hours of ad-hoc parts identification over the life of your fleet.
+
+### Matrix Format
+
+| Machine Model | PM Interval | Parts Required | Qty per Service | Lead Time |
+|--------------|-------------|---------------|----------------|-----------|
+| CAT 320GC | 250 hr | Engine oil + filter | 1 kit | 3 days |
+| CAT 320GC | 500 hr | 250hr kit + fuel filters + hydraulic filter | 1 kit | 5 days |
+| CAT 320GC | 1000 hr | 500hr kit + air filters + coolant | 1 kit | 5 days |
+| CAT 320GC | 2000 hr | 1000hr kit + hydraulic oil + swing bearing check | 1 kit | 10 days |
+| Deere 350G | 250 hr | Engine oil + filter | 1 kit | 3 days |
+| Deere 350G | 500 hr | 250hr kit + fuel water separator + hydraulic filter | 1 kit | 7 days |
+
+### Building the Matrix
+
+Start with your **OEM maintenance manuals**. Each model has a specified maintenance schedule with required items at each interval. Transfer this into your matrix, adding:
+
+- Your specific **part numbers** (OEM or aftermarket equivalents)
+- **Actual lead times** from your suppliers (not OEM estimated times)
+- **Quantities** based on your fleet size per model
+
+<Callout type="info">
+For a 50-machine fleet across 4 models, the matrix might have 40-60 rows. It's a **one-time investment** that pays dividends on every PM cycle.
+</Callout>
+
+---
+
+## How AI Auto-Generates Parts Requirements
+
+Manual PM-to-parts planning works but requires discipline. **AI automates the entire process.**
+
+### Reading the Maintenance Calendar
+
+The AI scans your maintenance schedule for the **next 30, 60, and 90 days**. For each scheduled service, it identifies the machine model, serial number, service type, and interval.
+
+### Cross-Referencing the Parts Catalog
+
+For each service event, the AI looks up the required parts in your [parts catalog](/solutions/heavy-equipment-parts-catalog). It knows which parts fit which serial number ranges, **handles supersessions automatically**, and identifies both OEM and aftermarket options.
+
+### Checking Current Inventory
+
+The AI compares required parts against current stock levels across all locations. If you need 12 engine oil filters for next month's PM services and you have 8 in stock, the system **flags a shortage of 4**.
+
+### Generating Purchase Recommendations
+
+Shortages become procurement recommendations:
+
+<Callout type="tip" title="Example AI Recommendation">
+"Order 4 additional engine oil filter kits from preferred supplier. Required by March 15 for scheduled services March 18-22. Estimated cost: $240."
+</Callout>
+
+Recommendations can be **grouped by supplier** for efficiency, **prioritized by urgency** (services next week vs next month), and routed to the appropriate approver.
+
+### Adjusting for Equipment Hours
+
+Calendar-based PM scheduling assumes fixed intervals. But actual service timing depends on **machine hours**, which vary with utilization. The AI factors in hour meter readings (or estimated accumulation rates) to predict more accurately when each machine will actually hit its next service interval.
+
+A machine on a busy project logging **200 hours/month** needs its 500-hour service sooner than one on light duty at **80 hours/month**. The AI adjusts parts timing accordingly.
+
+---
+
+## Measuring the Impact
+
+### Key Performance Indicators
+
+**PM parts availability rate:** Percentage of scheduled PM services where all required parts were in stock at service time. Target: **97%+**.
+
+**PM completion rate:** Percentage of scheduled PMs completed on or before due date. Parts availability is the **primary controllable factor**.
+
+**PM delay hours:** Total hours of PM delay attributed to parts unavailability per month. This should trend toward **zero**.
+
+**Emergency order rate for PM parts:** PM parts should never require emergency orders — they're 100% predictable. Any emergency orders for PM items indicate a **planning gap**.
+
+### Before and After
+
+| Metric | Before PM Parts Planning | After |
+|--------|------------------------|-------|
+| PM parts availability | 70-80% | 97%+ |
+| PM completion on time | 60-75% | 90%+ |
+| PM-related emergency orders | 5-10/month | 0-1/month |
+| PM delay hours/month | 40-80 hrs | Under 5 hrs |
+| Emergency premium costs | $4,000-$8,000/mo | Under $500/mo |
+
+<StatGrid>
+<Stat value="97%+" label="PM Parts Availability" detail="Up from 70-80%" />
+<Stat value="90%+" label="On-Time PM Completion" detail="Up from 60-75%" />
+<Stat value="~0" label="Emergency Orders for PM Parts" detail="Down from 5-10/month" />
+<Stat value="$7,500+" label="Monthly Savings on Emergency Premiums" detail="Reduced rush shipping and expedite fees" />
+</StatGrid>
+
+### The Downstream Effect
+
+When PMs happen on schedule with all parts available:
+
+- **Equipment reliability improves** (fewer breakdowns from missed maintenance)
+- **Unplanned downtime decreases** (the whole point of preventive maintenance)
+- **Technician productivity increases** (no waiting for parts, no interrupted work)
+- **Equipment resale value is preserved** (documented maintenance history)
+
+<Callout type="info" title="The Virtuous Cycle">
+Better PM completion leads to fewer breakdowns, which leads to less emergency parts demand, which further improves parts availability for PMs.
+</Callout>
+
+---
+
+## Getting Started
+
+<StepList>
+<Step number={1} title="Build Your PM-to-Parts Matrix">
+Start with your top 5 machine models by fleet size. Document the PM intervals and required parts for each.
+</Step>
+<Step number={2} title="Connect Your Maintenance Calendar to Parts Inventory">
+Whether through integrated software or a weekly manual check, start comparing upcoming PM requirements against current stock.
+</Step>
+<Step number={3} title="Establish a 30-Day Look-Ahead">
+Every Monday, review the PM schedule for the next 30 days. Check stock for all required parts. Order anything that's short.
+</Step>
+<Step number={4} title="Build Kits for Your Highest-Volume PMs">
+Start with the service interval and machine model you perform most frequently. Build a kit, stock it, and track it as a single item.
+</Step>
+<Step number={5} title="Automate with AI">
+As your PM-to-parts data matures, move to [AI-driven planning](/features) that continuously monitors the schedule, checks inventory, and generates procurement recommendations automatically.
+</Step>
+</StepList>
+
+<KeyTakeaway title="The Goal: Zero Surprises">
+Every PM service has parts pre-staged, every technician starts work immediately, and every machine returns to service on schedule. PM parts demand is 100% predictable — the only question is whether your planning system captures that predictability and acts on it.
+</KeyTakeaway>
+
+[Plan maintenance parts with PartsIQ →](/features)

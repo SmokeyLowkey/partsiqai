@@ -1,0 +1,200 @@
+---
+title: "How to Automate Parts Reorder: Never Run Out of Critical Stock Again"
+description: "A tactical guide to automating parts reordering with reorder points, safety stock buffers, and automated PO triggers. Stop running out of critical parts."
+date: "2026-02-28"
+author: "PartsIQ Team"
+slug: "automate-parts-reorder-never-run-out"
+keywords: ["parts reorder automation", "automated parts inventory", "automatic reorder point", "parts replenishment automation", "automated stock replenishment", "reorder point calculation"]
+category: "Guides"
+readTime: "9 min read"
+draft: false
+---
+
+## Why Manual Reordering Fails
+
+Manual reordering depends on a human being noticing that stock is getting low — and then **doing something about it** before it runs out. This system has a fundamental reliability problem: humans forget, get busy, go on vacation, and prioritize other tasks.
+
+The failure modes are predictable:
+
+- **"I'll order it Monday"** becomes "we're out and the machine is down on Wednesday"
+- **No consistent trigger** — different people have different mental thresholds for "we should order more"
+- **Duplicate orders** — two people notice the same shortage and both order
+- **Nobody monitors slow movers** — parts used quarterly slip below reorder levels without anyone noticing until they're needed
+
+<Callout type="stat" title="The Root Cause of Stockouts">
+**60% of stockouts are caused by late reorder decisions**, not by unpredictable demand or supplier failures. The demand was foreseeable. Someone just didn't order in time.
+</Callout>
+
+Automation eliminates this entire category of failure.
+
+---
+
+## The Reorder Point Formula (Made Simple)
+
+Before automating, you need to know the **right trigger point** for each part. The formula is straightforward:
+
+<Callout type="info" title="Reorder Point Formula">
+**Reorder Point = (Average Daily Usage x Lead Time in Days) + Safety Stock**
+</Callout>
+
+### Worked Example
+
+- **Part:** Hydraulic return filter
+- **Monthly usage:** 8 filters (across all machines)
+- **Average daily usage:** 8 / 30 = 0.27 per day
+- **Lead time:** 5 business days
+- **Safety stock:** 3 filters (calculated below)
+
+**Reorder point = (0.27 x 5) + 3 = 4.35, round up to 5**
+
+When your stock drops to 5 filters, the system triggers a reorder. By the time the new shipment arrives in 5 days, you'll have used approximately 1-2 more filters, leaving you with **3-4 in reserve** — enough to cover demand variability.
+
+### How to Calculate Average Daily Usage
+
+Pull **12 months of consumption data** for the part. Total usage divided by 365 gives you the daily average. If usage is seasonal, calculate separate rates for high and low seasons.
+
+### Why Lead Time Matters More Than You Think
+
+Your supplier says "5 business days." But in the last year, delivery has ranged from **3 to 14 days**. If your reorder point assumes 5-day delivery and you get a 14-day delay, you'll run out.
+
+<Callout type="warning" title="Use Realistic Lead Times">
+For critical parts, use the **90th percentile lead time**, not the average. If 90% of deliveries arrive within 10 days, use 10 days in your formula.
+</Callout>
+
+---
+
+## Setting Safety Stock for Critical Parts
+
+Safety stock is your buffer against the unexpected: **demand spikes and delivery delays**.
+
+### Simple Formula
+
+<Callout type="info" title="Safety Stock Formula">
+**Safety Stock = (Maximum Daily Usage - Average Daily Usage) x Maximum Lead Time**
+</Callout>
+
+This gives you enough buffer to handle your worst-case demand during your worst-case lead time.
+
+### Example
+
+- Average daily usage: 0.27 filters
+- Maximum daily usage (busiest month): 0.5 filters
+- Maximum lead time: 10 days
+
+**Safety stock = (0.5 - 0.27) x 10 = 2.3, round up to 3**
+
+### Tiered Safety Stock by Part Criticality
+
+Not every part needs the same buffer:
+
+- **Critical (machine-stopping) parts:** Use 99% service level. Higher safety stock. The cost of stockout **far exceeds** the cost of extra inventory.
+- **Important (reduces capability) parts:** Use 95% service level. Moderate safety stock.
+- **Convenience parts:** Use 90% service level. Minimal safety stock. A short delay is acceptable.
+
+---
+
+## Three Levels of Reorder Automation
+
+Automation isn't all-or-nothing. Most operations progress through three levels.
+
+### Level 1: Alert-Based (System Notifies, Human Orders)
+
+The system monitors stock levels continuously. When a part hits its reorder point, an alert goes to the designated person — by email, dashboard notification, or mobile push.
+
+The human reviews the alert, confirms the need, selects a supplier, and places the order manually.
+
+**Best for:** Getting started. Low risk, immediate value. **Eliminates the "nobody noticed we were low" problem.**
+
+### Level 2: Semi-Automated (System Creates Draft PO, Human Approves)
+
+When stock hits the reorder point, the system generates a **draft purchase order**: part, quantity, suggested supplier (based on price, lead time, and past performance), and estimated cost.
+
+The human reviews the draft PO and **approves with one click** — or modifies it before approving.
+
+**Best for:** Operations that want speed but need oversight. **Reduces order time from hours to minutes.**
+
+### Level 3: Fully Automated (System Orders Within Rules)
+
+For parts that meet defined criteria — under a dollar threshold, from a pre-approved supplier, for a standard quantity — the system **places the order automatically** when the reorder point is hit.
+
+The human gets a notification after the fact and can cancel or modify within a window. Exception cases that don't fit the rules escalate for manual review.
+
+**Best for:** Mature operations with reliable supplier relationships and accurate reorder points. **Maximum time savings.**
+
+### Which Level for Which Parts?
+
+| Part Type | Recommended Level |
+|-----------|------------------|
+| Commodity parts (filters, fluids, hardware) | Level 3 (fully automated) |
+| Standard parts under $500 | Level 2 (semi-automated) |
+| High-value parts over $500 | Level 2 (semi-automated) |
+| Specialty or custom parts | Level 1 (alert-based) |
+| New or unfamiliar parts | Level 1 until data builds |
+
+---
+
+## How to Set Up Automated Reordering
+
+<StepList>
+<Step number={1} title="Calculate Reorder Points for Your Top 100 Parts">
+Start with your highest-usage, highest-value parts. Use the formulas above with **actual consumption data**. Don't guess — bad reorder points create either stockouts or overstocking.
+</Step>
+
+<Step number={2} title="Set Min/Max Levels in Your Inventory System">
+Enter the calculated reorder point as the minimum and set a maximum based on economic order quantity or practical shelf capacity. The system orders the **difference between current stock and maximum**.
+</Step>
+
+<Step number={3} title="Configure Alert Rules">
+Define who gets notified for which parts: the maintenance supervisor for machine-critical items, the procurement manager for high-value purchases, the parts coordinator for routine items. Set delivery method (email, mobile push, dashboard).
+</Step>
+
+<Step number={4} title="Link Preferred Suppliers to Each Part">
+Each part should have a **primary and at least one backup supplier** associated with it. Include pricing agreements, lead time expectations, and minimum order quantities.
+</Step>
+
+<Step number={5} title="Enable Auto-PO for Routine Items">
+Start with Level 2 (semi-automated) for your top 50 parts. Monitor for 30 days. If the system's recommendations are consistently accurate, **upgrade qualifying parts to Level 3**.
+</Step>
+
+<Step number={6} title="Review Exceptions Weekly, Adjust Monthly">
+**Weekly:** review any alerts that weren't acted on and any auto-orders that were modified or cancelled. **Monthly:** review reorder point accuracy — did any parts stock out? Did any over-order? Adjust formulas accordingly.
+</Step>
+</StepList>
+
+---
+
+## Common Reorder Automation Mistakes
+
+<Callout type="warning" title="Mistake 1: Setting Reorder Points Too Low">
+The most common error. Operations set reorder points based on **average lead time** without accounting for variability. One delayed shipment causes a stockout. Use 90th percentile lead times for critical parts.
+</Callout>
+
+<Callout type="warning" title="Mistake 2: Not Updating for Seasonal Changes">
+Construction season doubles your filter usage but your reorder points are based on annual averages. Result: **stockouts every spring**. Update reorder points seasonally, or use AI that adjusts automatically.
+</Callout>
+
+<Callout type="warning" title="Mistake 3: Auto-Ordering from Only One Supplier">
+If your automated system always orders from the same supplier, you lose competitive pricing and create **single-source risk**. Configure the system to periodically RFQ to multiple suppliers, even for auto-reorder items.
+</Callout>
+
+<Callout type="warning" title="Mistake 4: Not Reviewing Dead Stock">
+Automation prevents stockouts, but it doesn't prevent **accumulation of parts you no longer need**. Review slow-moving and zero-usage stock quarterly and remove items from auto-reorder when they're no longer relevant.
+</Callout>
+
+<Callout type="warning" title="Mistake 5: Ignoring Minimum Order Quantities">
+Your reorder calculation says you need 3 units. The supplier's minimum order is 25. Automated systems should **factor in MOQ** and adjust order timing and quantity accordingly — perhaps ordering less frequently in larger batches.
+</Callout>
+
+---
+
+## The Result: Peace of Mind
+
+When reorder automation works, a remarkable thing happens: **you stop thinking about parts availability**. Filters are always on the shelf. Seal kits are always in stock. The parts room quietly maintains itself.
+
+The **technicians** notice first — repairs happen without the "we'll have to order that" delay. The **procurement team** notices next — their day shifts from reactive ordering to strategic sourcing. The **finance team** notices last — when parts spend drops and emergency premiums disappear.
+
+<KeyTakeaway title="Start Small, Scale Fast">
+Start with your top 100 parts, build confidence with alert-based automation, then expand to semi-automated and fully automated reordering. The transition from manual reordering to automated replenishment is one of the **highest-ROI changes** an operation can make.
+</KeyTakeaway>
+
+[Automate reordering with PartsIQ →](/features)

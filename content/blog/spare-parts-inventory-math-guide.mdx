@@ -1,0 +1,502 @@
+---
+title: "The Complete Guide to Spare Parts Inventory Math: Forecasting, Min/Max, Safety Stock & Turnover"
+description: "The definitive reference guide for spare parts inventory math. Includes demand forecasting methods, min/max calculation, safety stock formulas, and inventory turnover analysis with worked examples."
+date: "2026-04-22"
+author: "PartsIQ Team"
+slug: "spare-parts-inventory-math-guide"
+keywords: ["demand forecasting for spare parts", "min max inventory for spare parts", "safety stock calculation for spare parts", "inventory turnover rate for spare parts", "spare parts inventory formula", "parts inventory optimization"]
+category: "Inventory Management"
+readTime: "18 min read"
+draft: false
+---
+
+## Why Spare Parts Inventory Math Matters
+
+**Every dollar tied up in excess spare parts is a dollar not working for your business — and every stockout can cost thousands in unplanned downtime.** The difference between "too much" and "not enough" comes down to math. Not gut feelings. Not rules of thumb your predecessor set up in 2014. Actual formulas applied to your actual data.
+
+This guide covers the four pillars of spare parts inventory math: demand forecasting, min/max levels, safety stock, and inventory turnover. Each section includes the formula, a plain-English explanation, and a worked example you can apply immediately.
+
+<StatGrid>
+  <Stat value="25-40%" label="Carrying Cost Reduction" detail="When formulas replace gut-feel ordering" />
+  <Stat value="$150K+" label="Average Annual Waste" detail="From overstocked spare parts per facility" />
+  <Stat value="80%" label="Of Stockouts" detail="Are preventable with proper inventory math" />
+</StatGrid>
+
+Whether you manage 500 SKUs or 50,000, the math is the same. The challenge is doing it consistently across every part, every month. That is where most organizations fail — not because the formulas are hard, but because applying them manually at scale is unsustainable.
+
+If you are looking for a broader overview of spare parts management strategy, start with our [spare parts inventory management guide](/blog/spare-parts-inventory-management-guide). This post focuses specifically on the math.
+
+---
+
+## Section 1: Demand Forecasting for Spare Parts
+
+**Demand forecasting for spare parts is fundamentally different from forecasting finished goods or retail inventory.** Retail demand is relatively smooth and predictable. Spare parts demand is intermittent, lumpy, and often event-driven. A part might see zero demand for three months, then five units in a single week because a machine failed.
+
+This distinction matters because it determines which forecasting method you should use. Apply a standard retail forecasting model to spare parts and you will consistently get wrong answers.
+
+### Why Spare Parts Demand Is Different
+
+Spare parts demand has three characteristics that break standard forecasting models:
+
+- **Intermittent demand** — Many periods with zero usage, punctuated by occasional demand spikes
+- **Lumpy patterns** — When demand occurs, the quantity varies significantly (1 unit one month, 8 the next)
+- **Event-driven triggers** — Demand is caused by equipment failures, scheduled maintenance, or seasonal usage patterns rather than consumer behavior
+
+<Callout type="warning" title="The Averaging Trap">
+If a part has demand of 0, 0, 0, 12, 0, 0 over six months, the "average" is 2 per month. But ordering 2 per month means you will have 10 units sitting idle most of the time and still risk a stockout when the spike hits. Standard averages lie when demand is intermittent.
+</Callout>
+
+### Method 1: Simple Moving Average (SMA)
+
+The simple moving average is the most basic forecasting method. It works by averaging demand over a fixed number of recent periods.
+
+<Callout type="info" title="Simple Moving Average Formula">
+**SMA = (D1 + D2 + D3 + ... + Dn) / n**
+
+Where:
+- D1, D2, D3... = demand in each period
+- n = number of periods included
+</Callout>
+
+**When to use it:** Parts with relatively consistent, regular demand. If a part is consumed every month in roughly similar quantities, SMA works fine.
+
+<Callout type="tip" title="Worked Example: Simple Moving Average">
+**Part:** Engine oil filters for a fleet of 20 excavators
+
+**Monthly demand (last 6 months):** 18, 22, 20, 19, 21, 20
+
+**3-month SMA** = (19 + 21 + 20) / 3 = **20 units**
+
+**6-month SMA** = (18 + 22 + 20 + 19 + 21 + 20) / 6 = **20 units**
+
+**Forecast for next month:** 20 units. Both windows agree because demand is stable. This is an ideal SMA candidate.
+</Callout>
+
+**Limitations:** SMA gives equal weight to all periods. A demand spike three months ago has the same influence as last month's data. For parts where recent trends matter, use a weighted approach instead.
+
+### Method 2: Weighted Moving Average (WMA)
+
+The weighted moving average assigns more importance to recent periods. This makes it more responsive to changing demand patterns.
+
+<Callout type="info" title="Weighted Moving Average Formula">
+**WMA = (w1 x D1) + (w2 x D2) + (w3 x D3)**
+
+Where:
+- D1 = most recent period demand
+- D2 = second most recent period demand
+- D3 = third most recent period demand
+- w1 + w2 + w3 = 1.0 (weights must sum to 1)
+
+**Common weight sets:** 0.5 / 0.3 / 0.2 or 0.6 / 0.3 / 0.1
+</Callout>
+
+**When to use it:** Parts where demand is trending up or down, or where your fleet size has recently changed.
+
+<Callout type="tip" title="Worked Example: Weighted Moving Average">
+**Part:** Hydraulic pump seals
+
+**Last 3 months demand:** Month 1 = 5, Month 2 = 8, Month 3 (most recent) = 12
+
+**Using weights 0.5 / 0.3 / 0.2:**
+
+WMA = (0.5 x 12) + (0.3 x 8) + (0.2 x 5) = 6.0 + 2.4 + 1.0 = **9.4 units**
+
+**Compare to SMA:** (5 + 8 + 12) / 3 = 8.3 units
+
+The WMA gives a higher forecast (9.4 vs 8.3) because it recognizes the upward trend. If you just added three machines to your fleet, the WMA better reflects current reality.
+</Callout>
+
+### Method 3: Croston's Method for Intermittent Demand
+
+Croston's method is specifically designed for spare parts with intermittent demand — the kind where most months show zero usage. Instead of trying to average across all periods (including the zeros), it separately forecasts two things: the **size** of demand when it occurs, and the **interval** between demand events.
+
+<Callout type="info" title="Croston's Method (Simplified)">
+**Step 1:** Track only the periods where demand actually occurred and record the demand quantity each time.
+
+**Step 2:** Track the number of periods between each demand event.
+
+**Step 3:** Forecast = Average demand size / Average interval between demands
+
+This gives you a **per-period demand rate** that accounts for intermittency without being dragged down by all the zero-demand periods.
+</Callout>
+
+<Callout type="tip" title="Worked Example: Croston's Method">
+**Part:** Turbocharger assembly (expensive, rarely replaced)
+
+**12-month demand history:** 0, 0, 2, 0, 0, 0, 3, 0, 0, 1, 0, 0
+
+**Step 1 — Demand sizes when demand occurred:** 2, 3, 1
+- Average demand size = (2 + 3 + 1) / 3 = **2.0 units**
+
+**Step 2 — Intervals between demand events:** 3 months (to first event), 4 months (event 1 to 2), 3 months (event 2 to 3)
+- Average interval = (3 + 4 + 3) / 3 = **3.33 months**
+
+**Step 3 — Forecast per month:** 2.0 / 3.33 = **0.6 units/month**
+
+**Interpretation:** You should expect demand roughly every 3.3 months, averaging 2 units per event. Over a 6-month planning horizon, forecast approximately 3.6 units (round to 4).
+</Callout>
+
+**Why this matters:** A simple average would say (0+0+2+0+0+0+3+0+0+1+0+0) / 12 = 0.5 units/month. Croston's gives 0.6. The difference seems small, but across hundreds of intermittent parts, it adds up to significantly better stocking decisions.
+
+### Choosing the Right Forecasting Method
+
+| Demand Pattern | Best Method | Example Parts |
+|---|---|---|
+| Regular, consistent | Simple Moving Average | Filters, lubricants, belts |
+| Trending up or down | Weighted Moving Average | Parts for expanding/shrinking fleets |
+| Intermittent (many zeros) | Croston's Method | Turbochargers, transmissions, specialized sensors |
+| Completely unpredictable | Critical spares analysis | One-off emergency parts |
+
+<Callout type="tip" title="Rule of Thumb">
+If demand occurs in fewer than 50% of your tracking periods, use Croston's method. If demand occurs in most periods, start with SMA and switch to WMA if you see a trend.
+</Callout>
+
+---
+
+## Section 2: Min/Max Inventory Levels for Spare Parts
+
+**The min/max model is the most widely used inventory control method for spare parts — and also the most frequently misconfigured.** The concept is simple: set a minimum level that triggers a reorder, and a maximum level that caps how much you bring in. The math, when done correctly, prevents both stockouts and overstocking.
+
+### How the Min/Max Model Works
+
+<StepList>
+  <Step number={1} title="Inventory drops to or below the Minimum level">
+    This triggers a replenishment order. The minimum is your reorder point — the threshold that says "order now before we run out."
+  </Step>
+  <Step number={2} title="A purchase order is created">
+    The order quantity is calculated to bring inventory back up to the Maximum level. Order Quantity = Maximum - Current Stock.
+  </Step>
+  <Step number={3} title="Stock arrives and replenishes to Maximum">
+    Inventory returns to the maximum level, and the cycle repeats.
+  </Step>
+</StepList>
+
+The entire system depends on getting the min and max values right. Set the minimum too low and you will run out before the order arrives. Set the maximum too high and you will carry excess inventory that ties up capital and warehouse space.
+
+### How to Calculate Minimum Level
+
+The minimum level must cover demand during the lead time plus a safety buffer. It is essentially your [reorder point](/blog/automate-parts-reorder-never-run-out).
+
+<Callout type="info" title="Minimum Level Formula">
+**Minimum = (Average Daily Demand x Lead Time in Days) + Safety Stock**
+
+Where:
+- Average Daily Demand = total units consumed / number of days in the period
+- Lead Time = days from placing the order to receiving the parts
+- Safety Stock = buffer for demand variability and lead time uncertainty (see Section 3)
+</Callout>
+
+<Callout type="tip" title="Worked Example: Minimum Level">
+**Part:** Track roller for D6 dozer
+
+- **Average monthly demand:** 4 units
+- **Average daily demand:** 4 / 30 = 0.133 units/day
+- **Lead time:** 14 days
+- **Safety stock:** 2 units (calculated using the method in Section 3)
+
+**Minimum = (0.133 x 14) + 2 = 1.87 + 2 = 3.87, round up to 4 units**
+
+When stock hits 4 units, trigger a reorder. This gives you enough to cover the 14-day lead time plus a buffer of 2 units.
+</Callout>
+
+### How to Calculate Maximum Level
+
+The maximum level determines how much stock you are willing to hold. It should balance availability against [carrying costs](/blog/inventory-carrying-cost-formula).
+
+<Callout type="info" title="Maximum Level Formula">
+**Maximum = Minimum + Economic Order Quantity (EOQ)**
+
+**Simplified version (when EOQ is not calculated):**
+
+**Maximum = (Average Daily Demand x Review Period in Days) + Minimum**
+
+Where:
+- Review Period = how often you review and reorder (e.g., 30 days for monthly reviews)
+</Callout>
+
+<Callout type="tip" title="Worked Example: Maximum Level">
+**Part:** Track roller for D6 dozer (continuing from above)
+
+- **Average daily demand:** 0.133 units/day
+- **Review period:** 30 days (monthly ordering cycle)
+- **Minimum level:** 4 units (from previous calculation)
+
+**Maximum = (0.133 x 30) + 4 = 4.0 + 4 = 8 units**
+
+**Order quantity when triggered:** Maximum - Current Stock = 8 - 4 = **4 units**
+
+This means you will never hold more than 8 track rollers and will reorder 4 at a time when stock drops to 4.
+</Callout>
+
+### Common Min/Max Mistakes
+
+<Callout type="warning" title="Mistakes That Cost You Money">
+**1. Setting static values and never updating them.** Demand changes. Lead times change. A min/max set two years ago is almost certainly wrong today. Review quarterly at minimum.
+
+**2. Ignoring lead time variability.** Your supplier says "2 weeks" but actual delivery ranges from 10 to 21 days. Your minimum level must account for the worst-case lead time, not the quoted one.
+
+**3. Using the same logic for all parts.** A $5 filter and a $5,000 hydraulic pump should not use the same review period or safety stock approach. High-value parts need tighter controls.
+
+**4. Setting minimum = 0 for slow movers.** If the part is critical and has a long lead time, a minimum of 0 means you will not order until you are already out of stock. This is the most common cause of emergency orders.
+</Callout>
+
+| Scenario | Minimum Too Low | Minimum Too High |
+|---|---|---|
+| **Result** | Stockouts, emergency orders | Excess inventory, higher carrying costs |
+| **Cost impact** | Downtime ($2,000-$10,000/hr), expediting fees | 20-30% of inventory value annually |
+| **Who notices** | Mechanics and operators (immediately) | Finance team (at year-end) |
+
+---
+
+## Section 3: Safety Stock Calculation for Spare Parts
+
+**Safety stock is the buffer inventory you hold above your expected demand to protect against uncertainty.** It accounts for two types of variability: demand can be higher than forecasted, and deliveries can arrive later than expected. Without safety stock, you will experience stockouts roughly 50% of the time — any time actual conditions deviate from the average.
+
+### The Standard Safety Stock Formula
+
+<Callout type="info" title="Safety Stock Formula">
+**Safety Stock = Z x sigma(dLT)**
+
+Where:
+- **Z** = Z-score corresponding to your desired service level
+- **sigma(dLT)** = standard deviation of demand during lead time
+
+**Expanded form:**
+
+**Safety Stock = Z x sqrt(LT x sigma(d)^2 + d^2 x sigma(LT)^2)**
+
+Where:
+- LT = average lead time (in days)
+- sigma(d) = standard deviation of daily demand
+- d = average daily demand
+- sigma(LT) = standard deviation of lead time (in days)
+</Callout>
+
+**In plain English:** the formula combines two sources of uncertainty — how much demand varies from the average and how much your lead time varies from the average — into a single buffer quantity. The Z-score controls how aggressive or conservative you want to be.
+
+### Z-Score Service Level Table
+
+| Service Level | Z-Score | Meaning |
+|---|---|---|
+| 90% | 1.28 | Stockout risk of 10% per order cycle |
+| 95% | 1.65 | Standard target for most parts |
+| 97.5% | 1.96 | Higher protection for important parts |
+| 99% | 2.33 | Near-guarantee, used for critical spares |
+| 99.9% | 3.09 | Maximum protection, very high carrying cost |
+
+<Callout type="tip" title="Worked Example: Full Safety Stock Calculation">
+**Part:** Hydraulic hose assembly
+
+- **Average daily demand (d):** 0.5 units/day (15 per month)
+- **Standard deviation of daily demand (sigma d):** 0.3 units/day
+- **Average lead time (LT):** 10 days
+- **Standard deviation of lead time (sigma LT):** 3 days
+- **Target service level:** 95% (Z = 1.65)
+
+**Step 1 — Calculate demand variance component:**
+LT x sigma(d)^2 = 10 x (0.3)^2 = 10 x 0.09 = 0.9
+
+**Step 2 — Calculate lead time variance component:**
+d^2 x sigma(LT)^2 = (0.5)^2 x (3)^2 = 0.25 x 9 = 2.25
+
+**Step 3 — Combine and take square root:**
+sigma(dLT) = sqrt(0.9 + 2.25) = sqrt(3.15) = 1.77
+
+**Step 4 — Apply Z-score:**
+Safety Stock = 1.65 x 1.77 = 2.93, **round up to 3 units**
+
+**Interpretation:** Holding 3 extra hose assemblies beyond your expected lead-time demand gives you a 95% probability of not stocking out during any given replenishment cycle.
+</Callout>
+
+### The Simplified Formula (When You Lack Data)
+
+Many organizations do not have reliable standard deviation data for every part. In that case, use this practical approximation.
+
+<Callout type="info" title="Simplified Safety Stock Formula">
+**Safety Stock = (Maximum Daily Usage - Average Daily Usage) x Maximum Lead Time**
+
+This formula does not require standard deviation calculations. It uses worst-case scenarios for both demand and lead time.
+</Callout>
+
+<Callout type="tip" title="Worked Example: Simplified Formula">
+**Part:** Bucket teeth for wheel loaders
+
+- **Average daily usage:** 0.4 units/day (12 per month)
+- **Maximum daily usage:** 1.0 unit/day (peak month was 30 units)
+- **Maximum lead time:** 18 days (worst case from supplier)
+
+**Safety Stock = (1.0 - 0.4) x 18 = 0.6 x 18 = 10.8, round up to 11 units**
+
+**Note:** This simplified method tends to produce higher safety stock than the statistical method. It is more conservative, which may be appropriate for critical parts but can lead to overstocking for non-critical items.
+</Callout>
+
+### Safety Stock by Criticality Tier
+
+Not every part deserves the same level of protection. The ABC classification framework assigns different service levels based on criticality and cost impact.
+
+| Tier | Criteria | Service Level | Z-Score | Safety Stock Approach |
+|---|---|---|---|---|
+| **A — Critical** | Machine-down risk, long lead time, no alternatives | 99% | 2.33 | Full statistical formula, generous buffer |
+| **B — Important** | Causes reduced capacity, moderate lead time | 95% | 1.65 | Standard formula, moderate buffer |
+| **C — Routine** | Consumables, short lead time, easy to source | 90% | 1.28 | Simplified formula, minimal buffer |
+
+<Callout type="tip" title="Practical Classification Guide">
+**Tier A parts** include engine components, hydraulic pumps, electronic control modules — anything where a stockout stops production. These might represent 10-20% of your SKUs but 70-80% of your downtime risk.
+
+**Tier B parts** include wear parts, secondary hydraulic components, and electrical accessories. A stockout causes inconvenience and reduced output but not a full shutdown.
+
+**Tier C parts** include filters, lubricants, fasteners, and general consumables. These are easy to source, have short lead times, and many suppliers carry them.
+</Callout>
+
+For a deeper look at how to implement tiered inventory management, see our guide on [parts inventory management software](/solutions/parts-inventory-management-software).
+
+---
+
+## Section 4: Inventory Turnover Rate for Spare Parts
+
+**Inventory turnover measures how efficiently you are using your inventory investment.** It tells you how many times per year your inventory is "turning over" — being used up and replaced. A higher turnover generally means less capital locked up in shelves. But for spare parts, the interpretation is more nuanced than in retail.
+
+### The Inventory Turnover Formula
+
+<Callout type="info" title="Inventory Turnover Formula">
+**Inventory Turnover = Cost of Goods Sold (COGS) / Average Inventory Value**
+
+**Alternative formula (units):**
+
+**Inventory Turnover = Total Units Consumed / Average Units on Hand**
+
+Where:
+- COGS = total value of parts consumed or issued during the period
+- Average Inventory Value = (Beginning Inventory Value + Ending Inventory Value) / 2
+</Callout>
+
+<Callout type="tip" title="Worked Example: Inventory Turnover">
+**Scenario:** A maintenance warehouse for a fleet of 30 excavators
+
+- **Annual parts consumed (COGS):** $420,000
+- **Inventory value at start of year:** $180,000
+- **Inventory value at end of year:** $220,000
+- **Average inventory value:** ($180,000 + $220,000) / 2 = $200,000
+
+**Inventory Turnover = $420,000 / $200,000 = 2.1 turns per year**
+
+**Days of Supply = 365 / 2.1 = 174 days**
+
+**Interpretation:** On average, each dollar of inventory sits for 174 days before being used. The warehouse is carrying roughly 6 months of supply.
+</Callout>
+
+### What "Good" Turnover Looks Like for Spare Parts
+
+**This is where spare parts diverge sharply from retail and manufacturing.** A retailer might target 8-12 turns per year. A manufacturer might aim for 6-10. Spare parts operations typically see much lower turnover — and that is not necessarily a problem.
+
+<StatGrid>
+  <Stat value="1-2 turns" label="Typical Spare Parts" detail="Normal for mixed inventory with insurance spares" />
+  <Stat value="2-4 turns" label="Well-Optimized" detail="Active management with proper forecasting" />
+  <Stat value="4-6 turns" label="Best-in-Class" detail="Advanced analytics and demand planning" />
+  <Stat value="<1 turn" label="Needs Attention" detail="Significant dead stock or over-purchasing" />
+</StatGrid>
+
+**Why spare parts turnover is naturally lower:**
+
+- **Insurance spares** — You stock parts specifically hoping you will not use them. A $15,000 hydraulic pump sitting on the shelf for two years is not waste if it prevents a $50,000 downtime event.
+- **Long lead times** — Parts from overseas manufacturers may require 60-90 day lead times, forcing you to hold more inventory.
+- **Intermittent demand** — Many parts are consumed only a few times per year.
+- **Criticality requirements** — Service level commitments demand higher stock levels than pure cost optimization would suggest.
+
+### How to Interpret Turnover Results
+
+| Turnover Rate | Interpretation | Action |
+|---|---|---|
+| **< 0.5 turns/year** | Significant dead stock problem | Audit for obsolete parts, reduce safety stock on non-critical items |
+| **0.5 - 1.0 turns/year** | Below average, common in conservative operations | Review stocking policies, identify slow movers for reduction |
+| **1.0 - 2.0 turns/year** | Average for spare parts warehouses | Maintain current levels, focus on A-item optimization |
+| **2.0 - 4.0 turns/year** | Well-managed inventory | Fine-tune forecasting, watch for potential stockout risk |
+| **> 4.0 turns/year** | Excellent OR too lean | Verify you are not sacrificing availability for turnover metrics |
+
+<Callout type="warning" title="The Turnover Trap">
+Do not optimize turnover at the expense of availability. A turnover rate of 6.0 looks impressive on a spreadsheet, but if it comes with a 15% stockout rate on critical parts, the downtime costs will dwarf any carrying cost savings. **Turnover is a diagnostic metric, not a target to maximize blindly.**
+</Callout>
+
+### Turnover by Category Benchmarks
+
+Different part categories naturally have different turnover profiles. Compare within categories, not across them.
+
+| Part Category | Typical Turnover | Target Turnover | Notes |
+|---|---|---|---|
+| **Filters & lubricants** | 4-8 turns | 6-10 turns | High consumption, short lead times |
+| **Wear parts** (teeth, edges, tracks) | 2-4 turns | 3-5 turns | Predictable replacement cycles |
+| **Hydraulic components** | 1-2 turns | 1.5-3 turns | Moderate demand, moderate cost |
+| **Engine components** | 0.5-1.5 turns | 1-2 turns | Expensive, intermittent demand |
+| **Electrical/electronic** | 0.5-1 turn | 0.5-1.5 turns | Often insurance spares, long lead times |
+| **Structural/frame** | 0.2-0.5 turns | 0.3-0.5 turns | Rarely needed, very expensive |
+
+### Calculating Turnover by Category
+
+<Callout type="tip" title="Worked Example: Category Turnover Analysis">
+**Filters category:**
+- Annual consumption: $48,000
+- Average inventory: $8,000
+- Turnover: $48,000 / $8,000 = **6.0 turns** (healthy)
+
+**Hydraulic components category:**
+- Annual consumption: $72,000
+- Average inventory: $55,000
+- Turnover: $72,000 / $55,000 = **1.3 turns** (acceptable, check for dead stock)
+
+**Engine components category:**
+- Annual consumption: $35,000
+- Average inventory: $85,000
+- Turnover: $35,000 / $85,000 = **0.4 turns** (investigate — likely carrying obsolete inventory)
+
+The engine components category needs a review. At 0.4 turns, you are carrying over 2 years of supply. Unless these are all critical insurance spares with long lead times, you are likely sitting on dead stock.
+</Callout>
+
+---
+
+## Connecting the Four Pillars
+
+**These four calculations are not independent — they form an interconnected system.** Your demand forecast feeds into your min/max calculation. Your min level depends on safety stock. And all three drive your turnover rate. Change one and the others shift.
+
+<StepList>
+  <Step number={1} title="Forecast demand using the right method">
+    Choose SMA, WMA, or Croston's based on the demand pattern for each part. This produces your average demand rate.
+  </Step>
+  <Step number={2} title="Calculate safety stock by criticality">
+    Apply the statistical formula for A-tier parts and the simplified formula for B/C-tier. This produces your buffer quantity.
+  </Step>
+  <Step number={3} title="Set min/max levels using forecasted demand + safety stock">
+    Minimum = (daily demand x lead time) + safety stock. Maximum = minimum + order quantity for one review cycle.
+  </Step>
+  <Step number={4} title="Monitor turnover to validate your settings">
+    If turnover drops below category benchmarks, your min/max levels may be too high. If stockouts increase, they may be too low. Adjust quarterly.
+  </Step>
+</StepList>
+
+The challenge is obvious: doing this for every part, every quarter, requires either a dedicated analyst or software that automates the calculations. For a 5,000-SKU warehouse, manually recalculating forecasts, safety stock, and min/max levels takes dozens of hours per cycle. Most teams simply do not do it, which is why their inventory parameters drift out of alignment with reality.
+
+---
+
+## How PartsIQ Automates Inventory Math
+
+**PartsIQ applies every formula in this guide automatically, continuously, across your entire parts catalog.** Instead of running manual calculations quarterly (or never), the system updates demand forecasts, safety stock levels, and min/max parameters as new consumption data flows in.
+
+<StepList>
+  <Step number={1} title="Automatic demand classification">
+    PartsIQ analyzes each part's demand history and selects the appropriate forecasting method — SMA for regular parts, Croston's for intermittent demand. No manual classification required.
+  </Step>
+  <Step number={2} title="Dynamic safety stock by criticality">
+    Parts are automatically classified into A/B/C tiers based on cost, lead time, and downtime impact. Safety stock is calculated using the statistical formula with appropriate Z-scores for each tier.
+  </Step>
+  <Step number={3} title="Continuous min/max optimization">
+    As demand patterns and lead times change, min/max levels adjust automatically. No more stale parameters set years ago by someone who has since left the company.
+  </Step>
+  <Step number={4} title="Turnover monitoring and alerts">
+    Dashboard-level visibility into turnover by category, with alerts when parts fall outside benchmark ranges. Dead stock identification runs automatically.
+  </Step>
+</StepList>
+
+<KeyTakeaway title="The Bottom Line on Spare Parts Inventory Math">
+The formulas in this guide are not complicated. Demand forecasting, min/max levels, safety stock, and turnover analysis are well-established techniques that any inventory manager can learn. The real challenge is applying them consistently across thousands of parts and updating them as conditions change. Organizations that do the math well reduce carrying costs by 25-40% while improving parts availability. Those that rely on gut feel end up with warehouses full of parts they do not need and stockouts on the ones they do. Whether you do it with spreadsheets or software, do the math.
+</KeyTakeaway>
+
+[Let PartsIQ handle the math — automate your inventory optimization →](/features)

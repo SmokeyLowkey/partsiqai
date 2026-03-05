@@ -30,7 +30,7 @@ export function getAllPosts(): BlogPostMeta[] {
         draft: data.draft || false,
       } satisfies BlogPostMeta
     })
-    .filter((post) => !post.draft)
+    .filter((post) => !post.draft && new Date(post.date) <= new Date())
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
   return posts
