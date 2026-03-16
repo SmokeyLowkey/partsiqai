@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma"
 import { getServerSession } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import Link from "next/link"
+import { SetupChecklist, buildSetupSteps } from "@/components/admin/setup-checklist"
 
 export const revalidate = 60 // Revalidate every 60 seconds
 
@@ -115,6 +116,10 @@ async function getOrgAdminStats(organizationId: string) {
     organization,
     orderAnalytics,
     recentCompletedOrders,
+    ingestionJobCount,
+    supplierCount,
+    invitationCount,
+    conversationCount,
   ] = await Promise.all([
     prisma.user.count({ where: { organizationId } }),
     prisma.user.count({ where: { organizationId, createdAt: { gte: lastMonth } } }),
@@ -156,6 +161,11 @@ async function getOrgAdminStats(organizationId: string) {
         orderAnalytics: true,
       },
     }),
+    // Setup checklist counts
+    prisma.ingestionJob.count({ where: { organizationId } }),
+    prisma.supplier.count({ where: { organizationId } }),
+    prisma.invitation.count({ where: { organizationId } }),
+    prisma.chatConversation.count({ where: { organizationId } }),
   ])
 
   // Aggregate analytics
@@ -201,6 +211,13 @@ async function getOrgAdminStats(organizationId: string) {
       completedOrders: completedCount,
     },
     recentCompletedOrders,
+    setupCounts: {
+      vehicles: totalVehicles,
+      ingestionJobs: ingestionJobCount,
+      suppliers: supplierCount,
+      invitations: invitationCount,
+      conversations: conversationCount,
+    },
   }
 }
 
@@ -525,6 +542,12 @@ function OrgAdminDashboard({ stats }: { stats: Awaited<ReturnType<typeof getOrgA
           <p className="text-muted-foreground">Organization Dashboard</p>
         </div>
       </div>
+
+      {/* Setup Checklist — shown until all steps are complete */}
+      <SetupChecklist
+        steps={buildSetupSteps(stats.setupCounts)}
+        organizationName={stats.organizationName}
+      />
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

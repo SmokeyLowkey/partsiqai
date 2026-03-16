@@ -112,6 +112,15 @@ export async function middleware(request: NextRequest) {
     if (subscriptionStatus === "CANCELLED" || subscriptionStatus === "SUSPENDED") {
       return NextResponse.redirect(new URL("/subscription-required", request.url))
     }
+
+    // Check if trial has expired
+    if (
+      subscriptionStatus === "TRIAL" &&
+      session.user.trialEndsAt &&
+      new Date() > new Date(session.user.trialEndsAt)
+    ) {
+      return NextResponse.redirect(new URL("/subscription-required", request.url))
+    }
   }
 
   // Admin route protection

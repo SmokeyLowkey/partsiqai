@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { createRequestLogger } from '@/lib/logger';
 import { checkOrigin } from '@/lib/csrf';
 import { checkRateLimit, rateLimits } from '@/lib/rate-limit';
+import { getTierLimits } from '@/lib/subscription-limits';
 
 const ChatMessageSchema = z.object({
   conversationId: z.string().nullable().optional(),
@@ -41,6 +42,36 @@ export async function POST(req: NextRequest) {
 
     const rateCheck = await checkRateLimit(`chat:${session.user.id}`, rateLimits.chat);
     if (!rateCheck.success) return rateCheck.response;
+
+    // Check daily message limit for trial/tier-limited orgs
+    const org = await prisma.organization.findUnique({
+      where: { id: session.user.organizationId },
+      select: { subscriptionStatus: true, subscriptionTier: true },
+    });
+
+    if (org) {
+      const tierLimits = getTierLimits(org.subscriptionTier, org.subscriptionStatus);
+      if (tierLimits.maxChatMessagesPerDay !== Infinity) {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+
+        const todayMessageCount = await prisma.chatMessage.count({
+          where: {
+            conversation: { organizationId: session.user.organizationId },
+            role: 'USER',
+            createdAt: { gte: todayStart },
+          },
+        });
+
+        if (todayMessageCount >= tierLimits.maxChatMessagesPerDay) {
+          return apiError(
+            `You've reached your daily limit of ${tierLimits.maxChatMessagesPerDay} messages. Upgrade your plan for unlimited messaging.`,
+            403,
+            { code: 'DAILY_LIMIT_REACHED', details: { limit: tierLimits.maxChatMessagesPerDay, used: todayMessageCount } }
+          );
+        }
+      }
+    }
 
     const body = await req.json();
 

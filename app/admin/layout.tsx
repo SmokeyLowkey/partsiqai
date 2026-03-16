@@ -5,6 +5,7 @@ import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/s
 import { AdminSidebar } from "@/components/admin-sidebar"
 import { Separator } from "@/components/ui/separator"
 import { SubscriptionGuard } from "@/components/subscription-guard"
+import { TrialBanner } from "@/components/billing/trial-banner"
 import { usePathname } from "next/navigation"
 
 export default function AdminLayout({
@@ -25,6 +26,7 @@ export default function AdminLayout({
       <SidebarProvider>
         <AdminSidebar />
         <SidebarInset>
+          <TrialBanner />
           <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
             <SidebarTrigger className="-ml-1" />
             <Separator orientation="vertical" className="mr-2 h-4" />

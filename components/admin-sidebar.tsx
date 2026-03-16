@@ -31,6 +31,7 @@ import {
   CreditCard,
   PiggyBank,
   Upload,
+  Mail,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -94,6 +95,12 @@ const managementItems: MenuItem[] = [
     title: "Data Ingestion",
     url: "/admin/data-ingestion",
     icon: Upload,
+  },
+  {
+    title: "Communications",
+    url: "/admin/communications",
+    icon: Mail,
+    masterAdminOnly: true,
   },
 ]
 

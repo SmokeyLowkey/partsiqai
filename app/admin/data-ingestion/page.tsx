@@ -29,6 +29,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import {
   Upload,
@@ -42,6 +49,7 @@ import {
   Loader2,
   AlertTriangle,
   Database,
+  Truck,
 } from "lucide-react";
 
 type IngestionJob = {
@@ -85,11 +93,25 @@ const PHASE_CONFIG: Record<string, { color: string }> = {
   SKIPPED: { color: "text-muted-foreground" },
 };
 
+type OrgVehicle = {
+  id: string;
+  vehicleId: string;
+  make: string;
+  model: string;
+  year: number;
+  type: string;
+};
+
 export default function DataIngestionPage() {
   const { data: session } = useSession();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isMasterAdmin = session?.user?.role === "MASTER_ADMIN";
+
+  // Vehicle state
+  const [vehicles, setVehicles] = useState<OrgVehicle[]>([]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
+  const [vehiclesLoading, setVehiclesLoading] = useState(true);
 
   // Upload state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -134,6 +156,39 @@ export default function DataIngestionPage() {
       setLoading(false);
     }
   }, []);
+
+  // Fetch organization vehicles on mount
+  useEffect(() => {
+    async function loadVehicles() {
+      try {
+        const res = await fetch("/api/vehicles");
+        if (res.ok) {
+          const data = await res.json();
+          setVehicles(data.vehicles ?? data ?? []);
+        }
+      } catch {
+        // silently fail
+      } finally {
+        setVehiclesLoading(false);
+      }
+    }
+    loadVehicles();
+  }, []);
+
+  // Auto-populate defaults when a vehicle is selected
+  const handleVehicleSelect = (vehicleId: string) => {
+    setSelectedVehicleId(vehicleId);
+    const vehicle = vehicles.find((v) => v.id === vehicleId);
+    if (vehicle) {
+      const namespace = `${vehicle.make}-${vehicle.model}`.toLowerCase().replace(/\s+/g, "-");
+      setOptions((prev) => ({
+        ...prev,
+        defaultManufacturer: vehicle.make,
+        defaultMachineModel: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+        defaultNamespace: namespace,
+      }));
+    }
+  };
 
   // Check database configuration status on mount
   useEffect(() => {
@@ -200,6 +255,7 @@ export default function DataIngestionPage() {
         skipPinecone: options.skipPinecone,
         skipNeo4j: options.skipNeo4j,
       };
+      if (selectedVehicleId) cleanOptions.vehicleId = selectedVehicleId;
       if (options.defaultManufacturer) cleanOptions.defaultManufacturer = options.defaultManufacturer;
       if (options.defaultMachineModel) cleanOptions.defaultMachineModel = options.defaultMachineModel;
       if (options.defaultNamespace) cleanOptions.defaultNamespace = options.defaultNamespace;
@@ -371,6 +427,39 @@ export default function DataIngestionPage() {
             </div>
           )}
 
+          {/* Vehicle Selector */}
+          {!isMasterAdmin && (
+            <div className="space-y-2">
+              <Label>Vehicle <span className="text-destructive">*</span></Label>
+              {vehiclesLoading ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading vehicles...
+                </div>
+              ) : vehicles.length === 0 ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground p-3 border rounded-md bg-muted/50">
+                  <Truck className="h-4 w-4" />
+                  No vehicles found. <a href="/admin/vehicles" className="underline">Add a vehicle</a> before uploading parts data.
+                </div>
+              ) : (
+                <Select value={selectedVehicleId} onValueChange={handleVehicleSelect}>
+                  <SelectTrigger className="max-w-md">
+                    <SelectValue placeholder="Select a vehicle..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {vehicles.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {v.year} {v.make} {v.model} ({v.vehicleId})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Parts data will be associated with this vehicle for search.
+              </p>
+            </div>
+          )}
+
           {/* Default Values for CSV */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="space-y-2">
@@ -430,14 +519,16 @@ export default function DataIngestionPage() {
               />
               <Label htmlFor="dryRun" className="text-sm">Dry Run (validate only)</Label>
             </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="skipPostgres"
-                checked={options.skipPostgres}
-                onCheckedChange={(checked) => setOptions({ ...options, skipPostgres: !!checked })}
-              />
-              <Label htmlFor="skipPostgres" className="text-sm">Skip PostgreSQL</Label>
-            </div>
+            {isMasterAdmin && (
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="skipPostgres"
+                  checked={options.skipPostgres}
+                  onCheckedChange={(checked) => setOptions({ ...options, skipPostgres: !!checked })}
+                />
+                <Label htmlFor="skipPostgres" className="text-sm">Skip PostgreSQL</Label>
+              </div>
+            )}
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="skipPinecone"
@@ -459,7 +550,7 @@ export default function DataIngestionPage() {
           {/* Upload Button */}
           <Button
             onClick={handleUpload}
-            disabled={!selectedFile || uploading}
+            disabled={!selectedFile || uploading || (!isMasterAdmin && !selectedVehicleId)}
             className="w-full sm:w-auto"
           >
             {uploading ? (
