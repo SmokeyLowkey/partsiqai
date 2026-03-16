@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -101,6 +101,14 @@ const DEFAULT_SUBJECTS: Record<string, string> = {
 };
 
 export default function CommunicationsPage() {
+  return (
+    <Suspense fallback={<div className="text-muted-foreground py-8 text-center">Loading...</div>}>
+      <CommunicationsContent />
+    </Suspense>
+  );
+}
+
+function CommunicationsContent() {
   const searchParams = useSearchParams();
   const preselectedOrgId = searchParams.get("organizationId");
   const { toast } = useToast();
