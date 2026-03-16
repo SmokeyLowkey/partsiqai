@@ -256,7 +256,7 @@ function CommunicationsContent() {
         body: JSON.stringify({
           templateType,
           organizationId: selectedOrgId,
-          recipientIds: selectedUserIds,
+          recipientUserIds: selectedUserIds,
           senderEmail,
           subject: subject || undefined,
           customBody: customBody || undefined,
