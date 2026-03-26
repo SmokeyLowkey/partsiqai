@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -48,6 +49,7 @@ import {
   ShoppingCart,
   FileText,
   Crown,
+  Mail,
 } from "lucide-react";
 
 type Organization = {
@@ -82,6 +84,7 @@ export default function TenantsPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
+  const router = useRouter();
   const { toast } = useToast();
 
   // Form state
@@ -451,6 +454,14 @@ export default function TenantsPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          title="Send email to users"
+                          onClick={() => router.push(`/admin/communications?organizationId=${org.id}`)}
+                        >
+                          <Mail className="h-4 w-4" />
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"

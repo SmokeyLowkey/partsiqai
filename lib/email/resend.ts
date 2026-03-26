@@ -759,7 +759,119 @@ export function getPasswordResetEmailHtml(name: string, resetUrl: string): strin
 `;
 }
 
-// --- Trial Reminder Email Templates ---
+// ─── Admin Communication Templates ──────────────────────────────────
+
+function adminEmailShell(title: string, body: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .header { background: linear-gradient(135deg, #9333ea 0%, #06b6d4 100%); padding: 32px 40px; text-align: center; }
+    .header h1 { color: white; margin: 0; font-size: 22px; font-weight: 700; }
+    .content { padding: 32px 40px; }
+    .content h2 { color: #1e293b; margin: 0 0 20px 0; font-size: 20px; }
+    .content p { margin: 0 0 16px 0; color: #475569; line-height: 1.6; font-size: 15px; }
+    .button { display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #9333ea 0%, #06b6d4 100%); color: white !important; text-decoration: none; border-radius: 8px; font-weight: 600; margin: 20px 0; }
+    .info-box { background: #f1f5f9; border-left: 4px solid #9333ea; padding: 16px 20px; margin: 20px 0; border-radius: 4px; }
+    .info-box p { margin: 0 0 8px 0; font-size: 14px; color: #475569; }
+    .info-box p:last-child { margin-bottom: 0; }
+    .checklist { list-style: none; padding: 0; margin: 16px 0; }
+    .checklist li { padding: 8px 0; color: #475569; font-size: 14px; }
+    .checklist li::before { content: "\\2713\\0020"; color: #9333ea; font-weight: bold; }
+    .footer { padding: 24px 40px; text-align: center; border-top: 1px solid #e2e8f0; }
+    .footer p { margin: 0 0 8px 0; font-size: 13px; color: #94a3b8; }
+    .footer a { color: #9333ea; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header"><h1>${escapeHtml(title)}</h1></div>
+    <div class="content">${body}</div>
+    <div class="footer">
+      <p>Sent by the PartsIQ team</p>
+      <p>Need help? <a href="mailto:support@partsiqai.com">Contact support</a></p>
+      <p>&copy; ${new Date().getFullYear()} PartsIQ AI. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+export function getWelcomeFollowupEmailHtml(recipientName: string, orgName: string, dashboardUrl: string): string {
+  const body = `
+    <h2>Hi ${escapeHtml(recipientName)},</h2>
+    <p>Welcome to PartsIQ! I wanted to personally check in and see how things are going with <strong>${escapeHtml(orgName)}</strong>.</p>
+    <p>If you haven't already, here are the key steps to get the most out of your account:</p>
+    <ul class="checklist">
+      <li>Add your first vehicle to enable parts search</li>
+      <li>Upload a parts catalog for your equipment</li>
+      <li>Add your suppliers for quote automation</li>
+      <li>Invite your team members</li>
+    </ul>
+    <p>If you need any help getting set up, just reply to this email — I'm happy to assist.</p>
+    <div style="text-align: center;">
+      <a href="${escapeHtml(dashboardUrl)}" class="button">Go to Dashboard</a>
+    </div>
+  `;
+  return adminEmailShell("Following Up on Your Account", body);
+}
+
+export function getTrialExpiringEmailHtml(recipientName: string, orgName: string, daysLeft: number, upgradeUrl: string): string {
+  const urgency = daysLeft <= 3 ? "Your trial is ending very soon!" : "Your trial is wrapping up.";
+  const body = `
+    <h2>Hi ${escapeHtml(recipientName)},</h2>
+    <p>${urgency} <strong>${escapeHtml(orgName)}</strong> has <strong>${daysLeft} day${daysLeft !== 1 ? "s" : ""}</strong> remaining on the free trial.</p>
+    <p>When the trial ends, your team will lose access to:</p>
+    <ul class="checklist">
+      <li>AI-powered parts search</li>
+      <li>Automated supplier quote requests</li>
+      <li>Voice agent calling</li>
+      <li>Parts catalog and inventory management</li>
+    </ul>
+    <div class="info-box">
+      <p><strong>Upgrade now to keep everything running.</strong></p>
+      <p>All your data, vehicles, and supplier connections will be preserved when you subscribe.</p>
+    </div>
+    <div style="text-align: center;">
+      <a href="${escapeHtml(upgradeUrl)}" class="button">Upgrade Now</a>
+    </div>
+    <p>Have questions about pricing or features? Just reply to this email.</p>
+  `;
+  return adminEmailShell("Your Trial Ends Soon", body);
+}
+
+export function getSetupHelpEmailHtml(recipientName: string, orgName: string, dashboardUrl: string): string {
+  const body = `
+    <h2>Hi ${escapeHtml(recipientName)},</h2>
+    <p>I noticed <strong>${escapeHtml(orgName)}</strong> might still be getting set up on PartsIQ. I wanted to reach out and offer some help.</p>
+    <p>Here's what most teams do in their first week:</p>
+    <div class="info-box">
+      <p><strong>1. Add your equipment</strong> — Register the vehicles and machines your team works on.</p>
+      <p><strong>2. Upload parts catalogs</strong> — Import CSV data so your team can search by part number or description.</p>
+      <p><strong>3. Add suppliers</strong> — Connect your parts suppliers for automated quote requests.</p>
+      <p><strong>4. Try a search</strong> — Use the AI chat to find parts for your equipment.</p>
+    </div>
+    <p>If you'd like a quick walkthrough or have any questions, just reply to this email and we'll get you sorted.</p>
+    <div style="text-align: center;">
+      <a href="${escapeHtml(dashboardUrl)}" class="button">Go to Dashboard</a>
+    </div>
+  `;
+  return adminEmailShell("Need Help Setting Up?", body);
+}
+
+export function getCustomAdminEmailHtml(recipientName: string, subject: string, bodyContent: string): string {
+  const body = `
+    <h2>Hi ${escapeHtml(recipientName)},</h2>
+    ${bodyContent.split('\n').filter(l => l.trim()).map(line => `<p>${escapeHtml(line)}</p>`).join('\n    ')}
+  `;
+  return adminEmailShell(subject, body);
+}
+
+// --- Trial Reminder Email Templates (cron-based) ---
 
 function trialEmailShell(title: string, body: string): string {
   const baseUrl = getBaseUrl();

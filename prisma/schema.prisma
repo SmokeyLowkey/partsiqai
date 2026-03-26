@@ -76,6 +76,7 @@ model Organization {
   vehicleSearchMappings  VehicleSearchMapping[]
   vehicles               Vehicle[]
   locations              OrganizationLocation[]
+  adminEmails            AdminEmail[]
 
   @@index([slug])
   @@index([stripeCustomerId])
@@ -159,6 +160,8 @@ model User {
   organization                    Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   verifiedVehicleMappings         VehicleSearchMapping[]    @relation("VehicleSearchMappingVerifier")
   vehicles                        Vehicle[]
+  adminEmailsSent                 AdminEmail[]              @relation("AdminEmailsSent")
+  adminEmailsReceived             AdminEmail[]              @relation("AdminEmailsReceived")
 
   @@index([email])
   @@index([organizationId, email])
@@ -1351,6 +1354,33 @@ model IngestionJob {
   @@index([organizationId, status])
   @@index([status, createdAt])
   @@map("ingestion_jobs")
+}
+
+model AdminEmail {
+  id               String        @id @default(cuid())
+  subject          String
+  htmlBody         String        @db.Text
+  templateType     String?
+  templateVars     Json?
+  senderEmail      String
+  recipientEmail   String
+  recipientName    String?
+  recipientUserId  String?
+  organizationId   String?
+  sentById         String
+  resendMessageId  String?
+  status           String        @default("sent")
+  errorMessage     String?
+  createdAt        DateTime      @default(now())
+
+  sentBy       User          @relation("AdminEmailsSent", fields: [sentById], references: [id], onDelete: Restrict)
+  recipient    User?         @relation("AdminEmailsReceived", fields: [recipientUserId], references: [id], onDelete: SetNull)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([sentById])
+  @@index([createdAt])
+  @@map("admin_emails")
 }
 
 enum SubscriptionTier {

@@ -1,5 +1,5 @@
 import { DefaultSession } from "next-auth"
-import { UserRole, SubscriptionStatus, OnboardingStatus } from "@prisma/client"
+import { UserRole, SubscriptionStatus, SubscriptionTier, OnboardingStatus } from "@prisma/client"
 
 declare module "next-auth" {
   interface Session {
@@ -8,10 +8,11 @@ declare module "next-auth" {
       role: UserRole
       organizationId: string
       subscriptionStatus: SubscriptionStatus
+      subscriptionTier: string
+      trialEndsAt: string | null
       isEmailVerified: boolean
       onboardingStatus: OnboardingStatus
       mustChangePassword: boolean
-      trialEndsAt: string | null
     } & DefaultSession["user"]
   }
 
@@ -20,10 +21,11 @@ declare module "next-auth" {
     role: UserRole
     organizationId: string
     subscriptionStatus: SubscriptionStatus
+    subscriptionTier: string
+    trialEndsAt: string | null
     isEmailVerified: boolean
     onboardingStatus: OnboardingStatus
     mustChangePassword: boolean
-    trialEndsAt: string | null
   }
 }
 
@@ -33,9 +35,10 @@ declare module "next-auth/jwt" {
     role: UserRole
     organizationId: string
     subscriptionStatus: SubscriptionStatus
+    subscriptionTier: string
+    trialEndsAt: string | null
     isEmailVerified: boolean
     onboardingStatus: OnboardingStatus
     mustChangePassword: boolean
-    trialEndsAt: string | null
   }
 }

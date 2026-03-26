@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { uploadIngestionFile } from '@/lib/services/storage/s3-client';
 import { partsIngestionQueue } from '@/lib/queue/queues';
 import type { PartsIngestionJobData } from '@/lib/queue/types';
+import { getTierLimits } from '@/lib/subscription-limits';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
@@ -70,6 +71,63 @@ export async function POST(request: Request) {
         options = JSON.parse(optionsStr);
       } catch {
         return NextResponse.json({ error: 'Invalid options JSON' }, { status: 400 });
+      }
+    }
+
+    // Require vehicleId for non-MASTER_ADMIN uploads
+    const vehicleId = options.vehicleId as string | undefined;
+    if (currentUser.role !== 'MASTER_ADMIN' && !vehicleId) {
+      return NextResponse.json(
+        { error: 'A vehicle must be selected for data ingestion' },
+        { status: 400 }
+      );
+    }
+
+    // Validate vehicle belongs to the target organization
+    if (vehicleId) {
+      const vehicle = await prisma.vehicle.findFirst({
+        where: { id: vehicleId, organizationId },
+      });
+      if (!vehicle) {
+        return NextResponse.json({ error: 'Vehicle not found in your organization' }, { status: 404 });
+      }
+    }
+
+    // Fetch org subscription info for tier-based limits
+    const org = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { subscriptionStatus: true, subscriptionTier: true },
+    });
+
+    if (!org) {
+      return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+    }
+
+    const tierLimits = getTierLimits(org.subscriptionTier, org.subscriptionStatus);
+
+    // Only MASTER_ADMIN can write to PostgreSQL (products table)
+    if (currentUser.role !== 'MASTER_ADMIN') {
+      options.skipPostgres = true;
+    }
+
+    // Enforce per-vehicle ingestion limit for trial orgs
+    if (vehicleId && tierLimits.maxIngestionsPerVehicle !== Infinity) {
+      const existingJobs = await prisma.ingestionJob.count({
+        where: {
+          organizationId,
+          options: { path: ['vehicleId'], equals: vehicleId },
+          status: { notIn: ['FAILED'] },
+        },
+      });
+
+      if (existingJobs >= tierLimits.maxIngestionsPerVehicle) {
+        return NextResponse.json(
+          {
+            error: 'Ingestion limit reached',
+            message: `Your trial allows ${tierLimits.maxIngestionsPerVehicle} parts catalog upload per vehicle. Please upgrade to upload more.`,
+          },
+          { status: 403 }
+        );
       }
     }
 

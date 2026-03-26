@@ -59,8 +59,8 @@ export default function OrganizationPage() {
       // Force session refresh so the JWT picks up the new onboardingStatus
       await update()
 
-      // Redirect to login page
-      window.location.href = "/login"
+      // Redirect to dashboard (session already refreshed above)
+      window.location.href = getDashboardPath()
     } catch (err: any) {
       setError(err.message)
       toast.error(err.message)

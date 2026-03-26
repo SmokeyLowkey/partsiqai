@@ -3,6 +3,7 @@ import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
 import { notifyVehiclePending } from '@/lib/notifications/vehicle-pending';
+import { getTierLimits } from '@/lib/subscription-limits';
 
 const VehicleSchema = z.object({
   vehicleId: z.string().min(1, 'Vehicle ID is required'),
@@ -138,23 +139,29 @@ export async function POST(req: NextRequest) {
     // Check vehicle limit for organization
     const organization = await prisma.organization.findUnique({
       where: { id: session.user.organizationId },
-      select: { maxVehicles: true },
+      select: { maxVehicles: true, subscriptionStatus: true, subscriptionTier: true },
     });
 
     if (!organization) {
       return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
     }
 
+    const tierLimits = getTierLimits(organization.subscriptionTier, organization.subscriptionStatus);
+    const effectiveMax = Math.min(organization.maxVehicles, tierLimits.maxVehicles);
+
     const vehicleCount = await prisma.vehicle.count({
       where: { organizationId: session.user.organizationId },
     });
 
-    if (vehicleCount >= organization.maxVehicles) {
+    if (vehicleCount >= effectiveMax) {
+      const isTrial = organization.subscriptionStatus === 'TRIAL';
       return NextResponse.json(
         {
           error: 'Vehicle limit reached',
-          message: `Your current plan allows ${organization.maxVehicles} vehicles. Please upgrade your plan to add more vehicles.`,
-          limit: organization.maxVehicles,
+          message: isTrial
+            ? `Your trial allows ${effectiveMax} vehicle. Please upgrade to add more vehicles.`
+            : `Your current plan allows ${effectiveMax} vehicles. Please upgrade your plan to add more vehicles.`,
+          limit: effectiveMax,
           current: vehicleCount,
         },
         { status: 403 }

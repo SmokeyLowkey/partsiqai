@@ -1,21 +1,9 @@
 "use client"
 
 import { useSession } from "next-auth/react"
+import { Clock, AlertTriangle, XCircle, Sparkles, ArrowRight } from "lucide-react"
 import Link from "next/link"
-import { Clock, AlertTriangle, XCircle, Sparkles } from "lucide-react"
-
-function getDaysLeft(trialEndsAt: string): number {
-  const now = new Date()
-  const end = new Date(trialEndsAt)
-  const diff = end.getTime() - now.getTime()
-  return Math.ceil(diff / (1000 * 60 * 60 * 24))
-}
-
-function getBillingPath(role: string): string {
-  return role === "ADMIN" || role === "MASTER_ADMIN"
-    ? "/admin/billing"
-    : "/customer/billing"
-}
+import { cn } from "@/lib/utils"
 
 export function TrialBanner() {
   const { data: session } = useSession()
@@ -24,53 +12,62 @@ export function TrialBanner() {
   if (session.user.subscriptionStatus !== "TRIAL") return null
   if (!session.user.trialEndsAt) return null
 
-  const daysLeft = getDaysLeft(session.user.trialEndsAt)
-  const billingPath = getBillingPath(session.user.role)
+  const trialEnd = new Date(session.user.trialEndsAt)
+  const now = new Date()
+  const daysLeft = Math.max(0, Math.ceil((trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
 
-  let bgClass: string
-  let textClass: string
-  let Icon: typeof Clock
-  let message: string
-  let ctaLabel: string
+  const isExpired = daysLeft === 0
+  const isUrgent = daysLeft <= 3
+  const isWarning = daysLeft <= 7
 
-  if (daysLeft <= 0) {
-    bgClass = "bg-red-600"
-    textClass = "text-white"
-    Icon = XCircle
-    message = "Your trial has expired."
-    ctaLabel = "Subscribe to continue"
-  } else if (daysLeft <= 3) {
-    bgClass = "bg-red-600"
-    textClass = "text-white"
-    Icon = AlertTriangle
-    message = `Your trial ends in ${daysLeft} day${daysLeft === 1 ? "" : "s"}! Don't lose your data.`
-    ctaLabel = "Upgrade now"
-  } else if (daysLeft <= 7) {
-    bgClass = "bg-amber-500"
-    textClass = "text-white"
-    message = `Your trial ends in ${daysLeft} days. Upgrade to keep access.`
-    Icon = AlertTriangle
-    ctaLabel = "Upgrade now"
-  } else {
-    bgClass = "bg-blue-600"
-    textClass = "text-white"
-    Icon = Sparkles
-    message = `You're on a free trial \u2014 ${daysLeft} day${daysLeft === 1 ? "" : "s"} left.`
-    ctaLabel = "See plans"
-  }
+  const billingPath = session.user.role === "ADMIN" || session.user.role === "MASTER_ADMIN"
+    ? "/admin/billing"
+    : "/customer/billing"
+
+  const Icon = isExpired ? XCircle : isUrgent ? AlertTriangle : isWarning ? AlertTriangle : Sparkles
+
+  const message = isExpired
+    ? "Your trial has expired. Subscribe to continue using PartsIQ."
+    : isUrgent
+      ? `Your trial ends in ${daysLeft} day${daysLeft === 1 ? "" : "s"}! Don't lose your data.`
+      : isWarning
+        ? `Your trial ends in ${daysLeft} days. Upgrade to keep access.`
+        : `You're on a free trial \u2014 ${daysLeft} day${daysLeft === 1 ? "" : "s"} left.`
+
+  const ctaLabel = isExpired ? "Subscribe now" : isWarning ? "Upgrade now" : "See plans"
 
   return (
-    <div className={`${bgClass} ${textClass} px-4 py-2 text-sm`}>
-      <div className="flex items-center justify-center gap-2">
+    <div
+      className={cn(
+        "flex items-center justify-between gap-3 px-4 py-2 text-sm",
+        isExpired
+          ? "bg-red-600 text-white"
+          : isUrgent
+            ? "bg-red-600 text-white"
+            : isWarning
+              ? "bg-amber-500 text-white"
+              : "bg-blue-600 text-white"
+      )}
+    >
+      <div className="flex items-center gap-2">
         <Icon className="h-4 w-4 shrink-0" />
         <span>{message}</span>
-        <Link
-          href={billingPath}
-          className="ml-1 font-semibold underline underline-offset-2 hover:no-underline"
-        >
-          {ctaLabel} &rarr;
-        </Link>
       </div>
+      <Link
+        href={billingPath}
+        className={cn(
+          "flex items-center gap-1 shrink-0 font-medium rounded-md px-3 py-1 transition-colors",
+          isExpired
+            ? "bg-white text-red-700 hover:bg-red-50"
+            : isUrgent
+              ? "bg-white text-red-700 hover:bg-red-50"
+              : isWarning
+                ? "bg-amber-900 text-white hover:bg-amber-800"
+                : "bg-white text-blue-700 hover:bg-blue-50"
+        )}
+      >
+        {ctaLabel} <ArrowRight className="h-3 w-3" />
+      </Link>
     </div>
   )
 }

@@ -31,6 +31,7 @@ export const authConfig = {
             organization: {
               select: {
                 subscriptionStatus: true,
+                subscriptionTier: true,
                 trialEndsAt: true,
               },
             },
@@ -97,10 +98,11 @@ export const authConfig = {
           role: user.role,
           organizationId: user.organizationId,
           subscriptionStatus: user.organization.subscriptionStatus,
+          subscriptionTier: user.organization.subscriptionTier,
+          trialEndsAt: user.organization.trialEndsAt?.toISOString() ?? null,
           isEmailVerified: user.isEmailVerified,
           onboardingStatus: user.onboardingStatus,
           mustChangePassword: user.mustChangePassword,
-          trialEndsAt: user.organization.trialEndsAt?.toISOString() ?? null,
         }
       }
     })
@@ -118,10 +120,11 @@ export const authConfig = {
         token.role = user.role
         token.organizationId = user.organizationId
         token.subscriptionStatus = user.subscriptionStatus
+        token.subscriptionTier = user.subscriptionTier
+        token.trialEndsAt = user.trialEndsAt
         token.isEmailVerified = user.isEmailVerified
         token.onboardingStatus = user.onboardingStatus
         token.mustChangePassword = user.mustChangePassword
-        token.trialEndsAt = user.trialEndsAt
         token.refreshedAt = Date.now()
       }
 
@@ -140,6 +143,7 @@ export const authConfig = {
               organization: {
                 select: {
                   subscriptionStatus: true,
+                  subscriptionTier: true,
                   trialEndsAt: true,
                 },
               },
@@ -150,10 +154,11 @@ export const authConfig = {
             token.role = freshUser.role
             token.organizationId = freshUser.organizationId
             token.subscriptionStatus = freshUser.organization.subscriptionStatus
+            token.subscriptionTier = freshUser.organization.subscriptionTier
+            token.trialEndsAt = freshUser.organization.trialEndsAt?.toISOString() ?? null
             token.isEmailVerified = freshUser.isEmailVerified
             token.onboardingStatus = freshUser.onboardingStatus
             token.mustChangePassword = freshUser.mustChangePassword
-            token.trialEndsAt = freshUser.organization.trialEndsAt?.toISOString() ?? null
             token.refreshedAt = now
           }
         } catch {
@@ -171,10 +176,11 @@ export const authConfig = {
         session.user.role = token.role as UserRole
         session.user.organizationId = token.organizationId as string
         session.user.subscriptionStatus = token.subscriptionStatus as SubscriptionStatus
+        session.user.subscriptionTier = token.subscriptionTier as string
+        session.user.trialEndsAt = token.trialEndsAt as string | null
         session.user.isEmailVerified = token.isEmailVerified as boolean
         session.user.onboardingStatus = token.onboardingStatus as string
         session.user.mustChangePassword = token.mustChangePassword as boolean
-        session.user.trialEndsAt = (token.trialEndsAt as string) ?? null
       }
       return session
     },
