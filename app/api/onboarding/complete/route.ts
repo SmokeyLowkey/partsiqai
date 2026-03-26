@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "@/lib/auth";
+import { getServerSession, refreshSessionCookie } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 // POST /api/onboarding/complete - Mark onboarding as complete
@@ -41,6 +41,9 @@ export async function POST(request: Request) {
         });
       }
     });
+
+    // Re-encode JWT so Edge middleware sees the updated onboardingStatus immediately
+    await refreshSessionCookie(session.user.id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

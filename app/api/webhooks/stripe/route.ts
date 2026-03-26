@@ -308,7 +308,7 @@ async function handleTrialEnding(subscription: any) {
     return
   }
 
-  // Log that trial is ending - could also send email notification here
+  // Log that trial is ending
   await prisma.activityLog.create({
     data: {
       type: "SUBSCRIPTION_UPDATED",
@@ -321,6 +321,28 @@ async function handleTrialEnding(subscription: any) {
       },
     },
   })
+
+  // Send trial ending email to org admin
+  try {
+    const admin = await prisma.user.findFirst({
+      where: { organizationId: organization.id, role: "ADMIN", isActive: true },
+      select: { name: true, email: true },
+    })
+
+    if (admin) {
+      const { sendEmail, getTrialEndingSoonEmailHtml } = await import("@/lib/email/resend")
+      const daysLeft = subscription.trial_end
+        ? Math.ceil((subscription.trial_end * 1000 - Date.now()) / (1000 * 60 * 60 * 24))
+        : 3
+      await sendEmail({
+        to: admin.email,
+        subject: `Your PartsIQ trial ends in ${daysLeft} days`,
+        html: getTrialEndingSoonEmailHtml(admin.name || "there", organization.name, daysLeft),
+      })
+    }
+  } catch (emailErr) {
+    console.error("Failed to send trial ending email:", emailErr)
+  }
 }
 
 export async function POST(request: Request) {

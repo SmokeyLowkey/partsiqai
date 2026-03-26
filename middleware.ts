@@ -14,6 +14,20 @@ const SUBSCRIPTION_EXEMPT_ROUTES = [
   "/change-password",
 ]
 
+// API routes that are legitimately public (no user auth needed)
+const PUBLIC_API_PREFIXES = [
+  "/api/auth/",           // NextAuth + signup/verify/reset
+  "/api/webhooks/",       // Stripe/Resend (verify their own signatures)
+  "/api/health",          // Health check
+  "/api/og",              // Open Graph image
+  "/api/cron/",           // Cron jobs (use CRON_SECRET)
+  "/api/voip/webhooks",   // VoIP callbacks (external service)
+  "/api/voip/langgraph-handler", // Vapi LLM handler
+  "/api/invitations/",    // Invitation accept/validate (token-based)
+  "/api/integrations/gmail/callback",     // OAuth callback
+  "/api/integrations/microsoft/callback", // OAuth callback
+]
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
@@ -41,9 +55,31 @@ export async function middleware(request: NextRequest) {
   if (
     publicRoutes.includes(pathname) ||
     publicPrefixes.some(prefix => pathname.startsWith(prefix)) ||
-    pathname.startsWith("/_next") ||
-    pathname.startsWith("/api/")
+    pathname.startsWith("/_next")
   ) {
+    return NextResponse.next()
+  }
+
+  // API route hardening: require auth unless explicitly public
+  if (pathname.startsWith("/api/")) {
+    const isPublicApi = PUBLIC_API_PREFIXES.some(prefix => pathname.startsWith(prefix))
+    if (isPublicApi) {
+      return NextResponse.next()
+    }
+
+    // All other API routes require a valid session
+    const session = await auth()
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    // Admin API routes require admin role
+    if (pathname.startsWith("/api/admin/")) {
+      if (!ADMIN_ROLES.includes(session.user.role)) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+    }
+
     return NextResponse.next()
   }
 
@@ -133,6 +169,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico).*)",
+    "/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png).*)",
   ]
 }

@@ -758,3 +758,114 @@ export function getPasswordResetEmailHtml(name: string, resetUrl: string): strin
 </html>
 `;
 }
+
+// --- Trial Reminder Email Templates ---
+
+function trialEmailShell(title: string, body: string): string {
+  const baseUrl = getBaseUrl();
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #334155; background: #f8fafc; margin: 0; padding: 0; }
+    .container { max-width: 600px; margin: 40px auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.07); }
+    .header { background: linear-gradient(135deg, #9333ea 0%, #06b6d4 100%); padding: 30px; text-align: center; }
+    .header h1 { color: white; margin: 0; font-size: 24px; }
+    .content { padding: 30px; }
+    .content p { margin: 0 0 15px; color: #475569; }
+    .button { display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #9333ea 0%, #06b6d4 100%); color: white !important; text-decoration: none; border-radius: 8px; font-weight: 600; }
+    .footer { background: #f8fafc; padding: 20px 30px; text-align: center; border-top: 1px solid #e2e8f0; }
+    .footer p { margin: 0 0 8px; font-size: 13px; color: #64748b; }
+    .footer a { color: #9333ea; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    ${body}
+    <div class="footer">
+      <p>Questions? <a href="mailto:support@partsiqai.com">support@partsiqai.com</a></p>
+      <p>&copy; ${new Date().getFullYear()} PartsIQ AI. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+// Day 7: Mid-trial check-in
+export function getTrialCheckInEmailHtml(name: string, companyName: string, daysLeft: number): string {
+  const baseUrl = getBaseUrl();
+  return trialEmailShell("How's your setup going?", `
+    <div class="header"><h1>How's it going, ${escapeHtml(name)}?</h1></div>
+    <div class="content">
+      <p>You've had <strong>${escapeHtml(companyName)}</strong> on PartsIQ for a week now. You have <strong>${daysLeft} days</strong> left in your free trial.</p>
+      <p>Here are a few things to make the most of your remaining trial:</p>
+      <ul style="color: #475569;">
+        <li><strong>Invite your team</strong> &mdash; Managers and Technicians can search parts and create quote requests</li>
+        <li><strong>Add your vehicles</strong> &mdash; Track maintenance and parts per asset</li>
+        <li><strong>Try the AI chat</strong> &mdash; Search your parts catalog with natural language</li>
+      </ul>
+      <p>Need help? Reply to this email or <a href="${baseUrl}/support" style="color: #9333ea;">visit our support page</a>.</p>
+      <div style="text-align: center; margin: 25px 0;">
+        <a href="${baseUrl}/login" class="button">Go to Dashboard</a>
+      </div>
+    </div>
+  `);
+}
+
+// Day 12: 2 days left
+export function getTrialEndingSoonEmailHtml(name: string, companyName: string, daysLeft: number): string {
+  const baseUrl = getBaseUrl();
+  return trialEmailShell("Your trial ends in " + daysLeft + " days", `
+    <div class="header"><h1>Your trial ends in ${daysLeft} days</h1></div>
+    <div class="content">
+      <p>Hi ${escapeHtml(name)},</p>
+      <p>Your free trial for <strong>${escapeHtml(companyName)}</strong> ends in <strong>${daysLeft} days</strong>. To keep access to your data, vehicles, suppliers, and AI features, upgrade to a paid plan.</p>
+      <p>Plans start at <strong>$199/month</strong> with a full 14-day money-back guarantee.</p>
+      <div style="text-align: center; margin: 25px 0;">
+        <a href="${baseUrl}/admin/billing" class="button">Upgrade Now</a>
+      </div>
+      <p style="font-size: 14px; color: #64748b;">Your data is safe &mdash; even after the trial ends, we keep your data for 30 days so you can pick up right where you left off.</p>
+    </div>
+  `);
+}
+
+// Day 13: Last day
+export function getTrialLastDayEmailHtml(name: string, companyName: string): string {
+  const baseUrl = getBaseUrl();
+  return trialEmailShell("Last day of your trial", `
+    <div style="background: #dc2626; padding: 30px; text-align: center;"><h1 style="color: white; margin: 0; font-size: 24px;">Last day of your free trial</h1></div>
+    <div class="content">
+      <p>Hi ${escapeHtml(name)},</p>
+      <p>This is your last day on the free trial for <strong>${escapeHtml(companyName)}</strong>. After today, your team will lose access to:</p>
+      <ul style="color: #475569;">
+        <li>AI-powered parts search and chat</li>
+        <li>Quote requests and supplier management</li>
+        <li>Vehicle tracking and maintenance scheduling</li>
+      </ul>
+      <p><strong>Don't lose your setup.</strong> Upgrade now to keep everything running.</p>
+      <div style="text-align: center; margin: 25px 0;">
+        <a href="${baseUrl}/admin/billing" class="button" style="background: #dc2626;">Upgrade Now &mdash; Keep My Data</a>
+      </div>
+    </div>
+  `);
+}
+
+// Day 15: Post-expiry win-back
+export function getTrialExpiredEmailHtml(name: string, companyName: string): string {
+  const baseUrl = getBaseUrl();
+  return trialEmailShell("Your trial has expired", `
+    <div class="header"><h1>Your trial has expired</h1></div>
+    <div class="content">
+      <p>Hi ${escapeHtml(name)},</p>
+      <p>The free trial for <strong>${escapeHtml(companyName)}</strong> has ended. Your team no longer has access to PartsIQ.</p>
+      <p><strong>But your data is safe.</strong> We'll keep everything &mdash; vehicles, suppliers, parts data, and settings &mdash; for 30 days. Subscribe anytime to pick up right where you left off.</p>
+      <div style="text-align: center; margin: 25px 0;">
+        <a href="${baseUrl}/admin/billing" class="button">Reactivate My Account</a>
+      </div>
+      <p style="font-size: 14px; color: #64748b;">If you have any feedback about why PartsIQ wasn't the right fit, we'd love to hear it. Just reply to this email.</p>
+    </div>
+  `);
+}

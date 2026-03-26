@@ -36,6 +36,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# seed files with credentials
+prisma/seed-admin.ts
+
 # excluded directories
 /skills/
 /.agents/

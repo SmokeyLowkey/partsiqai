@@ -11,6 +11,7 @@ declare module "next-auth" {
       isEmailVerified: boolean
       onboardingStatus: OnboardingStatus
       mustChangePassword: boolean
+      trialEndsAt: string | null
     } & DefaultSession["user"]
   }
 
@@ -22,6 +23,7 @@ declare module "next-auth" {
     isEmailVerified: boolean
     onboardingStatus: OnboardingStatus
     mustChangePassword: boolean
+    trialEndsAt: string | null
   }
 }
 
@@ -34,5 +36,6 @@ declare module "next-auth/jwt" {
     isEmailVerified: boolean
     onboardingStatus: OnboardingStatus
     mustChangePassword: boolean
+    trialEndsAt: string | null
   }
 }

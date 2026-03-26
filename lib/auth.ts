@@ -1,6 +1,8 @@
 import NextAuth from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
 import { PrismaAdapter } from "@auth/prisma-adapter"
+import { encode, decode } from "next-auth/jwt"
+import { cookies } from "next/headers"
 import bcrypt from "bcryptjs"
 import prisma from "@/lib/prisma"
 import { UserRole, SubscriptionStatus } from "@prisma/client"
@@ -29,6 +31,7 @@ export const authConfig = {
             organization: {
               select: {
                 subscriptionStatus: true,
+                trialEndsAt: true,
               },
             },
           },
@@ -97,6 +100,7 @@ export const authConfig = {
           isEmailVerified: user.isEmailVerified,
           onboardingStatus: user.onboardingStatus,
           mustChangePassword: user.mustChangePassword,
+          trialEndsAt: user.organization.trialEndsAt?.toISOString() ?? null,
         }
       }
     })
@@ -117,6 +121,7 @@ export const authConfig = {
         token.isEmailVerified = user.isEmailVerified
         token.onboardingStatus = user.onboardingStatus
         token.mustChangePassword = user.mustChangePassword
+        token.trialEndsAt = user.trialEndsAt
         token.refreshedAt = Date.now()
       }
 
@@ -135,6 +140,7 @@ export const authConfig = {
               organization: {
                 select: {
                   subscriptionStatus: true,
+                  trialEndsAt: true,
                 },
               },
             },
@@ -147,6 +153,7 @@ export const authConfig = {
             token.isEmailVerified = freshUser.isEmailVerified
             token.onboardingStatus = freshUser.onboardingStatus
             token.mustChangePassword = freshUser.mustChangePassword
+            token.trialEndsAt = freshUser.organization.trialEndsAt?.toISOString() ?? null
             token.refreshedAt = now
           }
         } catch {
@@ -167,6 +174,7 @@ export const authConfig = {
         session.user.isEmailVerified = token.isEmailVerified as boolean
         session.user.onboardingStatus = token.onboardingStatus as string
         session.user.mustChangePassword = token.mustChangePassword as boolean
+        session.user.trialEndsAt = (token.trialEndsAt as string) ?? null
       }
       return session
     },
@@ -256,4 +264,53 @@ export async function checkSubscriptionStatus(organizationId: string): Promise<{
     isActive: isSubscriptionActive(org.subscriptionStatus),
     status: org.subscriptionStatus,
   }
+}
+
+const SESSION_COOKIE = "next-auth.session-token"
+
+function getAuthSecret(): string {
+  const secret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET
+  if (!secret) {
+    throw new Error("NEXTAUTH_SECRET or AUTH_SECRET must be set")
+  }
+  return secret
+}
+
+/**
+ * Re-encode the JWT session cookie with fresh user data from the database.
+ * Call this from API routes after updating mutable session fields (e.g. onboardingStatus)
+ * so that Edge middleware sees the new values immediately.
+ */
+export async function refreshSessionCookie(userId: string) {
+  const secret = getAuthSecret()
+  const cookieStore = await cookies()
+  const token = cookieStore.get(SESSION_COOKIE)?.value
+  if (!token) return
+
+  const decoded = await decode({ token, secret, salt: SESSION_COOKIE })
+  if (!decoded || decoded.id !== userId) return
+
+  const freshUser = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { organization: { select: { subscriptionStatus: true, trialEndsAt: true } } },
+  })
+  if (!freshUser) return
+
+  decoded.role = freshUser.role
+  decoded.organizationId = freshUser.organizationId
+  decoded.subscriptionStatus = freshUser.organization.subscriptionStatus
+  decoded.trialEndsAt = freshUser.organization.trialEndsAt?.toISOString() ?? null
+  decoded.isEmailVerified = freshUser.isEmailVerified
+  decoded.onboardingStatus = freshUser.onboardingStatus
+  decoded.mustChangePassword = freshUser.mustChangePassword
+  decoded.refreshedAt = Date.now()
+
+  const newToken = await encode({ token: decoded, secret, salt: SESSION_COOKIE })
+
+  cookieStore.set(SESSION_COOKIE, newToken, {
+    httpOnly: true,
+    sameSite: "strict",
+    path: "/",
+    secure: process.env.NODE_ENV === "production",
+  })
 }
