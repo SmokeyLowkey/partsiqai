@@ -73,9 +73,8 @@ test.describe('New admin onboarding flow', () => {
 
     // Getting started checklist should be visible for a new org with no data
     await expect(page.getByText('Get started with PartsIQ')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText('Add your first supplier')).toBeVisible();
-    await expect(page.getByText('Invite team members')).toBeVisible();
-    await expect(page.getByText('Your role as Admin')).toBeVisible();
+    await expect(page.getByText('Add a supplier')).toBeVisible();
+    await expect(page.getByText('Invite a team member')).toBeVisible();
   });
 
   test('middleware enforces onboarding redirect on protected routes', async ({ page }) => {
@@ -103,9 +102,9 @@ test.describe('New admin onboarding flow', () => {
 
     await page.waitForURL('**/admin/dashboard', { timeout: 30_000 });
 
-    // Checklist visible — integrations pre-checked (usePlatformKeys defaults to true)
+    // Checklist visible — all items unchecked for a fresh org
     await expect(page.getByText('Get started with PartsIQ')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText('1 of 6 steps complete')).toBeVisible();
+    await expect(page.getByText('0/5 complete')).toBeVisible();
 
     // --- Add a supplier via API ---
     const supplierRes = await page.request.post('/api/suppliers', {
@@ -134,8 +133,8 @@ test.describe('New admin onboarding flow', () => {
     await page.reload();
     await page.waitForLoadState('networkidle');
 
-    // Should now show 3 of 6 complete (integrations + supplier + vehicle)
+    // Should now show 2/5 complete (supplier + vehicle)
     await expect(page.getByText('Get started with PartsIQ')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText('3 of 6 steps complete')).toBeVisible();
+    await expect(page.getByText('2/5 complete')).toBeVisible();
   });
 });

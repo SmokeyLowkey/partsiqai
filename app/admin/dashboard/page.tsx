@@ -221,45 +221,6 @@ async function getOrgAdminStats(organizationId: string) {
   }
 }
 
-async function getChecklistState(organizationId: string, userId: string): Promise<ChecklistState> {
-  const [user, org, supplierCount, vehicleCount, teamCount, completedIngestion] = await Promise.all([
-    prisma.user.findUnique({
-      where: { id: userId },
-      select: { onboardingStatus: true },
-    }),
-    prisma.organization.findUnique({
-      where: { id: organizationId },
-      select: {
-        usePlatformKeys: true,
-        openrouterApiKey: true,
-        pineconeHost: true,
-      },
-    }),
-    prisma.supplier.count({ where: { organizationId } }),
-    prisma.vehicle.count({ where: { organizationId } }),
-    prisma.user.count({ where: { organizationId } }),
-    prisma.ingestionJob.count({
-      where: {
-        organizationId,
-        status: { in: ["COMPLETED", "COMPLETED_WITH_ERRORS"] },
-        processedRecords: { gt: 0 },
-      },
-    }),
-  ])
-
-  const integrationsConfigured = org?.usePlatformKeys === true ||
-    (!!org?.openrouterApiKey && !!org?.pineconeHost)
-
-  return {
-    onboardingComplete: user?.onboardingStatus === "COMPLETED",
-    hasSuppliers: supplierCount > 0,
-    hasVehicles: vehicleCount > 0,
-    hasTeamMembers: teamCount > 1,
-    hasPartsData: completedIngestion > 0,
-    integrationsConfigured,
-  }
-}
-
 export default async function AdminDashboardPage() {
   const session = await getServerSession()
   const currentUser = session?.user
@@ -280,11 +241,8 @@ export default async function AdminDashboardPage() {
     const stats = await getMasterAdminStats()
     return <MasterAdminDashboard stats={stats} />
   } else {
-    const [stats, checklistState] = await Promise.all([
-      getOrgAdminStats(currentUser.organizationId),
-      getChecklistState(currentUser.organizationId, currentUser.id),
-    ])
-    return <OrgAdminDashboard stats={stats} checklistState={checklistState} />
+    const stats = await getOrgAdminStats(currentUser.organizationId)
+    return <OrgAdminDashboard stats={stats} />
   }
 }
 
@@ -574,11 +532,9 @@ function MasterAdminDashboard({ stats }: { stats: Awaited<ReturnType<typeof getM
 }
 
 // Org ADMIN Dashboard - Organization-specific view
-function OrgAdminDashboard({ stats, checklistState }: { stats: Awaited<ReturnType<typeof getOrgAdminStats>>; checklistState: ChecklistState }) {
+function OrgAdminDashboard({ stats }: { stats: Awaited<ReturnType<typeof getOrgAdminStats>> }) {
   return (
     <div className="space-y-6">
-      {/* Getting Started Checklist */}
-      <GettingStartedChecklist state={checklistState} />
 
       {/* Organization Header */}
       <div className="flex items-center justify-between">
