@@ -15,12 +15,22 @@ export interface SetupStep {
   icon: React.ReactNode
 }
 
+export interface SetupCounts {
+  vehicles: number
+  ingestionJobs: number
+  suppliers: number
+  invitations: number
+  conversations: number
+}
+
 interface SetupChecklistProps {
-  steps: SetupStep[]
+  steps?: SetupStep[]
+  counts?: SetupCounts
   organizationName: string
 }
 
-export function SetupChecklist({ steps, organizationName }: SetupChecklistProps) {
+export function SetupChecklist({ steps: stepsProp, counts, organizationName }: SetupChecklistProps) {
+  const steps = stepsProp ?? (counts ? buildSetupSteps(counts) : [])
   const completedCount = steps.filter((s) => s.completed).length
   const totalCount = steps.length
   const progressPercent = Math.round((completedCount / totalCount) * 100)

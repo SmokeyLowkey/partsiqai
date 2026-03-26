@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma"
 import { getServerSession } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import Link from "next/link"
-import { SetupChecklist, buildSetupSteps } from "@/components/admin/setup-checklist"
+import { SetupChecklist } from "@/components/admin/setup-checklist"
 
 export const revalidate = 60 // Revalidate every 60 seconds
 
@@ -546,7 +546,7 @@ function OrgAdminDashboard({ stats }: { stats: Awaited<ReturnType<typeof getOrgA
 
       {/* Setup Checklist — shown until all steps are complete */}
       <SetupChecklist
-        steps={buildSetupSteps(stats.setupCounts)}
+        counts={stats.setupCounts}
         organizationName={stats.organizationName}
       />
 
