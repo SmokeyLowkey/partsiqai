@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
+import { Resend } from 'resend';
 import { prisma } from '@/lib/prisma';
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 export const dynamic = 'force-dynamic';
 
@@ -83,12 +86,30 @@ export async function POST(request: Request) {
     // Handle inbound email (reply received)
     if (eventType === 'email.received') {
       const data = event.data;
-      const fromEmail = data.from?.[0]?.address || data.from || '';
-      const fromName = data.from?.[0]?.name || null;
-      const subject = data.subject || '(No subject)';
-      const bodyText = data.text || null;
-      const bodyHtml = data.html || null;
-      const inReplyTo = data.headers?.['in-reply-to'] || data.in_reply_to || null;
+      const emailId = data.email_id;
+
+      // The webhook payload only contains metadata (from, to, subject).
+      // We must call the Resend API to get the full email body and headers.
+      let fullEmail: any = null;
+      if (emailId) {
+        try {
+          const response = await resend.emails.get(emailId);
+          fullEmail = response.data;
+        } catch (err) {
+          console.error(`Failed to fetch full inbound email ${emailId}:`, err);
+        }
+      }
+
+      // Parse the "from" field — it's a string like "Name <email@example.com>"
+      const rawFrom: string = fullEmail?.from || data.from || '';
+      const fromMatch = rawFrom.match(/^(.+?)\s*<(.+?)>$/);
+      const fromEmail = fromMatch ? fromMatch[2] : rawFrom.replace(/[<>]/g, '').trim();
+      const fromName = fromMatch ? fromMatch[1].trim() : null;
+
+      const subject = fullEmail?.subject || data.subject || '(No subject)';
+      const bodyText = fullEmail?.text || null;
+      const bodyHtml = fullEmail?.html || null;
+      const inReplyTo = fullEmail?.headers?.['in-reply-to'] || null;
 
       const originalEmail = await findOriginalEmail(inReplyTo, fromEmail, subject);
 
@@ -101,12 +122,11 @@ export async function POST(request: Request) {
             subject,
             bodyText,
             bodyHtml,
-            resendMessageId: data.id || null,
+            resendMessageId: emailId || null,
           },
         });
         console.log(`Stored reply from ${fromEmail} to admin email ${originalEmail.id}`);
       } else {
-        // Log unmatched inbound emails for debugging
         console.warn(`Received inbound email from ${fromEmail} (subject: "${subject}") but could not match to an outbound admin email`);
       }
     }
