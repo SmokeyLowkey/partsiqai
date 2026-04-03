@@ -1,9 +1,6 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { Resend } from 'resend';
 import { prisma } from '@/lib/prisma';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 export const dynamic = 'force-dynamic';
 
@@ -90,11 +87,18 @@ export async function POST(request: Request) {
 
       // The webhook payload only contains metadata (from, to, subject).
       // We must call the Resend API to get the full email body and headers.
+      // Note: inbound emails use GET /emails/received/{id}, not /emails/{id}.
       let fullEmail: any = null;
       if (emailId) {
         try {
-          const response = await resend.emails.get(emailId);
-          fullEmail = response.data;
+          const res = await fetch(`https://api.resend.com/emails/received/${emailId}`, {
+            headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
+          });
+          if (res.ok) {
+            fullEmail = await res.json();
+          } else {
+            console.error(`Resend API returned ${res.status} for received email ${emailId}`);
+          }
         } catch (err) {
           console.error(`Failed to fetch full inbound email ${emailId}:`, err);
         }
