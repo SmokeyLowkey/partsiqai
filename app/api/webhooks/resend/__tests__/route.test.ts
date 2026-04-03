@@ -151,7 +151,7 @@ describe('POST /api/webhooks/resend', () => {
 
       // Should fetch full email from Resend received emails API
       expect(mockResendFetch).toHaveBeenCalledWith(
-        'https://api.resend.com/emails/received/inbound_email_1',
+        'https://api.resend.com/emails/receiving/inbound_email_1',
         expect.objectContaining({
           headers: expect.objectContaining({ Authorization: 'Bearer test_api_key' }),
         })
@@ -160,7 +160,7 @@ describe('POST /api/webhooks/resend', () => {
       // Should match by In-Reply-To header (cleaned to "msg_abc123")
       expect(prisma.adminEmail.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { resendMessageId: 'msg_abc123', status: 'sent' },
+          where: { resendMessageId: 'msg_abc123', status: { notIn: ['failed', 'pending'] } },
         })
       );
 

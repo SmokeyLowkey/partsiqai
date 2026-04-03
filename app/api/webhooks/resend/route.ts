@@ -44,19 +44,24 @@ async function findOriginalEmail(inReplyToMessageId: string | null, fromEmail: s
     // Resend message IDs in headers look like <msg_id@resend.dev>
     const cleanId = inReplyToMessageId.replace(/[<>]/g, '').split('@')[0];
     const match = await prisma.adminEmail.findFirst({
-      where: { resendMessageId: cleanId, status: 'sent' },
+      where: {
+        resendMessageId: cleanId,
+        status: { notIn: ['failed', 'pending'] },
+      },
       orderBy: { createdAt: 'desc' },
     });
     if (match) return match;
   }
 
-  // Strategy 2: Match by recipient email + subject (Re: prefix stripped)
-  const cleanSubject = subject.replace(/^(Re|Fwd|Fw):\s*/i, '').trim();
+  // Strategy 2: Match by recipient email + subject (strip all Re:/Fwd:/Fw: prefixes)
+  const cleanSubject = subject.replace(/^((Re|Fwd|Fw)\s*:\s*)+/i, '').trim();
+  if (!cleanSubject) return null;
+
   const match = await prisma.adminEmail.findFirst({
     where: {
       recipientEmail: fromEmail,
       subject: { contains: cleanSubject, mode: 'insensitive' },
-      status: 'sent',
+      status: { notIn: ['failed', 'pending'] },
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -91,7 +96,7 @@ export async function POST(request: Request) {
       let fullEmail: any = null;
       if (emailId) {
         try {
-          const res = await fetch(`https://api.resend.com/emails/received/${emailId}`, {
+          const res = await fetch(`https://api.resend.com/emails/receiving/${emailId}`, {
             headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
           });
           if (res.ok) {
