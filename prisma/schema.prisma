@@ -1377,10 +1377,32 @@ model AdminEmail {
   recipient    User?         @relation("AdminEmailsReceived", fields: [recipientUserId], references: [id], onDelete: SetNull)
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
+  replies  AdminEmailReply[]
+
   @@index([organizationId])
   @@index([sentById])
   @@index([createdAt])
+  @@index([resendMessageId])
   @@map("admin_emails")
+}
+
+model AdminEmailReply {
+  id              String   @id @default(cuid())
+  adminEmailId    String
+  fromEmail       String
+  fromName        String?
+  subject         String
+  bodyText        String?  @db.Text
+  bodyHtml        String?  @db.Text
+  resendMessageId String?
+  receivedAt      DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  adminEmail AdminEmail @relation(fields: [adminEmailId], references: [id], onDelete: Cascade)
+
+  @@index([adminEmailId])
+  @@index([receivedAt])
+  @@map("admin_email_replies")
 }
 
 enum SubscriptionTier {

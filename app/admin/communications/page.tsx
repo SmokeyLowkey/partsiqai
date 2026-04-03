@@ -49,6 +49,8 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
+  MessageSquareReply,
+  Reply,
 } from "lucide-react";
 
 type Organization = {
@@ -79,6 +81,17 @@ type AdminEmailRecord = {
   sentBy: { id: string; name: string | null; email: string } | null;
   recipient: { id: string; name: string | null; email: string } | null;
   organization: { id: string; name: string } | null;
+  _count?: { replies: number };
+};
+
+type EmailReply = {
+  id: string;
+  fromEmail: string;
+  fromName: string | null;
+  subject: string;
+  bodyText: string | null;
+  bodyHtml: string | null;
+  receivedAt: string;
 };
 
 const TEMPLATE_OPTIONS = [
@@ -128,6 +141,12 @@ function CommunicationsContent() {
   // Preview state
   const [previewHtml, setPreviewHtml] = useState("");
   const [showPreview, setShowPreview] = useState(false);
+
+  // Replies state
+  const [showReplies, setShowReplies] = useState(false);
+  const [repliesLoading, setRepliesLoading] = useState(false);
+  const [replies, setReplies] = useState<EmailReply[]>([]);
+  const [repliesEmailSubject, setRepliesEmailSubject] = useState("");
 
   // History state
   const [emails, setEmails] = useState<AdminEmailRecord[]>([]);
@@ -292,6 +311,23 @@ function CommunicationsContent() {
   const viewEmailHtml = (html: string) => {
     setPreviewHtml(html);
     setShowPreview(true);
+  };
+
+  const viewReplies = async (emailId: string, subject: string) => {
+    setRepliesEmailSubject(subject);
+    setReplies([]);
+    setShowReplies(true);
+    setRepliesLoading(true);
+    try {
+      const res = await fetch(`/api/admin/communications/${emailId}/replies`);
+      if (!res.ok) throw new Error("Failed to fetch replies");
+      const data = await res.json();
+      setReplies(data.replies || []);
+    } catch {
+      toast({ title: "Error", description: "Failed to load replies", variant: "destructive" });
+    } finally {
+      setRepliesLoading(false);
+    }
   };
 
   const isFormValid =
@@ -531,6 +567,7 @@ function CommunicationsContent() {
                   <TableHead>Subject</TableHead>
                   <TableHead>Template</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Replies</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -570,14 +607,42 @@ function CommunicationsContent() {
                         </Badge>
                       )}
                     </TableCell>
+                    <TableCell>
+                      {(email._count?.replies ?? 0) > 0 ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="gap-1 text-blue-600 hover:text-blue-700"
+                          onClick={() => viewReplies(email.id, email.subject)}
+                        >
+                          <MessageSquareReply className="h-3.5 w-3.5" />
+                          {email._count!.replies}
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => viewEmailHtml(email.htmlBody)}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => viewEmailHtml(email.htmlBody)}
+                          title="Preview email"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        {(email._count?.replies ?? 0) > 0 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => viewReplies(email.id, email.subject)}
+                            title="View replies"
+                          >
+                            <Reply className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -625,6 +690,55 @@ function CommunicationsContent() {
             className="border rounded-md p-4 bg-white text-black"
             dangerouslySetInnerHTML={{ __html: previewHtml }}
           />
+        </DialogContent>
+      </Dialog>
+
+      {/* Replies Dialog */}
+      <Dialog open={showReplies} onOpenChange={setShowReplies}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquareReply className="h-5 w-5" />
+              Replies
+            </DialogTitle>
+            <DialogDescription>
+              Replies to: {repliesEmailSubject}
+            </DialogDescription>
+          </DialogHeader>
+          {repliesLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : replies.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">No replies yet</div>
+          ) : (
+            <div className="space-y-4">
+              {replies.map((reply) => (
+                <div key={reply.id} className="border rounded-lg p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-medium">
+                      {reply.fromName ? `${reply.fromName} <${reply.fromEmail}>` : reply.fromEmail}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {new Date(reply.receivedAt).toLocaleDateString()}{" "}
+                      {new Date(reply.receivedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                  </div>
+                  <div className="text-xs text-muted-foreground">{reply.subject}</div>
+                  {reply.bodyHtml ? (
+                    <div
+                      className="border rounded-md p-3 bg-white text-black text-sm"
+                      dangerouslySetInnerHTML={{ __html: reply.bodyHtml }}
+                    />
+                  ) : (
+                    <pre className="border rounded-md p-3 bg-muted text-sm whitespace-pre-wrap">
+                      {reply.bodyText || "(No content)"}
+                    </pre>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

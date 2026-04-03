@@ -40,6 +40,7 @@ export async function GET(request: Request) {
           sentBy: { select: { id: true, name: true, email: true } },
           recipient: { select: { id: true, name: true, email: true } },
           organization: { select: { id: true, name: true } },
+          _count: { select: { replies: true } },
         },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,

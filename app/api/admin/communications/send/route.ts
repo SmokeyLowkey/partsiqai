@@ -104,19 +104,7 @@ export async function POST(request: Request) {
       let errorMessage: string | null = null;
       let resendMessageId: string | null = null;
 
-      try {
-        const result = await sendEmail({
-          to: recipient.email,
-          subject: emailSubject,
-          html,
-          from: fromAddress,
-        });
-        resendMessageId = result?.id ?? null;
-      } catch (err: any) {
-        status = 'failed';
-        errorMessage = err.message || 'Unknown error';
-      }
-
+      // Pre-create the record so we have an ID for the tracking header
       const adminEmail = await prisma.adminEmail.create({
         data: {
           subject: emailSubject,
@@ -129,10 +117,30 @@ export async function POST(request: Request) {
           recipientUserId: recipient.id,
           organizationId,
           sentById: session.user.id,
-          resendMessageId,
-          status,
-          errorMessage,
+          status: 'pending',
         },
+      });
+
+      try {
+        const result = await sendEmail({
+          to: recipient.email,
+          subject: emailSubject,
+          html,
+          from: fromAddress,
+          headers: {
+            'X-PartsIQ-Admin-Email-Id': adminEmail.id,
+          },
+        });
+        resendMessageId = result?.id ?? null;
+        status = 'sent';
+      } catch (err: any) {
+        status = 'failed';
+        errorMessage = err.message || 'Unknown error';
+      }
+
+      await prisma.adminEmail.update({
+        where: { id: adminEmail.id },
+        data: { resendMessageId, status, errorMessage },
       });
 
       if (status === 'sent') {
@@ -140,7 +148,7 @@ export async function POST(request: Request) {
       } else {
         results.failed++;
       }
-      results.emails.push(adminEmail);
+      results.emails.push({ ...adminEmail, resendMessageId, status, errorMessage });
     }
 
     return NextResponse.json(results);

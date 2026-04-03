@@ -14,12 +14,14 @@ export async function sendEmail({
   to,
   subject,
   html,
-  from = "PartsIQ <onboarding@partsiqai.com>", // Using Resend sandbox domain for testing
+  from = "PartsIQ <onboarding@partsiqai.com>",
+  headers: customHeaders,
 }: {
   to: string;
   subject: string;
   html: string;
   from?: string;
+  headers?: Record<string, string>;
 }) {
   try {
     const { data, error } = await resend.emails.send({
@@ -27,6 +29,7 @@ export async function sendEmail({
       to,
       subject,
       html,
+      headers: customHeaders,
     });
 
     if (error) {
