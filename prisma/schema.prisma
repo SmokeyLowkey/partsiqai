@@ -162,6 +162,7 @@ model User {
   vehicles                        Vehicle[]
   adminEmailsSent                 AdminEmail[]              @relation("AdminEmailsSent")
   adminEmailsReceived             AdminEmail[]              @relation("AdminEmailsReceived")
+  adminEmailRepliesSent           AdminEmailReply[]         @relation("AdminEmailRepliesSent")
 
   @@index([email])
   @@index([organizationId, email])
@@ -1389,16 +1390,20 @@ model AdminEmail {
 model AdminEmailReply {
   id              String   @id @default(cuid())
   adminEmailId    String
+  direction       String   @default("INBOUND") // INBOUND or OUTBOUND
   fromEmail       String
   fromName        String?
+  toEmail         String?
   subject         String
   bodyText        String?  @db.Text
   bodyHtml        String?  @db.Text
   resendMessageId String?
+  sentById        String?
   receivedAt      DateTime @default(now())
   createdAt       DateTime @default(now())
 
   adminEmail AdminEmail @relation(fields: [adminEmailId], references: [id], onDelete: Cascade)
+  sentBy     User?      @relation("AdminEmailRepliesSent", fields: [sentById], references: [id], onDelete: SetNull)
 
   @@index([adminEmailId])
   @@index([receivedAt])
