@@ -21,6 +21,7 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     adminEmail: {
       findFirst: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
       updateMany: vi.fn(),
     },
     adminEmailReply: {
@@ -93,6 +94,8 @@ const mockAdminEmail = {
 describe('POST /api/webhooks/resend', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    // Default findMany to return empty array (reset clears it)
+    vi.mocked(prisma.adminEmail.findMany).mockResolvedValue([]);
     process.env.RESEND_WEBHOOK_SECRET = WEBHOOK_SECRET;
     process.env.RESEND_API_KEY = 'test_api_key';
   });

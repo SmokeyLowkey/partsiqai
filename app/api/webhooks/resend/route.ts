@@ -37,6 +37,13 @@ function verifyWebhookSignature(
   });
 }
 
+// Normalize email: strip Gmail-style +alias tags (user+tag@gmail.com → user@gmail.com)
+function normalizeEmail(email: string): string {
+  const [local, domain] = email.toLowerCase().split('@');
+  if (!domain) return email.toLowerCase();
+  return `${local.split('+')[0]}@${domain}`;
+}
+
 // Match an inbound email reply to the original outbound AdminEmail
 async function findOriginalEmail(inReplyToMessageId: string | null, fromEmail: string, subject: string) {
   // Strategy 1: Match by In-Reply-To header → resendMessageId
@@ -57,7 +64,8 @@ async function findOriginalEmail(inReplyToMessageId: string | null, fromEmail: s
   const cleanSubject = subject.replace(/^((Re|Fwd|Fw)\s*:\s*)+/i, '').trim();
   if (!cleanSubject) return null;
 
-  const match = await prisma.adminEmail.findFirst({
+  // Try exact email match first
+  const exactMatch = await prisma.adminEmail.findFirst({
     where: {
       recipientEmail: fromEmail,
       subject: { contains: cleanSubject, mode: 'insensitive' },
@@ -65,7 +73,21 @@ async function findOriginalEmail(inReplyToMessageId: string | null, fromEmail: s
     },
     orderBy: { createdAt: 'desc' },
   });
-  return match;
+  if (exactMatch) return exactMatch;
+
+  // Fallback: match by normalized email (handles Gmail +alias replies)
+  // e.g. sent to user+tech@gmail.com, reply comes from user@gmail.com
+  const normalizedFrom = normalizeEmail(fromEmail);
+  const candidates = await prisma.adminEmail.findMany({
+    where: {
+      subject: { contains: cleanSubject, mode: 'insensitive' },
+      status: { notIn: ['failed', 'pending'] },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 20,
+  });
+
+  return candidates.find((e) => normalizeEmail(e.recipientEmail) === normalizedFrom) || null;
 }
 
 export async function POST(request: Request) {
