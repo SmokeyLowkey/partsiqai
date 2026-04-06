@@ -13,6 +13,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${baseUrl}/contact`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.6 },
     { url: `${baseUrl}/support`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.6 },
     { url: `${baseUrl}/blog`, lastModified: new Date(), changeFrequency: "weekly", priority: 0.8 },
+    { url: `${baseUrl}/solutions`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.8 },
   ]
 
   const solutionPages: MetadataRoute.Sitemap = [
@@ -21,6 +22,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${baseUrl}/solutions/parts-inventory-management-software`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.8 },
     { url: `${baseUrl}/solutions/ai-parts-search`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.8 },
     { url: `${baseUrl}/solutions/supplier-management-software`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.8 },
+    { url: `${baseUrl}/solutions/ai-inventory-management`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.8 },
+    { url: `${baseUrl}/solutions/spare-parts-management-software`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.8 },
+    { url: `${baseUrl}/solutions/heavy-equipment-maintenance-software`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.8 },
+    { url: `${baseUrl}/solutions/automated-procurement-software`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.8 },
   ]
 
   const posts = getAllPosts()

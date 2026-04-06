@@ -6,9 +6,9 @@ import { JsonLd } from "@/components/seo/json-ld"
 import { BreadcrumbJsonLd } from "@/components/seo/breadcrumb-jsonld"
 
 export const metadata: Metadata = {
-  title: "Pricing - Parts Ordering System for Heavy Equipment Dealers",
+  title: "Pricing - Parts Ordering System",
   description:
-    "Simple, transparent pricing for PartsIQ's parts procurement software. Starter, Growth, and Enterprise plans for heavy equipment dealer software starting at $199/month.",
+    "Transparent pricing for PartsIQ parts procurement software. Starter, Growth, and Enterprise plans for heavy equipment dealers starting at $199/month.",
   keywords: [
     "parts ordering system pricing",
     "heavy equipment dealer software",

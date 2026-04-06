@@ -17,11 +17,12 @@ import Link from "next/link"
 import { JsonLd } from "@/components/seo/json-ld"
 import { BreadcrumbJsonLd } from "@/components/seo/breadcrumb-jsonld"
 import { PublicFooter } from "@/components/layout/public-footer"
+import { RelatedSolutions } from "@/components/solutions/related-solutions"
 
 export const metadata: Metadata = {
-  title: "Digital Heavy Equipment Parts Catalog Software | PartsIQ",
+  title: "Heavy Equipment Parts Catalog",
   description:
-    "AI-powered digital parts catalog for heavy equipment dealers. Search by description, part number, or diagram with 95% accuracy. Multi-brand support for Caterpillar, Komatsu, John Deere, and more.",
+    "AI-powered digital parts catalog for heavy equipment. Search by description, part number, or diagram with 95% accuracy. Multi-brand support for CAT, Komatsu, Deere, and more.",
   keywords: [
     "heavy equipment parts catalog",
     "digital parts catalog",
@@ -288,6 +289,164 @@ export default function HeavyEquipmentPartsCatalogPage() {
           </div>
         </section>
 
+        {/* How It Works Section */}
+        <section className="py-24 bg-white">
+          <div className="container mx-auto px-6">
+            <div className="max-w-6xl mx-auto">
+              <div className="mb-16 text-center">
+                <h2 className="text-4xl font-bold mb-4 text-slate-950 tracking-tight">
+                  How the digital parts catalog works
+                </h2>
+                <p className="text-xl text-slate-600 max-w-2xl mx-auto">
+                  Go from scattered PDFs to a fully searchable equipment parts database in four simple steps. Our parts catalog software handles the heavy lifting so your team can focus on finding the right part.
+                </p>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-x-12 gap-y-10 max-w-4xl mx-auto">
+                <div className="flex gap-5">
+                  <div className="flex-shrink-0">
+                    <div className="w-10 h-10 rounded-full bg-slate-950 text-white flex items-center justify-center text-lg font-bold">
+                      1
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-950 mb-2">Upload your parts catalogs</h3>
+                    <p className="text-slate-600 leading-relaxed">
+                      Import your existing heavy equipment parts catalog data via PDF, CSV, or manual entry. Whether you have a single brand or dozens of manufacturer catalogs, the platform ingests them all into one unified equipment parts database.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-5">
+                  <div className="flex-shrink-0">
+                    <div className="w-10 h-10 rounded-full bg-slate-950 text-white flex items-center justify-center text-lg font-bold">
+                      2
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-950 mb-2">AI indexes every part with semantic understanding</h3>
+                    <p className="text-slate-600 leading-relaxed">
+                      PartsIQ&apos;s AI engine processes each record, building semantic embeddings, graph relationships, and full-text indexes. The result is a digital parts catalog that understands what each part is, not just its number.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-5">
+                  <div className="flex-shrink-0">
+                    <div className="w-10 h-10 rounded-full bg-slate-950 text-white flex items-center justify-center text-lg font-bold">
+                      3
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-950 mb-2">Search by description, part number, or diagram reference</h3>
+                    <p className="text-slate-600 leading-relaxed">
+                      Your technicians can search however they think. Type a natural language description like &quot;hydraulic pump seal kit for 320D&quot;, enter a part number, or browse by diagram. The parts catalog software returns ranked results with confidence scores in under a second.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-5">
+                  <div className="flex-shrink-0">
+                    <div className="w-10 h-10 rounded-full bg-slate-950 text-white flex items-center justify-center text-lg font-bold">
+                      4
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-950 mb-2">Find cross-brand equivalents and compatible alternatives</h3>
+                    <p className="text-slate-600 leading-relaxed">
+                      Once you find a part, PartsIQ&apos;s knowledge graph shows compatible alternatives across manufacturers. If the OEM part is out of stock, you will instantly see aftermarket equivalents and superseded numbers — reducing downtime and saving money.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Brands We Support Section */}
+        <section className="py-24 bg-slate-50">
+          <div className="container mx-auto px-6">
+            <div className="max-w-6xl mx-auto">
+              <div className="mb-16 text-center">
+                <h2 className="text-4xl font-bold mb-4 text-slate-950 tracking-tight">
+                  Heavy equipment brands we support
+                </h2>
+                <p className="text-xl text-slate-600 max-w-2xl mx-auto">
+                  PartsIQ&apos;s heavy equipment dealer software works with every major manufacturer. Import catalogs from any brand and search across all of them from a single digital parts catalog.
+                </p>
+              </div>
+
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <div className="bg-white border border-slate-200 rounded-lg p-6">
+                  <h3 className="text-xl font-bold text-slate-950 mb-2">Caterpillar / CAT</h3>
+                  <p className="text-slate-600 text-sm mb-3">
+                    Full parts catalog indexing for all CAT equipment models. Search across excavators, dozers, loaders, and every machine in the Caterpillar lineup.
+                  </p>
+                  <div className="flex items-start gap-2 text-slate-600 text-sm">
+                    <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                    <span>All CAT model series supported</span>
+                  </div>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-lg p-6">
+                  <h3 className="text-xl font-bold text-slate-950 mb-2">John Deere</h3>
+                  <p className="text-slate-600 text-sm mb-3">
+                    Complete indexing for John Deere construction and forestry equipment parts. From compact excavators to large production-class machines.
+                  </p>
+                  <div className="flex items-start gap-2 text-slate-600 text-sm">
+                    <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                    <span>Construction and forestry catalogs</span>
+                  </div>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-lg p-6">
+                  <h3 className="text-xl font-bold text-slate-950 mb-2">Komatsu</h3>
+                  <p className="text-slate-600 text-sm mb-3">
+                    Index and search Komatsu parts catalogs with full cross-reference support. Covers excavators, wheel loaders, dump trucks, and more.
+                  </p>
+                  <div className="flex items-start gap-2 text-slate-600 text-sm">
+                    <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                    <span>Full Komatsu parts database coverage</span>
+                  </div>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-lg p-6">
+                  <h3 className="text-xl font-bold text-slate-950 mb-2">Volvo CE</h3>
+                  <p className="text-slate-600 text-sm mb-3">
+                    Volvo Construction Equipment parts catalog support including articulated haulers, excavators, wheel loaders, and compact equipment.
+                  </p>
+                  <div className="flex items-start gap-2 text-slate-600 text-sm">
+                    <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                    <span>Volvo CE full equipment range</span>
+                  </div>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-lg p-6">
+                  <h3 className="text-xl font-bold text-slate-950 mb-2">Hitachi</h3>
+                  <p className="text-slate-600 text-sm mb-3">
+                    Hitachi construction machinery parts indexed with AI-powered search. Includes Zaxis excavators, wheel loaders, and mining equipment parts.
+                  </p>
+                  <div className="flex items-start gap-2 text-slate-600 text-sm">
+                    <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                    <span>Zaxis and mining series included</span>
+                  </div>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-lg p-6">
+                  <h3 className="text-xl font-bold text-slate-950 mb-2">Case / CNH</h3>
+                  <p className="text-slate-600 text-sm mb-3">
+                    Case Construction and CNH Industrial parts catalog support. Covers backhoe loaders, excavators, skid steers, and all Case equipment models.
+                  </p>
+                  <div className="flex items-start gap-2 text-slate-600 text-sm">
+                    <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                    <span>Full CNH Industrial parts coverage</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Metrics Section */}
         <section className="py-24 bg-slate-950 text-white">
           <div className="container mx-auto px-6">
@@ -409,6 +568,7 @@ export default function HeavyEquipmentPartsCatalogPage() {
           </div>
         </section>
       </div>
+      <RelatedSolutions currentSlug="heavy-equipment-parts-catalog" />
       <PublicFooter />
     </>
   )

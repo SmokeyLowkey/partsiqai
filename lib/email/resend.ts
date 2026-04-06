@@ -340,87 +340,12 @@ export function getWelcomeEmailHtml(name: string, companyName: string): string {
 
       <p>Welcome to PartsIQ! Your account for <strong>${escapeHtml(companyName)}</strong> has been successfully created.</p>
 
-      <p>To unlock the full power of PartsIQ's AI-driven parts search and maintenance management, you'll need to configure a few integrations. Don't worry – we've made it super easy!</p>
+      <p>Everything is ready to go — AI search, parts catalog management, and supplier communication are all set up for you. No API keys or integrations needed!</p>
 
       <div style="text-align: center; margin: 30px 0;">
         <a href="${getBaseUrl()}/login" class="button">
           Go to Dashboard
         </a>
-      </div>
-
-      <h2>🔧 Required Integrations Setup</h2>
-
-      <p>Here's what you'll need to configure to get the most out of PartsIQ:</p>
-
-      <!-- OpenRouter Integration -->
-      <div class="api-section">
-        <h3>🤖 OpenRouter (AI Chat)</h3>
-        <p><strong>What it does:</strong> Powers the intelligent AI assistant that helps you search for parts and get maintenance recommendations.</p>
-
-        <p><strong>Setup Steps:</strong></p>
-        <ul>
-          <li>Visit <a href="https://openrouter.ai" target="_blank">openrouter.ai</a> and create an account</li>
-          <li>Navigate to "Keys" in your dashboard</li>
-          <li>Click "Create Key" and copy your API key</li>
-          <li>In PartsIQ, go to <strong>Settings → Integrations → OpenRouter</strong></li>
-          <li>Paste your API key and click "Save"</li>
-        </ul>
-
-        <p><strong>Cost:</strong> Pay-as-you-go. Typical costs: $0.50-$2.00 per 1,000 chat queries.</p>
-      </div>
-
-      <!-- Pinecone Integration -->
-      <div class="api-section">
-        <h3>🔍 Pinecone (Semantic Search)</h3>
-        <p><strong>What it does:</strong> Enables intelligent semantic search across your parts catalogs and maintenance documents.</p>
-
-        <p><strong>Setup Steps:</strong></p>
-        <ul>
-          <li>Create a free account at <a href="https://www.pinecone.io" target="_blank">pinecone.io</a></li>
-          <li>Create a new index with dimensions: <code>1536</code> (for OpenAI embeddings)</li>
-          <li>Go to "API Keys" and copy your API key</li>
-          <li>Note your index name and environment</li>
-          <li>In PartsIQ: <strong>Settings → Integrations → Pinecone</strong></li>
-          <li>Enter API Key, Index Name, and Environment</li>
-        </ul>
-
-        <p><strong>Cost:</strong> Free tier includes 1M vectors. Perfect for getting started!</p>
-      </div>
-
-      <!-- Neo4j Integration -->
-      <div class="api-section">
-        <h3>🕸️ Neo4j (Compatibility Graph)</h3>
-        <p><strong>What it does:</strong> Maps part compatibility relationships to ensure you order the right components.</p>
-
-        <p><strong>Setup Steps:</strong></p>
-        <ul>
-          <li>Create a free AuraDB instance at <a href="https://neo4j.com/cloud/aura/" target="_blank">neo4j.com/cloud/aura</a></li>
-          <li>Save your connection URI (starts with <code>neo4j+s://</code>)</li>
-          <li>Save your username (default: <code>neo4j</code>) and password</li>
-          <li>In PartsIQ: <strong>Settings → Integrations → Neo4j</strong></li>
-          <li>Enter URI, Username, and Password</li>
-        </ul>
-
-        <p><strong>Cost:</strong> Free tier available with 200K nodes. Great for testing!</p>
-      </div>
-
-      <!-- Email Integration -->
-      <div class="api-section">
-        <h3>📧 Email Integration (Supplier Communication)</h3>
-        <p><strong>What it does:</strong> Automatically send quote requests to suppliers and track responses.</p>
-
-        <p><strong>Setup Options:</strong></p>
-        <ul>
-          <li><strong>Gmail OAuth:</strong> Connect your Google Workspace or Gmail account</li>
-          <li><strong>Microsoft OAuth:</strong> Connect your Microsoft 365 or Outlook account</li>
-          <li><strong>SMTP:</strong> Use any email provider with SMTP settings</li>
-        </ul>
-
-        <p>Configure in: <strong>Settings → Email Integration</strong></p>
-      </div>
-
-      <div class="tip-box">
-        <p><strong>💡 Pro Tip:</strong> Start with OpenRouter and Pinecone first – these power the core AI features. You can add Neo4j and email integration later as you scale.</p>
       </div>
 
       <h2>✅ Quick Start Checklist</h2>
@@ -429,10 +354,10 @@ export function getWelcomeEmailHtml(name: string, companyName: string): string {
         <p><strong>Complete these steps to get started:</strong></p>
         <ul>
           <li>✓ Email verified (done!)</li>
-          <li>☐ Configure OpenRouter API (5 minutes)</li>
-          <li>☐ Set up Pinecone vector search (10 minutes)</li>
           <li>☐ Add your first vehicle to the fleet</li>
-          <li>☐ Start your first AI chat to search for parts</li>
+          <li>☐ Upload a parts catalog or maintenance manual (PDF)</li>
+          <li>☐ Try the AI chat to search for parts</li>
+          <li>☐ Add your suppliers and send your first quote request</li>
           <li>☐ Invite team members (optional)</li>
         </ul>
       </div>
@@ -441,14 +366,12 @@ export function getWelcomeEmailHtml(name: string, companyName: string): string {
 
       <p>Need help getting started?</p>
       <ul>
-        <li><a href="${getBaseUrl()}/docs">Documentation & Guides</a></li>
         <li><a href="${getBaseUrl()}/support">Contact Support</a></li>
         <li><a href="mailto:support@partsiq.com">Email: support@partsiq.com</a></li>
       </ul>
 
       <h2>🚀 What's Next?</h2>
 
-      <p>Once you've configured your integrations:</p>
       <ol>
         <li>Add your first vehicle or equipment to start tracking</li>
         <li>Upload maintenance schedules (PDFs supported)</li>

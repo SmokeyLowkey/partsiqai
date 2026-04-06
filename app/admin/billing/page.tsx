@@ -391,7 +391,7 @@ function AdminBillingPageContent() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCancelDialog(false)}>
+            <Button variant="outline" onClick={() => setShowCancelDialog(false)} disabled={actionLoading}>
               Keep Subscription
             </Button>
             <Button

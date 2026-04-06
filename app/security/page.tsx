@@ -5,9 +5,9 @@ import Link from "next/link"
 import { BreadcrumbJsonLd } from "@/components/seo/breadcrumb-jsonld"
 
 export const metadata: Metadata = {
-  title: "Enterprise-Grade Security for Parts Procurement Data",
+  title: "Enterprise Security",
   description:
-    "PartsIQ security: TLS 1.3 encryption, AES-256 at rest, role-based access control, audit logging, 99.9% uptime SLA, and daily automated backups for your parts procurement data.",
+    "PartsIQ security: TLS 1.3, AES-256 encryption, role-based access, audit logging, 99.9% uptime SLA, and daily backups for your parts procurement data.",
   alternates: {
     canonical: "/security",
   },

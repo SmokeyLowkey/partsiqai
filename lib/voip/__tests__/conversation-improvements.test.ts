@@ -45,6 +45,10 @@ function makeState(overrides: Partial<CallState> = {}): CallState {
     botScreeningMaxAttempts: 3,
     hasMiscCosts: false,
     miscCostsAsked: false,
+    allPartsRequested: false,
+    waitingForTransfer: false,
+    isFollowUp: false,
+    turnNumber: 0,
     status: 'in_progress',
     ...overrides,
   };

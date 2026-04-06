@@ -4,9 +4,9 @@ import { JsonLd } from "@/components/seo/json-ld"
 import { BreadcrumbJsonLd } from "@/components/seo/breadcrumb-jsonld"
 
 export const metadata: Metadata = {
-  title: "AI Parts Ordering System & Voice Agent | PartsIQ",
+  title: { absolute: "PartsIQ - Parts Inventory Software | AI-Powered" },
   description:
-    "PartsIQ's AI voice agent calls your suppliers, negotiates pricing, and brings back structured quotes automatically. The AI-powered parts ordering system that reduces sourcing time from hours to minutes.",
+    "AI-powered parts inventory software with voice agent that calls suppliers and brings back quotes. Reduce sourcing time from hours to minutes.",
   keywords: [
     "parts ordering system",
     "AI parts lookup",

@@ -29,6 +29,14 @@ const PUBLIC_API_PREFIXES = [
 ]
 
 export async function middleware(request: NextRequest) {
+  // www → non-www redirect (fixes GSC canonical issue)
+  const hostname = request.headers.get('host') || ''
+  if (hostname.startsWith('www.')) {
+    const newUrl = new URL(request.url)
+    newUrl.host = hostname.replace('www.', '')
+    return NextResponse.redirect(newUrl, 301)
+  }
+
   const { pathname } = request.nextUrl
 
   // Public routes - allow all

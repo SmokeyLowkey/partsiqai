@@ -252,7 +252,7 @@ describe('LangGraph Handler API', () => {
 
     it('should reject unauthorized requests in production', async () => {
       const originalEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = 'production';
+      Object.defineProperty(process.env, 'NODE_ENV', { value: 'production', writable: true });
 
       const request = new NextRequest(
         'http://localhost:3000/api/voip/langgraph-handler/chat/completions',
@@ -269,7 +269,7 @@ describe('LangGraph Handler API', () => {
       const response = await POST(request);
       expect(response.status).toBe(401);
 
-      process.env.NODE_ENV = originalEnv;
+      Object.defineProperty(process.env, 'NODE_ENV', { value: originalEnv, writable: true });
     });
 
     it('should return graceful spoken error when call state not found', async () => {

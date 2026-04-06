@@ -11,16 +11,20 @@ import {
   AlertTriangle,
   TrendingUp,
   ChevronDown,
+  Building2,
+  Truck,
+  Wheat,
 } from "lucide-react"
 import Link from "next/link"
 import { JsonLd } from "@/components/seo/json-ld"
 import { BreadcrumbJsonLd } from "@/components/seo/breadcrumb-jsonld"
 import { PublicFooter } from "@/components/layout/public-footer"
+import { RelatedSolutions } from "@/components/solutions/related-solutions"
 
 export const metadata: Metadata = {
-  title: "Parts Inventory Tracking Software for Heavy Equipment | PartsIQ",
+  title: "Parts Inventory Tracking Software",
   description:
-    "Real-time parts inventory tracking software with automated reorder alerts, multi-location support, and AI-powered forecasting. Eliminate stockouts and reduce overstock by 40%.",
+    "Real-time parts inventory tracking with automated reorder alerts, multi-location support, and AI-powered forecasting. Eliminate stockouts and reduce overstock by 40%.",
   keywords: [
     "parts inventory tracking",
     "parts inventory system",
@@ -287,6 +291,158 @@ export default function PartsInventoryTrackingPage() {
           </div>
         </section>
 
+        {/* How It Works */}
+        <section className="py-24 bg-white">
+          <div className="container mx-auto px-6">
+            <div className="max-w-4xl mx-auto">
+              <div className="mb-16 text-center">
+                <h2 className="text-4xl font-bold mb-4 text-slate-950 tracking-tight">
+                  How our parts inventory tracking works
+                </h2>
+                <p className="text-xl text-slate-600 max-w-2xl mx-auto">
+                  Set up real-time inventory tracking in four steps and never be surprised by a stockout again.
+                </p>
+              </div>
+
+              <div className="space-y-12">
+                <div className="flex gap-6">
+                  <div className="flex-shrink-0">
+                    <div className="w-10 h-10 bg-slate-950 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                      1
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-950 mb-2">Connect your inventory sources</h3>
+                    <p className="text-slate-600 leading-relaxed">
+                      Import your parts data from CSV exports, spreadsheets, or manual entry. PartsIQ&apos;s inventory tracking software consolidates every part number, location, and quantity into a single centralized database -- giving you one source of truth no matter how many warehouses, yards, or job sites you operate.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-6">
+                  <div className="flex-shrink-0">
+                    <div className="w-10 h-10 bg-slate-950 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                      2
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-950 mb-2">Set thresholds and alerts</h3>
+                    <p className="text-slate-600 leading-relaxed">
+                      Configure minimum and maximum stock levels for every part in your parts inventory system. When quantities drop below your defined thresholds, the platform automatically triggers notifications and can initiate quote requests to your preferred suppliers -- eliminating the manual checks that let critical parts slip through the cracks.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-6">
+                  <div className="flex-shrink-0">
+                    <div className="w-10 h-10 bg-slate-950 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                      3
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-950 mb-2">Monitor real-time dashboards</h3>
+                    <p className="text-slate-600 leading-relaxed">
+                      Access live dashboards that show stock levels, recent transactions, and pending orders across every location. Real-time inventory tracking means every shipment received, every part issued, and every transfer between sites is reflected instantly -- so the numbers you see are always the numbers you have.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-6">
+                  <div className="flex-shrink-0">
+                    <div className="w-10 h-10 bg-slate-950 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                      4
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-950 mb-2">AI predicts and reorders</h3>
+                    <p className="text-slate-600 leading-relaxed">
+                      PartsIQ&apos;s AI analyzes your consumption history, maintenance schedules, and seasonal patterns to forecast future demand. The parts inventory tracking platform recommends optimal reorder quantities and timing, turning reactive purchasing into a proactive strategy that keeps costs low and availability high.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Who It's For */}
+        <section className="py-24 bg-slate-50">
+          <div className="container mx-auto px-6">
+            <div className="max-w-6xl mx-auto">
+              <div className="mb-16 text-center">
+                <h2 className="text-4xl font-bold mb-4 text-slate-950 tracking-tight">
+                  Who uses parts inventory tracking
+                </h2>
+                <p className="text-xl text-slate-600 max-w-2xl mx-auto">
+                  Our inventory tracking software is built for operations teams that cannot afford equipment downtime.
+                </p>
+              </div>
+
+              <div className="grid md:grid-cols-3 gap-8">
+                <div className="bg-white border border-slate-200 rounded-lg p-8">
+                  <div className="w-12 h-12 bg-slate-950 rounded-lg flex items-center justify-center mb-5">
+                    <Building2 className="h-6 w-6 text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold text-slate-950 mb-3">Multi-Site Construction Companies</h3>
+                  <p className="text-slate-600 leading-relaxed mb-4">
+                    Construction firms running multiple active job sites need to know exactly which parts are available and where. PartsIQ&apos;s parts inventory tracking gives project managers a consolidated view across every yard and warehouse, so they can transfer stock between sites or trigger reorders before a machine sits idle waiting on a filter or hydraulic hose.
+                  </p>
+                  <ul className="space-y-2 text-slate-600">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                      <span>Cross-site inventory visibility and transfers</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                      <span>Project-level parts consumption tracking</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-lg p-8">
+                  <div className="w-12 h-12 bg-slate-950 rounded-lg flex items-center justify-center mb-5">
+                    <Truck className="h-6 w-6 text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold text-slate-950 mb-3">Equipment Rental Fleets</h3>
+                  <p className="text-slate-600 leading-relaxed mb-4">
+                    Rental companies must turn around equipment fast to maximize utilization. Real-time inventory tracking ensures maintenance teams always have the wear parts, filters, and fluids they need to service machines between rentals. PartsIQ&apos;s parts inventory system ties stock levels to fleet maintenance schedules, cutting turnaround time and preventing revenue loss.
+                  </p>
+                  <ul className="space-y-2 text-slate-600">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                      <span>Maintenance-driven stock planning</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                      <span>Faster equipment turnaround between rentals</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-lg p-8">
+                  <div className="w-12 h-12 bg-slate-950 rounded-lg flex items-center justify-center mb-5">
+                    <Wheat className="h-6 w-6 text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold text-slate-950 mb-3">Agricultural Cooperatives</h3>
+                  <p className="text-slate-600 leading-relaxed mb-4">
+                    Agricultural cooperatives manage parts for diverse equipment across many member operations. Inventory tracking software from PartsIQ lets co-ops maintain a shared parts pool with real-time visibility into what is available, what is committed, and what needs reordering -- ensuring no single member&apos;s harvest is delayed because a critical component was unavailable.
+                  </p>
+                  <ul className="space-y-2 text-slate-600">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                      <span>Shared inventory pool across member operations</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                      <span>Seasonal forecasting for planting and harvest</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Metrics Section */}
         <section className="py-24 bg-slate-950 text-white">
           <div className="container mx-auto px-6">
@@ -408,6 +564,7 @@ export default function PartsInventoryTrackingPage() {
           </div>
         </section>
       </div>
+      <RelatedSolutions currentSlug="parts-inventory-tracking" />
       <PublicFooter />
     </>
   )

@@ -30,6 +30,7 @@ export default function SignupPage() {
     industry: "",
     companySize: "",
     primaryUseCase: "",
+    website: "", // honeypot field — bots fill this, humans won't see it
   })
 
   // Password strength state
@@ -65,8 +66,8 @@ export default function SignupPage() {
     setLoading(true)
     setError("")
 
-    // Validate all fields are filled
-    const requiredFields = Object.entries(formData)
+    // Validate all fields are filled (exclude honeypot)
+    const requiredFields = Object.entries(formData).filter(([key]) => key !== "website")
     const emptyFields = requiredFields.filter(([_, value]) => !value)
 
     if (emptyFields.length > 0) {
@@ -145,6 +146,20 @@ export default function SignupPage() {
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
+
+              {/* Honeypot field — hidden from humans, filled by bots */}
+              <div aria-hidden="true" style={{ position: 'absolute', left: '-9999px', opacity: 0, height: 0, overflow: 'hidden' }}>
+                <label htmlFor="website">Website</label>
+                <input
+                  type="text"
+                  id="website"
+                  name="website"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  value={formData.website}
+                  onChange={(e) => handleInputChange("website", e.target.value)}
+                />
+              </div>
 
               {/* Personal Information */}
               <div className="space-y-4">

@@ -16,6 +16,15 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import {
   Truck,
   CheckCircle,
   AlertCircle,
@@ -30,9 +39,11 @@ import {
   Wrench,
   Upload,
   AlertTriangle,
+  Plus,
 } from 'lucide-react';
 import Link from 'next/link';
 import { MaintenanceScheduleReview } from '@/components/admin/MaintenanceScheduleReview';
+import { useToast } from '@/hooks/use-toast';
 
 interface Vehicle {
   id: string;
@@ -117,6 +128,7 @@ const STATUS_CONFIG = {
 
 export default function VehicleManagementPage() {
   const { status: sessionStatus } = useSession();
+  const { toast } = useToast();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [counts, setCounts] = useState<StatusCounts>({
     PENDING_ADMIN_REVIEW: 0,
@@ -137,6 +149,98 @@ export default function VehicleManagementPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [neo4jSchema, setNeo4jSchema] = useState<Neo4jSchemaData | null>(null);
   const [loadingSchema, setLoadingSchema] = useState(false);
+
+  // Add Vehicle dialog state
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [addFormData, setAddFormData] = useState<Record<string, any>>({
+    type: 'EXCAVATOR',
+    industryCategory: 'CONSTRUCTION',
+    status: 'ACTIVE',
+    operatingHours: 0,
+    healthScore: 100,
+  });
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleAddVehicle = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!addFormData.vehicleId || !addFormData.serialNumber || !addFormData.make || !addFormData.model || !addFormData.year) {
+      toast({
+        variant: 'destructive',
+        title: 'Validation Error',
+        description: 'Please fill in all required fields (Vehicle ID, Serial Number, Make, Model, Year)',
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const response = await fetch('/api/vehicles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(addFormData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        toast({
+          variant: 'destructive',
+          title: 'Failed to Add Vehicle',
+          description: errorData.error || errorData.message || 'Unknown error occurred',
+        });
+        return;
+      }
+
+      const data = await response.json();
+      const newVehicle = data.vehicle;
+
+      // Upload PDF if provided
+      if (pdfFile) {
+        const uploadFormData = new FormData();
+        uploadFormData.append('file', pdfFile);
+        try {
+          const uploadResponse = await fetch(`/api/vehicles/${newVehicle.id}/upload-pdf`, {
+            method: 'POST',
+            body: uploadFormData,
+          });
+          if (!uploadResponse.ok) {
+            toast({
+              variant: 'destructive',
+              title: 'Partial Success',
+              description: 'Vehicle created but PDF upload failed. You can upload it later.',
+            });
+          }
+        } catch {
+          toast({
+            variant: 'destructive',
+            title: 'Partial Success',
+            description: 'Vehicle created but PDF upload failed.',
+          });
+        }
+      }
+
+      toast({ title: 'Success', description: 'Vehicle added successfully' });
+      setIsAddDialogOpen(false);
+      setAddFormData({
+        type: 'EXCAVATOR',
+        industryCategory: 'CONSTRUCTION',
+        status: 'ACTIVE',
+        operatingHours: 0,
+        healthScore: 100,
+      });
+      setPdfFile(null);
+      loadVehicles();
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Failed to add vehicle. Please try again.',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     if (sessionStatus === 'authenticated') {
@@ -418,10 +522,216 @@ export default function VehicleManagementPage() {
             Manage search mappings for all vehicles in your organization
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <Badge variant="outline" className="text-xs">
             {counts.total} Total Vehicles
           </Badge>
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-green-600 hover:bg-green-700 text-white">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Vehicle
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Add New Vehicle</DialogTitle>
+                <DialogDescription>
+                  Enter vehicle information. Duplicate Vehicle IDs and Serial Numbers will be rejected.
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleAddVehicle} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="add-vehicleId">Vehicle ID *</Label>
+                    <Input
+                      id="add-vehicleId"
+                      placeholder="VEH-001"
+                      required
+                      value={addFormData.vehicleId || ''}
+                      onChange={(e) => setAddFormData({ ...addFormData, vehicleId: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="add-serialNumber">Serial Number / VIN *</Label>
+                    <Input
+                      id="add-serialNumber"
+                      placeholder="ABC123456"
+                      required
+                      value={addFormData.serialNumber || ''}
+                      onChange={(e) => setAddFormData({ ...addFormData, serialNumber: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="add-make">Make *</Label>
+                    <Input
+                      id="add-make"
+                      placeholder="Caterpillar"
+                      required
+                      value={addFormData.make || ''}
+                      onChange={(e) => setAddFormData({ ...addFormData, make: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="add-model">Model *</Label>
+                    <Input
+                      id="add-model"
+                      placeholder="320F"
+                      required
+                      value={addFormData.model || ''}
+                      onChange={(e) => setAddFormData({ ...addFormData, model: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="add-year">Year *</Label>
+                    <Input
+                      id="add-year"
+                      type="number"
+                      placeholder="2020"
+                      required
+                      value={addFormData.year || ''}
+                      onChange={(e) => setAddFormData({ ...addFormData, year: parseInt(e.target.value) })}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="add-type">Vehicle Type *</Label>
+                    <Select
+                      value={addFormData.type}
+                      onValueChange={(value) => setAddFormData({ ...addFormData, type: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="EXCAVATOR">Excavator</SelectItem>
+                        <SelectItem value="DOZER">Dozer</SelectItem>
+                        <SelectItem value="LOADER">Loader</SelectItem>
+                        <SelectItem value="CRANE">Crane</SelectItem>
+                        <SelectItem value="DUMP_TRUCK">Dump Truck</SelectItem>
+                        <SelectItem value="GRADER">Grader</SelectItem>
+                        <SelectItem value="COMPACTOR">Compactor</SelectItem>
+                        <SelectItem value="TRACTOR">Tractor</SelectItem>
+                        <SelectItem value="COMBINE">Combine</SelectItem>
+                        <SelectItem value="SPRAYER">Sprayer</SelectItem>
+                        <SelectItem value="HARVESTER">Harvester</SelectItem>
+                        <SelectItem value="OTHER">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="add-industry">Industry *</Label>
+                    <Select
+                      value={addFormData.industryCategory}
+                      onValueChange={(value) => setAddFormData({ ...addFormData, industryCategory: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="CONSTRUCTION">Construction</SelectItem>
+                        <SelectItem value="AGRICULTURE">Agriculture</SelectItem>
+                        <SelectItem value="MINING">Mining</SelectItem>
+                        <SelectItem value="FORESTRY">Forestry</SelectItem>
+                        <SelectItem value="INDUSTRIAL">Industrial</SelectItem>
+                        <SelectItem value="OTHER">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="add-location">Current Location</Label>
+                    <Input
+                      id="add-location"
+                      placeholder="Job Site A, Workshop..."
+                      value={addFormData.currentLocation || ''}
+                      onChange={(e) => setAddFormData({ ...addFormData, currentLocation: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="add-engineModel">Engine Model</Label>
+                    <Input
+                      id="add-engineModel"
+                      placeholder="C7.1 ACERT"
+                      value={addFormData.engineModel || ''}
+                      onChange={(e) => setAddFormData({ ...addFormData, engineModel: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="add-hours">Operating Hours</Label>
+                    <Input
+                      id="add-hours"
+                      type="number"
+                      placeholder="0"
+                      value={addFormData.operatingHours || 0}
+                      onChange={(e) => setAddFormData({ ...addFormData, operatingHours: parseInt(e.target.value) })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="add-health">Health Score (0-100)</Label>
+                    <Input
+                      id="add-health"
+                      type="number"
+                      min="0"
+                      max="100"
+                      placeholder="100"
+                      value={addFormData.healthScore || 100}
+                      onChange={(e) => setAddFormData({ ...addFormData, healthScore: parseInt(e.target.value) })}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="add-pdf">Maintenance Manual (PDF)</Label>
+                  <Input
+                    id="add-pdf"
+                    type="file"
+                    accept=".pdf"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file && file.type === 'application/pdf' && file.size <= 10 * 1024 * 1024) {
+                        setPdfFile(file);
+                      } else if (file) {
+                        toast({ variant: 'destructive', title: 'Invalid File', description: 'Please select a PDF under 10MB' });
+                      }
+                    }}
+                  />
+                  {pdfFile && (
+                    <p className="text-xs text-muted-foreground">
+                      Selected: {pdfFile.name} ({(pdfFile.size / 1024 / 1024).toFixed(2)} MB)
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">PDF only, max 10MB</p>
+                </div>
+
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" className="bg-green-600 hover:bg-green-700 text-white" disabled={isSubmitting}>
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        Adding...
+                      </>
+                    ) : (
+                      'Add Vehicle'
+                    )}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 

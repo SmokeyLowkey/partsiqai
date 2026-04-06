@@ -88,6 +88,15 @@ export async function POST(request: NextRequest) {
     if (!rateCheck.success) return rateCheck.response;
 
     const body = await request.json();
+
+    // Honeypot: bots fill hidden fields, real users don't
+    if (body.website) {
+      return NextResponse.json(
+        { message: "Account created successfully. Please check your email to verify your account." },
+        { status: 200 }
+      );
+    }
+
     const {
       email,
       password,
@@ -121,6 +130,23 @@ export async function POST(request: NextRequest) {
     if (!emailRegex.test(email)) {
       return NextResponse.json(
         { error: "Invalid email format" },
+        { status: 400 }
+      );
+    }
+
+    // Block disposable/temporary email domains
+    const disposableDomains = [
+      'sharebot.net', 'mailinator.com', 'guerrillamail.com', 'tempmail.com',
+      'throwaway.email', 'yopmail.com', 'trashmail.com', 'fakeinbox.com',
+      'sharklasers.com', 'guerrillamailblock.com', 'grr.la', 'dispostable.com',
+      'tempail.com', 'temp-mail.org', 'emailondeck.com', 'getairmail.com',
+      'maildrop.cc', 'mailnesia.com', 'guerrillamail.info', 'throwawaymail.com',
+      'tempinbox.com', 'fakemailgenerator.com', 'mytemp.email', 'mohmal.com',
+    ];
+    const emailDomain = email.split('@')[1].toLowerCase();
+    if (disposableDomains.includes(emailDomain)) {
+      return NextResponse.json(
+        { error: "Please use a valid business email address. Disposable email addresses are not allowed." },
         { status: 400 }
       );
     }

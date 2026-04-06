@@ -19,9 +19,9 @@ import { JsonLd } from "@/components/seo/json-ld"
 import { BreadcrumbJsonLd } from "@/components/seo/breadcrumb-jsonld"
 
 export const metadata: Metadata = {
-  title: "Parts Inventory Management Software Features | Industrial Parts Search Engine",
+  title: "Parts Inventory Software Features",
   description:
-    "Multi-agent AI parts search, digital parts catalog, supplier quote management, equipment tracking, and parts diagram search. Complete parts inventory management software for industrial operations.",
+    "AI parts search, digital catalog, supplier quote management, equipment tracking, and diagram search. Complete parts inventory software for industrial operations.",
   keywords: [
     "parts inventory management software",
     "industrial parts search engine",

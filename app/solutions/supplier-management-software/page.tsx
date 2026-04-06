@@ -19,11 +19,12 @@ import Link from "next/link"
 import { JsonLd } from "@/components/seo/json-ld"
 import { BreadcrumbJsonLd } from "@/components/seo/breadcrumb-jsonld"
 import { PublicFooter } from "@/components/layout/public-footer"
+import { RelatedSolutions } from "@/components/solutions/related-solutions"
 
 export const metadata: Metadata = {
-  title: "Supplier Management Software for Industrial Parts Procurement | PartsIQ",
+  title: "Supplier Management Software",
   description:
-    "AI-powered supplier management software with voice agent automation, automated email quoting, side-by-side price comparison, and supplier scoring for industrial parts procurement.",
+    "AI-powered supplier management with voice agent automation, automated email quoting, price comparison, and supplier scoring for industrial parts procurement.",
   keywords: [
     "supplier management software",
     "parts procurement software",
@@ -290,6 +291,130 @@ export default function SupplierManagementSoftwarePage() {
           </div>
         </section>
 
+        {/* How It Works Section */}
+        <section className="py-24 bg-white">
+          <div className="container mx-auto px-6">
+            <div className="max-w-6xl mx-auto">
+              <div className="mb-16 text-center">
+                <h2 className="text-4xl font-bold mb-4 text-slate-950 tracking-tight">
+                  How our supplier management software works
+                </h2>
+                <p className="text-xl text-slate-600 max-w-2xl mx-auto">
+                  From adding your first vendor to tracking deliveries, our procurement automation platform handles every step of the supplier quote management process.
+                </p>
+              </div>
+
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+                <div className="text-center p-6">
+                  <div className="w-12 h-12 bg-slate-950 rounded-full flex items-center justify-center mx-auto mb-4 text-white font-bold text-lg">
+                    1
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-950 mb-2">Add Your Suppliers</h3>
+                  <p className="text-slate-600 text-sm">
+                    Import your existing supplier contacts or add them manually to the vendor management system. Include phone numbers, email addresses, specialty categories, and preferred contact methods. PartsIQ organizes everything into a centralized supplier directory.
+                  </p>
+                </div>
+                <div className="text-center p-6">
+                  <div className="w-12 h-12 bg-slate-950 rounded-full flex items-center justify-center mx-auto mb-4 text-white font-bold text-lg">
+                    2
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-950 mb-2">AI Voice Agent Calls for Quotes</h3>
+                  <p className="text-slate-600 text-sm">
+                    Select the parts you need and let the automated procurement software do the rest. The AI voice agent places outbound calls to your suppliers, describes the parts in detail, asks for pricing and availability, and records every quote automatically.
+                  </p>
+                </div>
+                <div className="text-center p-6">
+                  <div className="w-12 h-12 bg-slate-950 rounded-full flex items-center justify-center mx-auto mb-4 text-white font-bold text-lg">
+                    3
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-950 mb-2">Compare Quotes Side by Side</h3>
+                  <p className="text-slate-600 text-sm">
+                    All supplier responses are extracted and organized into a comparison table. The supplier quote management dashboard shows unit price, total cost, lead time, and availability from every vendor at a glance so you can identify the best deal instantly.
+                  </p>
+                </div>
+                <div className="text-center p-6">
+                  <div className="w-12 h-12 bg-slate-950 rounded-full flex items-center justify-center mx-auto mb-4 text-white font-bold text-lg">
+                    4
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-950 mb-2">Approve and Track Orders</h3>
+                  <p className="text-slate-600 text-sm">
+                    Choose a supplier, approve the quote, and track the order from confirmation to delivery. The procurement automation workflow keeps your entire team informed with status updates, expected delivery dates, and automated follow-ups if timelines slip.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Beyond Basic Vendor Management Section */}
+        <section className="py-24 bg-slate-50">
+          <div className="container mx-auto px-6">
+            <div className="max-w-6xl mx-auto">
+              <div className="mb-16 text-center">
+                <h2 className="text-4xl font-bold mb-4 text-slate-950 tracking-tight">
+                  Beyond basic vendor management
+                </h2>
+                <p className="text-xl text-slate-600 max-w-2xl mx-auto">
+                  Traditional vendor management systems digitize paperwork. PartsIQ&apos;s supplier management software replaces the work itself with AI-driven procurement automation.
+                </p>
+              </div>
+
+              <div className="grid md:grid-cols-3 gap-10">
+                <div className="bg-white rounded-lg p-8 border border-slate-200">
+                  <h3 className="text-xl font-bold text-slate-950 mb-4">AI Voice Agent vs. Manual Phone Calls</h3>
+                  <p className="text-slate-600 mb-4 leading-relaxed">
+                    Your procurement team should not spend hours playing phone tag with suppliers. PartsIQ&apos;s AI voice agent handles outbound calls autonomously, speaking naturally with supplier reps, capturing pricing details, and reporting back with structured quote data. The automated procurement software frees your team to focus on decisions, not dialing.
+                  </p>
+                  <ul className="space-y-2 text-slate-600">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                      <span>No more voicemails or hold queues</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                      <span>Quotes captured and structured automatically</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="bg-white rounded-lg p-8 border border-slate-200">
+                  <h3 className="text-xl font-bold text-slate-950 mb-4">Automated Email Quoting vs. Back-and-Forth Chains</h3>
+                  <p className="text-slate-600 mb-4 leading-relaxed">
+                    Typical supplier quote management involves writing individual emails, tracking who responded, and manually extracting prices from reply threads. PartsIQ sends professional quote requests to multiple vendors simultaneously, monitors inboxes for responses, and uses AI to extract pricing data into your comparison dashboard automatically.
+                  </p>
+                  <ul className="space-y-2 text-slate-600">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                      <span>One-click multi-supplier outreach</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                      <span>AI extracts prices from email replies</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="bg-white rounded-lg p-8 border border-slate-200">
+                  <h3 className="text-xl font-bold text-slate-950 mb-4">Supplier Scoring vs. Gut Feelings</h3>
+                  <p className="text-slate-600 mb-4 leading-relaxed">
+                    Most teams choose suppliers based on familiarity rather than performance data. PartsIQ&apos;s vendor management system tracks response time, quote accuracy, delivery reliability, and pricing competitiveness for every supplier. Data-driven scores replace guesswork, helping you build a network of vendors you can count on for every procurement cycle.
+                  </p>
+                  <ul className="space-y-2 text-slate-600">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                      <span>Performance metrics tracked per vendor</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                      <span>Data-driven sourcing decisions</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Metrics Section */}
         <section className="py-24 bg-slate-950 text-white">
           <div className="container mx-auto px-6">
@@ -413,6 +538,7 @@ export default function SupplierManagementSoftwarePage() {
           </div>
         </section>
       </div>
+      <RelatedSolutions currentSlug="supplier-management-software" />
       <PublicFooter />
     </>
   )

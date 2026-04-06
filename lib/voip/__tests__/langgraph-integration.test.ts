@@ -107,6 +107,10 @@ describe('LangGraph Integration - End-to-End', () => {
         botScreeningMaxAttempts: 3,
         hasMiscCosts: false,
         miscCostsAsked: false,
+        allPartsRequested: false,
+        waitingForTransfer: false,
+        isFollowUp: false,
+        turnNumber: 0,
         status: 'in_progress' as const,
       };
 
@@ -180,6 +184,10 @@ describe('LangGraph Integration - End-to-End', () => {
         botScreeningMaxAttempts: 3,
         hasMiscCosts: false,
         miscCostsAsked: false,
+        allPartsRequested: false,
+        waitingForTransfer: false,
+        isFollowUp: false,
+        turnNumber: 0,
         status: 'in_progress' as const,
       };
 
@@ -223,6 +231,10 @@ describe('LangGraph Integration - End-to-End', () => {
         botScreeningMaxAttempts: 3,
         hasMiscCosts: false,
         miscCostsAsked: false,
+        allPartsRequested: false,
+        waitingForTransfer: false,
+        isFollowUp: false,
+        turnNumber: 0,
         status: 'in_progress' as const,
       };
 
@@ -261,6 +273,10 @@ describe('LangGraph Integration - End-to-End', () => {
         botScreeningMaxAttempts: 3,
         hasMiscCosts: false,
         miscCostsAsked: false,
+        allPartsRequested: false,
+        waitingForTransfer: false,
+        isFollowUp: false,
+        turnNumber: 0,
         status: 'in_progress' as const,
       };
 
@@ -298,6 +314,15 @@ describe('LangGraph Integration - End-to-End', () => {
         maxNegotiationAttempts: 2,
         negotiatedParts: [],
         clarificationAttempts: 0,
+        botScreeningDetected: false,
+        botScreeningAttempts: 0,
+        botScreeningMaxAttempts: 3,
+        allPartsRequested: false,
+        hasMiscCosts: false,
+        miscCostsAsked: false,
+        waitingForTransfer: false,
+        isFollowUp: false,
+        turnNumber: 0,
         status: 'in_progress' as const,
         customContext: 'Company: ACME, Vehicle: 2022 Tractor',
       };
@@ -336,6 +361,10 @@ describe('LangGraph Integration - End-to-End', () => {
         botScreeningMaxAttempts: 3,
         hasMiscCosts: false,
         miscCostsAsked: false,
+        allPartsRequested: false,
+        waitingForTransfer: false,
+        isFollowUp: false,
+        turnNumber: 0,
         status: 'in_progress' as const,
       };
 

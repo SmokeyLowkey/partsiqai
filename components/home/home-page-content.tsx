@@ -47,11 +47,9 @@ export default function HomePageContent() {
             </div>
 
             <h1 className="text-5xl md:text-7xl font-bold mb-8 leading-[1.1] tracking-tight">
-              Your AI calls suppliers
+              Parts Inventory Software
               <br />
-              <span className="text-slate-400">and brings back</span>
-              <br />
-              quotes
+              <span className="text-slate-400">Powered by AI</span>
             </h1>
 
             <p className="text-xl md:text-2xl mb-12 text-slate-400 max-w-2xl leading-relaxed">

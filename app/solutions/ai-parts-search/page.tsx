@@ -18,11 +18,12 @@ import Link from "next/link"
 import { JsonLd } from "@/components/seo/json-ld"
 import { BreadcrumbJsonLd } from "@/components/seo/breadcrumb-jsonld"
 import { PublicFooter } from "@/components/layout/public-footer"
+import { RelatedSolutions } from "@/components/solutions/related-solutions"
 
 export const metadata: Metadata = {
-  title: "AI-Powered Industrial Parts Search Engine | PartsIQ",
+  title: "AI-Powered Parts Search Engine",
   description:
-    "Semantic AI parts search engine that searches 3 databases simultaneously. Natural language queries, vehicle context awareness, and 95% match accuracy for industrial parts lookup.",
+    "Semantic AI parts search across 3 databases simultaneously. Natural language queries, vehicle context awareness, and 95% match accuracy for industrial parts.",
   keywords: [
     "AI parts lookup",
     "semantic parts search",
@@ -289,6 +290,130 @@ export default function AiPartsSearchPage() {
           </div>
         </section>
 
+        {/* How It Works Section */}
+        <section className="py-24 bg-white">
+          <div className="container mx-auto px-6">
+            <div className="max-w-6xl mx-auto">
+              <div className="mb-16 text-center">
+                <h2 className="text-4xl font-bold mb-4 text-slate-950 tracking-tight">
+                  How AI parts search works
+                </h2>
+                <p className="text-xl text-slate-600 max-w-2xl mx-auto">
+                  From natural language query to supplier quote in four simple steps. Our AI parts lookup engine handles the complexity so you do not have to.
+                </p>
+              </div>
+
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+                <div className="text-center p-6">
+                  <div className="w-12 h-12 bg-slate-950 rounded-full flex items-center justify-center mx-auto mb-4 text-white font-bold text-lg">
+                    1
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-950 mb-2">Describe What You Need</h3>
+                  <p className="text-slate-600 text-sm">
+                    Type a plain English description of the part you are looking for. No part numbers required. Our semantic parts search understands phrases like &quot;hydraulic cylinder seal for a 2018 Cat 336&quot; just as well as an exact OEM number.
+                  </p>
+                </div>
+                <div className="text-center p-6">
+                  <div className="w-12 h-12 bg-slate-950 rounded-full flex items-center justify-center mx-auto mb-4 text-white font-bold text-lg">
+                    2
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-950 mb-2">AI Searches 3 Databases</h3>
+                  <p className="text-slate-600 text-sm">
+                    The parts search engine dispatches your query to three specialized agents simultaneously: PostgreSQL for structured data, Pinecone for vector similarity, and Neo4j for graph-based relationship matching. All three return results in parallel.
+                  </p>
+                </div>
+                <div className="text-center p-6">
+                  <div className="w-12 h-12 bg-slate-950 rounded-full flex items-center justify-center mx-auto mb-4 text-white font-bold text-lg">
+                    3
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-950 mb-2">Results Ranked by Confidence</h3>
+                  <p className="text-slate-600 text-sm">
+                    Every result is assigned a confidence score based on semantic similarity, text match strength, graph relationships, and equipment compatibility. The AI parts search algorithm surfaces the best matches first so you can make decisions quickly.
+                  </p>
+                </div>
+                <div className="text-center p-6">
+                  <div className="w-12 h-12 bg-slate-950 rounded-full flex items-center justify-center mx-auto mb-4 text-white font-bold text-lg">
+                    4
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-950 mb-2">One-Click Quote Request</h3>
+                  <p className="text-slate-600 text-sm">
+                    Found the right part? Send a quote request to your suppliers with a single click. PartsIQ connects your ai parts lookup results directly to the procurement workflow, eliminating copy-paste between systems.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Built for Heavy Equipment Section */}
+        <section className="py-24 bg-slate-50">
+          <div className="container mx-auto px-6">
+            <div className="max-w-6xl mx-auto">
+              <div className="mb-16 text-center">
+                <h2 className="text-4xl font-bold mb-4 text-slate-950 tracking-tight">
+                  Built for heavy equipment parts sourcing
+                </h2>
+                <p className="text-xl text-slate-600 max-w-2xl mx-auto">
+                  Generic search tools were not designed for industrial parts. PartsIQ&apos;s AI inventory management understands the unique challenges of heavy equipment procurement.
+                </p>
+              </div>
+
+              <div className="grid md:grid-cols-3 gap-10">
+                <div className="bg-white rounded-lg p-8 border border-slate-200">
+                  <h3 className="text-xl font-bold text-slate-950 mb-4">Cross-Reference Across Brands</h3>
+                  <p className="text-slate-600 mb-4 leading-relaxed">
+                    Need a Caterpillar part but want to check Komatsu equivalents? The AI parts search engine traverses cross-reference graphs to find compatible alternatives from other manufacturers. Stop paying OEM prices when aftermarket or cross-brand options exist.
+                  </p>
+                  <ul className="space-y-2 text-slate-600">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                      <span>CAT to Komatsu equivalent lookups</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                      <span>OEM to aftermarket cross-referencing</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="bg-white rounded-lg p-8 border border-slate-200">
+                  <h3 className="text-xl font-bold text-slate-950 mb-4">Maintenance Manual Part Lookups</h3>
+                  <p className="text-slate-600 mb-4 leading-relaxed">
+                    Technicians often describe parts using service manual terminology that does not match catalog listings. Our semantic parts search bridges that gap, interpreting maintenance language and mapping it to the correct inventory items in your ai inventory management system.
+                  </p>
+                  <ul className="space-y-2 text-slate-600">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                      <span>Service manual terminology understood</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                      <span>Technician-friendly natural language input</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="bg-white rounded-lg p-8 border border-slate-200">
+                  <h3 className="text-xl font-bold text-slate-950 mb-4">Legacy Equipment Support</h3>
+                  <p className="text-slate-600 mb-4 leading-relaxed">
+                    Discontinued part numbers are a constant headache for fleets running older equipment. The ai parts lookup engine uses graph relationships and semantic matching to find current replacements, superseded numbers, and compatible substitutes for legacy parts.
+                  </p>
+                  <ul className="space-y-2 text-slate-600">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                      <span>Superseded part number resolution</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                      <span>Compatible substitute identification</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* Metrics Section */}
         <section className="py-24 bg-slate-950 text-white">
           <div className="container mx-auto px-6">
@@ -410,6 +535,7 @@ export default function AiPartsSearchPage() {
           </div>
         </section>
       </div>
+      <RelatedSolutions currentSlug="ai-parts-search" />
       <PublicFooter />
     </>
   )

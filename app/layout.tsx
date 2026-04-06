@@ -7,7 +7,6 @@ import { SessionProvider } from "next-auth/react"
 import { PostHogProvider } from "@/components/posthog-provider"
 import { Toaster } from "@/components/ui/toaster"
 import { JsonLd } from "@/components/seo/json-ld"
-import { TrialBanner } from "@/components/billing/trial-banner"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -113,7 +112,6 @@ export default function RootLayout({
         <JsonLd data={organizationJsonLd} />
         <SessionProvider>
           <PostHogProvider>
-            <TrialBanner />
             <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
               {children}
               <Toaster />

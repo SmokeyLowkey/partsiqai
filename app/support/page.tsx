@@ -6,9 +6,9 @@ import { JsonLd } from "@/components/seo/json-ld"
 import { BreadcrumbJsonLd } from "@/components/seo/breadcrumb-jsonld"
 
 export const metadata: Metadata = {
-  title: "Support - Parts Inventory Tracking Help & Documentation",
+  title: "Support & Documentation",
   description:
-    "Get help with PartsIQ: documentation, email support, and live chat. Find answers about parts inventory tracking, equipment maintenance, preventive maintenance parts scheduling, and AI search.",
+    "Get help with PartsIQ: documentation, email support, and live chat. Find answers about parts inventory tracking, equipment maintenance, and AI search.",
   keywords: [
     "parts inventory tracking help",
     "parts inventory system support",

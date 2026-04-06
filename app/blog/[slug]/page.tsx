@@ -24,8 +24,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://partsiqai.com"
 
+  // Use absolute title (no template suffix) to keep blog titles under 60 chars
   return {
-    title: post.meta.title,
+    title: { absolute: post.meta.title },
     description: post.meta.description,
     keywords: post.meta.keywords,
     alternates: { canonical: `/blog/${post.meta.slug}` },

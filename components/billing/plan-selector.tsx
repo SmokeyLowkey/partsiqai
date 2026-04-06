@@ -134,14 +134,20 @@ export function PlanSelector({ currentPlan, onSelectPlan, isLoading }: PlanSelec
                   ))}
                 </ul>
 
-                <Button
-                  className="w-full"
-                  variant={isCurrentPlan ? "outline" : plan.popular ? "default" : "outline"}
-                  disabled={isCurrentPlan || isLoading}
-                  onClick={() => onSelectPlan(plan.id)}
-                >
-                  {isCurrentPlan ? "Current Plan" : `Select ${plan.name}`}
-                </Button>
+                {isCurrentPlan ? (
+                  <div className="w-full text-center py-2 px-4 rounded-md bg-muted text-muted-foreground text-sm font-medium border border-muted">
+                    Current Plan
+                  </div>
+                ) : (
+                  <Button
+                    className="w-full"
+                    variant={plan.popular ? "default" : "outline"}
+                    disabled={isLoading}
+                    onClick={() => onSelectPlan(plan.id)}
+                  >
+                    Select {plan.name}
+                  </Button>
+                )}
               </CardContent>
             </Card>
           )
