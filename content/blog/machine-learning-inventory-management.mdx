@@ -22,6 +22,8 @@ draft: false
 
 If you've ever wished your inventory system could *learn* from your ordering history and tell you what you'll need next month, that's exactly what machine learning does. This guide breaks down the four ML applications that actually matter for industrial inventory management — no jargon, no hype, just practical value.
 
+<ArchitectureDiagram title="Four ML Applications for Inventory Management" center={{label: "Machine Learning", detail: "Pattern recognition at scale"}} nodes={[{label: "Demand Forecasting", detail: "Predict what you'll need and when"}, {label: "Anomaly Detection", detail: "Spot problems before they become crises"}, {label: "Reorder Optimization", detail: "Dynamic safety stock that adapts in real time"}, {label: "Cross-Reference Discovery", detail: "Find equivalent parts across brands automatically"}]} />
+
 <StatGrid>
   <Stat value="35%" label="Average inventory reduction" detail="with ML-driven optimization" />
   <Stat value="50%" label="Fewer stockouts" detail="using predictive demand forecasting" />
@@ -94,6 +96,8 @@ ML anomaly detection excels at finding things that are statistically unusual com
 <Callout type="warning" title="The Cost of Missing Anomalies">
 A mining operation in Nevada lost $2.3 million in a single quarter because no one noticed that consumption of a specific wear part had gradually doubled over six months. The root cause was a change in ore composition that increased abrasion. An anomaly detection system would have flagged the trend within weeks, not months.
 </Callout>
+
+<ComparisonDiagram title="Anomaly Detection: Human vs. ML Monitoring" beforeTitle="Human Monitoring" afterTitle="ML-Powered Monitoring" before={[{label: "Limited attention span", detail: "Can track only a handful of patterns at once"}, {label: "Misses gradual trends", detail: "Slow drift goes unnoticed until crisis"}, {label: "Reactive response", detail: "Problems found after they cause damage"}]} after={[{label: "Monitors every SKU continuously", detail: "Watches 10,000+ parts 24/7 without fatigue"}, {label: "Detects subtle drift early", detail: "Flags trends within weeks, not months"}, {label: "Proactive alerting", detail: "Warns before problems become costly"}]} />
 
 ### Why Humans Miss What ML Catches
 

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Sparkles, Loader2, AlertCircle, CheckCircle2, UserPlus } from "lucide-react"
+import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react"
 import { toast } from "sonner"
 
 export default function AcceptInvitationPage() {
@@ -190,9 +190,7 @@ function AcceptInvitationContent() {
         <Card className="shadow-xl border-purple-100">
           <CardHeader className="space-y-1 text-center">
             <div className="flex justify-center mb-4">
-              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center">
-                <UserPlus className="h-6 w-6 text-white" />
-              </div>
+              <img src="/dark-theme-icon-logo-no-text.svg" alt="PartsIQ" className="h-12 w-12" />
             </div>
             <CardTitle className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-cyan-600 bg-clip-text text-transparent">
               Join {invitation?.organizationName}

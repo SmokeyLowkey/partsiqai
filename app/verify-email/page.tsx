@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Sparkles, CheckCircle2, XCircle, Loader2 } from "lucide-react"
+import { CheckCircle2, XCircle, Loader2 } from "lucide-react"
 import Link from "next/link"
 
 type VerificationState = "verifying" | "success" | "error"
@@ -77,11 +77,7 @@ function VerifyEmailContent() {
         <Card className="shadow-xl border-purple-100">
           <CardHeader className="space-y-1 text-center">
             <div className="flex justify-center mb-4">
-              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center">
-                {state === "verifying" && <Loader2 className="h-6 w-6 text-white animate-spin" />}
-                {state === "success" && <CheckCircle2 className="h-6 w-6 text-white" />}
-                {state === "error" && <XCircle className="h-6 w-6 text-white" />}
-              </div>
+              <img src="/dark-theme-icon-logo-no-text.svg" alt="PartsIQ" className="h-12 w-12" />
             </div>
             <CardTitle className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-cyan-600 bg-clip-text text-transparent">
               {state === "verifying" && "Verifying Your Email"}

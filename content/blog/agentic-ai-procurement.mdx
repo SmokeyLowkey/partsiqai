@@ -20,6 +20,8 @@ That's changing. A new category of AI — called **agentic AI** — is fundament
 
 This post breaks down what agentic AI actually means, how it applies to procurement, and why it matters for teams managing complex parts sourcing operations.
 
+<FlowChart title="How Agentic AI Transforms Procurement" steps={[{label: "Goal Defined", detail: "Buyer sets sourcing objective for parts list"}, {label: "Supplier Outreach", detail: "Agent contacts qualified vendors autonomously"}, {label: "Quote Collection", detail: "Responses extracted and normalized automatically"}, {label: "Analysis & Selection", detail: "Best option identified based on price, lead time, reliability"}, {label: "PO Generation", detail: "Purchase order created and routed for approval"}]} color="emerald" />
+
 ---
 
 ## What "Agentic AI" Actually Means
@@ -161,6 +163,8 @@ Autonomous doesn't mean uncontrolled. Even in full autonomous mode, agentic syst
 </Callout>
 
 The trust model should also be granular. You might give full autonomy for reordering commodity fasteners from a long-standing supplier, but require human approval for custom-engineered parts from a new vendor. Context matters, and a well-designed agentic system lets you define those boundaries precisely.
+
+<ArchitectureDiagram title="Multi-Agent Procurement Architecture" center={{label: "Orchestrator", detail: "Coordinates workflow and handles exceptions"}} nodes={[{label: "Search Agent", detail: "Finds parts across catalogs and databases"}, {label: "Sourcing Agent", detail: "Manages supplier communications and RFQs"}, {label: "Analysis Agent", detail: "Compares quotes and evaluates total cost"}, {label: "Execution Agent", detail: "Generates POs and manages order fulfillment"}]} />
 
 ---
 

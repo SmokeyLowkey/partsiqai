@@ -27,6 +27,8 @@ The failure modes are predictable:
 
 Automation eliminates this entire category of failure.
 
+<FlowChart title="Automated Parts Reorder Workflow" steps={[{label: "Monitor Stock Levels", detail: "System continuously tracks inventory against reorder points"}, {label: "Trigger Reorder", detail: "Stock drops to calculated reorder point"}, {label: "Generate Draft PO", detail: "System creates purchase order with preferred supplier"}, {label: "Approve or Auto-Send", detail: "Human reviews or rules-based auto-approval"}, {label: "Receive and Restock", detail: "Parts arrive before stockout occurs"}]} color="emerald" />
+
 ---
 
 ## The Reorder Point Formula (Made Simple)
@@ -160,6 +162,8 @@ Start with Level 2 (semi-automated) for your top 50 parts. Monitor for 30 days. 
 **Weekly:** review any alerts that weren't acted on and any auto-orders that were modified or cancelled. **Monthly:** review reorder point accuracy — did any parts stock out? Did any over-order? Adjust formulas accordingly.
 </Step>
 </StepList>
+
+<ComparisonDiagram title="Manual vs Automated Reordering" beforeTitle="Manual Reordering" afterTitle="Automated Reordering" before={[{label: "Human notices stock is low", detail: "Relies on memory and visual checks"}, {label: "Inconsistent triggers", detail: "Different people, different thresholds"}, {label: "Duplicate or missed orders", detail: "No single source of truth"}, {label: "No seasonal adjustment", detail: "Static rules year-round"}]} after={[{label: "System monitors continuously", detail: "24/7 tracking against calculated points"}, {label: "Consistent data-driven triggers", detail: "Formula-based reorder points per SKU"}, {label: "Single automated workflow", detail: "One system, one order per trigger"}, {label: "Dynamic seasonal adjustment", detail: "AI adjusts for demand patterns"}]} />
 
 ---
 

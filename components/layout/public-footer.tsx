@@ -7,7 +7,10 @@ export function PublicFooter() {
         <div className="max-w-6xl mx-auto">
           <div className="grid md:grid-cols-5 gap-12 mb-12">
             <div className="col-span-2">
-              <h3 className="text-2xl font-bold mb-4">PartsIQ</h3>
+              <div className="flex items-center gap-3 mb-4">
+                <img src="/dark-theme-icon-logo-no-text.svg" alt="PartsIQ" className="h-10 w-10" />
+                <h3 className="text-2xl font-bold">PartsIQ</h3>
+              </div>
               <p className="text-slate-400 mb-6 max-w-md">
                 AI-powered parts inventory management software with voice agent automation. Your AI calls suppliers, negotiates pricing, and manages the entire quote-to-order workflow.
               </p>

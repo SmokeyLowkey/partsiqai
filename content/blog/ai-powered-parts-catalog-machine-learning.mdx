@@ -24,6 +24,8 @@ Traditional parts search **requires you to already know the answer before you ca
 
 Traditional catalog systems are designed for parts experts who've memorized thousands of SKUs. They fail everyone else.
 
+<ArchitectureDiagram title="AI-Powered Parts Search Architecture" center={{label: "Hybrid Search Engine", detail: "Combines multiple search methods"}} nodes={[{label: "NLP Processing", detail: "Breaks queries into structured meaning"}, {label: "Vector Embeddings", detail: "Maps parts and queries to semantic space"}, {label: "Keyword Matching", detail: "Exact part number lookup"}, {label: "Knowledge Graph", detail: "Maps parts-machines-manufacturers relationships"}]} />
+
 ---
 
 ## How NLP and Vector Search Work for Parts
@@ -106,6 +108,8 @@ The real test of any AI search system is whether it handles the queries your tea
 <Callout type="stat" title="Speed Comparison">
 In every case, the response time is **under one second**. Compare this to the **5-15 minutes** of manual catalog navigation, and the productivity impact becomes obvious.
 </Callout>
+
+<ComparisonDiagram title="Traditional vs AI-Powered Parts Search" beforeTitle="Traditional Catalog" afterTitle="AI-Powered Catalog" before={[{label: "Exact part number required", detail: "Returns nothing on partial input"}, {label: "Single brand per system", detail: "Switch between CAT SIS, Deere portal, Komatsu CSS"}, {label: "No cross-references", detail: "Aftermarket alternatives invisible"}, {label: "5-15 minute lookups", detail: "Manual navigation through diagrams"}]} after={[{label: "Natural language queries", detail: "Describe the problem, get the part"}, {label: "All brands in one search", detail: "Unified results across every OEM"}, {label: "Automatic cross-referencing", detail: "OEM, aftermarket, and remanufactured options"}, {label: "Sub-second results", detail: "AI understands intent instantly"}]} />
 
 ---
 

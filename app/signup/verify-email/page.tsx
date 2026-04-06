@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Mail, CheckCircle2, Loader2, RefreshCw } from "lucide-react"
+import { CheckCircle2, Loader2, RefreshCw } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
 
@@ -47,9 +47,7 @@ function VerifyEmailContent() {
         <Card className="shadow-xl border-purple-100">
           <CardHeader className="space-y-1 text-center">
             <div className="flex justify-center mb-4">
-              <div className="h-16 w-16 rounded-full bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center">
-                <Mail className="h-8 w-8 text-white" />
-              </div>
+              <img src="/dark-theme-icon-logo-no-text.svg" alt="PartsIQ" className="h-16 w-16" />
             </div>
             <CardTitle className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-cyan-600 bg-clip-text text-transparent">
               Check Your Email

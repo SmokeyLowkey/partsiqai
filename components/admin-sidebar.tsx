@@ -145,7 +145,7 @@ export function AdminSidebar() {
     <Sidebar>
       <SidebarHeader>
         <div className="flex items-center space-x-2 px-2">
-          <Shield className="h-6 w-6 text-blue-600" />
+          <img src="/dark-theme-icon-logo-no-text.svg" alt="PartsIQ" className="h-8 w-8" />
           <div className="flex flex-col">
             <span className="font-semibold">Admin Portal</span>
             {!isMasterAdmin && session?.user?.role && (

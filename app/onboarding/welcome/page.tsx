@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Sparkles, Loader2, AlertCircle } from "lucide-react"
+import { Loader2, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 import { trackEvent, AnalyticsEvents } from "@/lib/analytics"
 
@@ -83,9 +83,7 @@ export default function WelcomePage() {
       <Card className="shadow-xl border-purple-100">
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-4">
-            <div className="h-12 w-12 rounded-full bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center">
-              <Sparkles className="h-6 w-6 text-white" />
-            </div>
+            <img src="/dark-theme-icon-logo-no-text.svg" alt="PartsIQ" className="h-12 w-12" />
           </div>
           <CardTitle className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-cyan-600 bg-clip-text text-transparent">
             Welcome to PartsIQ AI!

@@ -1,4 +1,10 @@
 import { ReactNode } from "react"
+import { FlowChart } from "./illustrations/flow-chart"
+import { ComparisonDiagram } from "./illustrations/comparison-diagram"
+import { MetricsDashboard } from "./illustrations/metrics-dashboard"
+import { ArchitectureDiagram } from "./illustrations/architecture-diagram"
+import { CostBreakdown } from "./illustrations/cost-breakdown"
+import { TimelineDiagram } from "./illustrations/timeline-diagram"
 
 /* ─── Callout ─── */
 const calloutStyles = {
@@ -179,4 +185,10 @@ export const mdxComponents = {
   ComparisonTable,
   StepList,
   Step,
+  FlowChart,
+  ComparisonDiagram,
+  MetricsDashboard,
+  ArchitectureDiagram,
+  CostBreakdown,
+  TimelineDiagram,
 }

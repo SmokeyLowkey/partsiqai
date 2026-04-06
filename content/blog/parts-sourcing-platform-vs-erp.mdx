@@ -18,6 +18,8 @@ It's a fair question. If you've already invested six or seven figures in an ERP,
 
 Understanding the difference will save you from either overpaying for capabilities you don't need or under-investing in capabilities that would transform your parts procurement.
 
+<ComparisonDiagram title="ERP Module vs. Dedicated Parts Sourcing Platform" beforeTitle="ERP Procurement Module" afterTitle="Parts Sourcing Platform" before={[{label: "Financial controls", detail: "PO management, approvals, and budget tracking"}, {label: "Keyword/SKU search only", detail: "Requires exact part numbers to function"}, {label: "Manual supplier quoting", detail: "Email-based RFQ process"}, {label: "No equipment context", detail: "Parts disconnected from machines"}]} after={[{label: "AI-powered parts search", detail: "Natural language queries across all catalogs"}, {label: "Automatic cross-referencing", detail: "OEM to aftermarket alternatives instantly"}, {label: "One-click multi-supplier RFQ", detail: "Automated quote collection and comparison"}, {label: "Equipment-specific lookups", detail: "Parts mapped to machines and serial ranges"}]} />
+
 ---
 
 ## The ERP Procurement Module: What It Does Well
@@ -152,6 +154,8 @@ Purchase order creation, approval workflows, receiving, accounts payable, and fi
 The sourcing platform generates a purchase order that flows into the ERP for financial processing.
 </Step>
 </StepList>
+
+<ArchitectureDiagram title="The Optimal Setup: Platform + ERP Integration" center={{label: "API Integration", detail: "PO data flows between systems"}} nodes={[{label: "Parts Sourcing Platform", detail: "Search, cross-reference, RFQ, and quote comparison"}, {label: "ERP System", detail: "PO creation, approvals, AP, and financial reporting"}, {label: "Supplier Network", detail: "Automated RFQs and electronic ordering"}, {label: "Field Teams", detail: "Mobile parts search and ordering"}]} />
 
 This gives you **best-in-class parts sourcing intelligence** (AI search, cross-referencing, automated quoting) combined with the financial controls and integration your ERP already provides.
 
