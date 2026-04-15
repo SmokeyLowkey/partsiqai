@@ -38,6 +38,7 @@ next-env.d.ts
 
 # seed files with credentials
 prisma/seed-admin.ts
+scripts/create-master-admin.ts
 
 # excluded directories
 /skills/

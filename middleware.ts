@@ -24,6 +24,9 @@ const PUBLIC_API_PREFIXES = [
   "/api/voip/webhooks",   // VoIP callbacks (external service)
   "/api/voip/langgraph-handler", // Vapi LLM handler
   "/api/invitations/",    // Invitation accept/validate (token-based)
+  "/api/leads",           // Public lead capture form (blog CTAs)
+  "/api/legal-contact",   // Public legal/privacy contact form
+  "/api/contact",         // Public general contact form (/contact page)
   "/api/integrations/gmail/callback",     // OAuth callback
   "/api/integrations/microsoft/callback", // OAuth callback
 ]
@@ -50,15 +53,18 @@ export async function middleware(request: NextRequest) {
     "/support",
     "/signup",
     "/signup/verify-email",
+    "/terms",
+    "/privacy",
     "/verify-email",
     "/invite/accept",
     "/forgot-password",
     "/reset-password",
     "/sitemap.xml",
     "/robots.txt",
+    "/llms.txt",
   ]
 
-  const publicPrefixes = ["/blog", "/solutions"]
+  const publicPrefixes = ["/blog", "/solutions", "/ingest", "/vs", "/parts-catalog"]
 
   if (
     publicRoutes.includes(pathname) ||

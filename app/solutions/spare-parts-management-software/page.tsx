@@ -21,7 +21,7 @@ import { RelatedSolutions } from "@/components/solutions/related-solutions"
 export const metadata: Metadata = {
   title: "Spare Parts Management Software",
   description:
-    "Spare parts management software and spare parts tracking system for heavy equipment. Manage criticality levels, shelf life, and emergency availability in one platform.",
+    "Spare parts management built for heavy equipment. Track criticality, shelf life, and emergency stock in one platform for industrial fleets.",
   keywords: [
     "spare parts management software",
     "spare parts tracking system",
@@ -38,7 +38,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Spare Parts Management Software for Heavy Equipment",
     description:
-      "Manage critical spare parts with AI-powered tracking. Handle criticality levels, shelf life monitoring, and emergency availability for heavy equipment fleets.",
+      "AI-powered spare parts tracking. Manage criticality, shelf life, and emergency availability for heavy equipment fleets in one platform.",
     url: "/solutions/spare-parts-management-software",
   },
 }

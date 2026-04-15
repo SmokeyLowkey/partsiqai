@@ -24,7 +24,7 @@ import { RelatedSolutions } from "@/components/solutions/related-solutions"
 export const metadata: Metadata = {
   title: "Supplier Management Software",
   description:
-    "AI-powered supplier management with voice agent automation, automated email quoting, price comparison, and supplier scoring for industrial parts procurement.",
+    "AI voice agent calls suppliers, auto-emails quotes, compares prices side-by-side. Purpose-built for heavy equipment dealers. Get quotes 2x faster.",
   keywords: [
     "supplier management software",
     "parts procurement software",
@@ -41,7 +41,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Supplier Management Software for Industrial Parts Procurement",
     description:
-      "AI voice agent calls suppliers, automated email quoting, side-by-side price comparison, and supplier scoring. Get quotes 2x faster.",
+      "AI voice agent calls suppliers, auto-emails quotes, compares prices side-by-side. Purpose-built for heavy equipment dealers.",
     url: "/solutions/supplier-management-software",
   },
 }

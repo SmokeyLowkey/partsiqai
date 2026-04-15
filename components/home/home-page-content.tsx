@@ -24,11 +24,37 @@ import {
   List,
 } from "lucide-react"
 import Link from "next/link"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { PublicFooter } from "@/components/layout/public-footer"
+import { trackEvent, AnalyticsEvents } from "@/lib/analytics"
 
 export default function HomePageContent() {
   const [isPickListOpen, setIsPickListOpen] = useState(false)
+  const howItWorksRef = useRef<HTMLElement | null>(null)
+  const scrolledPastFired = useRef(false)
+
+  // Fire `hero_scrolled_past` once when the How It Works section enters the
+  // viewport — i.e. the visitor read the hero and kept going. Distinguishes
+  // "bounced at hero" from "engaged past hero" in the funnel.
+  useEffect(() => {
+    const el = howItWorksRef.current
+    if (!el || typeof IntersectionObserver === "undefined") return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting && !scrolledPastFired.current) {
+            scrolledPastFired.current = true
+            trackEvent(AnalyticsEvents.HERO_SCROLLED_PAST)
+            observer.disconnect()
+            break
+          }
+        }
+      },
+      { threshold: 0.2 }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
   return (
     <div className="min-h-screen bg-white">
       {/* Hero Section — AI Voice Agent */}
@@ -47,17 +73,41 @@ export default function HomePageContent() {
             </div>
 
             <h1 className="text-5xl md:text-7xl font-bold mb-8 leading-[1.1] tracking-tight">
-              Parts Inventory Software
+              Source parts in 15 minutes,
               <br />
-              <span className="text-slate-400">Powered by AI</span>
+              <span className="text-slate-400">not 4 hours.</span>
             </h1>
 
-            <p className="text-xl md:text-2xl mb-12 text-slate-400 max-w-2xl leading-relaxed">
-              PartsIQ&apos;s AI Voice Agent phones your suppliers, asks for pricing, negotiates deals, and extracts structured quotes — while sounding completely natural.
+            <p className="text-xl md:text-2xl mb-8 text-slate-400 max-w-2xl leading-relaxed">
+              PartsIQ&apos;s AI voice agent calls your suppliers, extracts structured quotes, and returns side-by-side comparisons — while you focus on running operations.
             </p>
 
+            {/* Trust row — surfaces signup-page promises above the fold */}
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-10 text-sm text-slate-500">
+              <span className="inline-flex items-center gap-1.5">
+                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                14-day free trial
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                No credit card required
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                Built for heavy & compact equipment teams
+              </span>
+            </div>
+
             <div className="flex flex-col sm:flex-row gap-4 mb-16">
-              <Link href="/signup">
+              <Link
+                href="/signup"
+                onClick={() =>
+                  trackEvent(AnalyticsEvents.CTA_CLICKED, {
+                    source: "hero_signup",
+                    cta_text: "Start Free Trial",
+                  })
+                }
+              >
                 <Button
                   size="lg"
                   className="bg-white text-slate-950 hover:bg-slate-100 px-8 h-14 text-lg font-medium"
@@ -66,30 +116,39 @@ export default function HomePageContent() {
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Button>
               </Link>
-              <Link href="/login">
+              <Link
+                href="#how-it-works"
+                scroll={true}
+                onClick={() =>
+                  trackEvent(AnalyticsEvents.CTA_CLICKED, {
+                    source: "hero_see_how",
+                    cta_text: "See how it works",
+                  })
+                }
+              >
                 <Button
                   size="lg"
                   variant="outline"
                   className="border-slate-700 bg-transparent text-white hover:bg-slate-900 px-8 h-14 text-lg"
                 >
-                  Sign In
+                  See how it works
                 </Button>
               </Link>
             </div>
 
-            {/* Key Metrics */}
+            {/* Key Metrics — concrete buyer outcomes, not AI behavior */}
             <div className="grid grid-cols-3 gap-8 max-w-2xl">
               <div>
-                <div className="text-3xl font-bold text-white mb-1">100%</div>
-                <div className="text-sm text-slate-500">Hands-Free</div>
+                <div className="text-3xl font-bold text-white mb-1">15 min</div>
+                <div className="text-sm text-slate-500">Parts sourced end-to-end</div>
               </div>
               <div>
-                <div className="text-3xl font-bold text-white mb-1">24/7</div>
-                <div className="text-sm text-slate-500">Availability</div>
+                <div className="text-3xl font-bold text-white mb-1">95%</div>
+                <div className="text-sm text-slate-500">AI search match accuracy</div>
               </div>
               <div>
-                <div className="text-3xl font-bold text-white mb-1">&lt;3min</div>
-                <div className="text-sm text-slate-500">Per Call</div>
+                <div className="text-3xl font-bold text-white mb-1">3</div>
+                <div className="text-sm text-slate-500">Databases searched at once</div>
               </div>
             </div>
           </div>
@@ -97,7 +156,7 @@ export default function HomePageContent() {
       </section>
 
       {/* How It Works Section */}
-      <section className="py-24 bg-slate-50">
+      <section id="how-it-works" ref={howItWorksRef} className="py-24 bg-slate-50 scroll-mt-20">
         <div className="container mx-auto px-6">
           <div className="max-w-6xl mx-auto">
             <div className="mb-16">
@@ -164,6 +223,33 @@ export default function HomePageContent() {
                     </p>
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Browse by brand — cross-cluster bridge to /parts-catalog */}
+      <section className="py-20 bg-white border-t border-slate-200">
+        <div className="container mx-auto px-6">
+          <div className="max-w-5xl mx-auto">
+            <div className="grid md:grid-cols-5 gap-8 items-center">
+              <div className="md:col-span-3">
+                <h2 className="text-3xl md:text-4xl font-bold text-slate-950 tracking-tight mb-4">
+                  Browse parts by brand
+                </h2>
+                <p className="text-lg text-slate-600 leading-relaxed">
+                  Parts management and sourcing playbooks for every major heavy and compact equipment manufacturer. OEM vs aftermarket guidance, popular models, and dealer network context for Caterpillar, Komatsu, John Deere, Bobcat, Kubota, and more.
+                </p>
+              </div>
+              <div className="md:col-span-2 md:text-right">
+                <Link href="/parts-catalog">
+                  <Button size="lg" className="bg-slate-950 text-white hover:bg-slate-800 px-8 h-12">
+                    Explore parts catalog
+                    <ArrowRight className="ml-2 h-5 w-5" />
+                  </Button>
+                </Link>
+                <p className="mt-3 text-sm text-slate-500">13 manufacturers · heavy &amp; compact equipment</p>
               </div>
             </div>
           </div>

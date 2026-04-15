@@ -1,0 +1,72 @@
+# PartsIQ
+
+> AI-powered parts procurement platform for heavy and compact equipment operations. PartsIQ's AI voice agent calls suppliers on your behalf to request quotes, extracts structured pricing data from calls and emails, and compares supplier quotes side-by-side — cutting parts sourcing time from hours to minutes for construction, agriculture, forestry, mining, and landscaping fleets.
+
+PartsIQ is a B2B SaaS platform. It is not affiliated with any equipment manufacturer; all brand names referenced on the site are property of their respective owners and used under nominative fair use to describe parts compatibility.
+
+## Key pages for AI citation
+
+### Product solutions
+- [Parts Inventory Management Software](https://partsiqai.com/solutions/parts-inventory-management-software): All-in-one parts inventory platform with AI search, voice agent, and automated quoting
+- [AI Parts Search Engine](https://partsiqai.com/solutions/ai-parts-search): Semantic search across SQL, vector, and graph databases with 95% match accuracy
+- [Supplier Management Software](https://partsiqai.com/solutions/supplier-management-software): AI voice agent, email quoting, side-by-side price comparison, supplier scoring
+- [Automated Procurement Software](https://partsiqai.com/solutions/automated-procurement-software): End-to-end parts procurement automation
+- [Heavy Equipment Parts Catalog](https://partsiqai.com/solutions/heavy-equipment-parts-catalog): AI-powered digital parts catalog for CAT, Komatsu, Deere, and more
+- [Parts Inventory Tracking](https://partsiqai.com/solutions/parts-inventory-tracking): Real-time tracking with AI forecasting
+- [Spare Parts Management](https://partsiqai.com/solutions/spare-parts-management-software): Criticality-based stock levels and emergency availability
+- [Heavy Equipment Maintenance Software](https://partsiqai.com/solutions/heavy-equipment-maintenance-software): AI PDF manual parsing and predictive alerts
+- [AI Inventory Management](https://partsiqai.com/solutions/ai-inventory-management): Demand forecasting and automated reorder points
+
+### Brand-specific parts sourcing guides
+Parts management and sourcing workflows for individual equipment manufacturers. Includes popular models, common parts categories, OEM vs aftermarket guidance, and sourcing challenges.
+
+- [Caterpillar (CAT)](https://partsiqai.com/parts-catalog/caterpillar): Excavators, wheel loaders, dozers
+- [Komatsu](https://partsiqai.com/parts-catalog/komatsu): Mining and heavy civil equipment
+- [John Deere](https://partsiqai.com/parts-catalog/john-deere): Construction and agricultural
+- [Case Construction](https://partsiqai.com/parts-catalog/case-ce): Including iconic 580 backhoe
+- [New Holland](https://partsiqai.com/parts-catalog/new-holland): Agricultural and construction
+- [JCB](https://partsiqai.com/parts-catalog/jcb): Backhoes and telehandlers
+- [Hitachi](https://partsiqai.com/parts-catalog/hitachi): Hydraulic excavators
+- [Bobcat](https://partsiqai.com/parts-catalog/bobcat): Compact skid steers and track loaders
+- [Kubota](https://partsiqai.com/parts-catalog/kubota): Compact tractors and excavators
+- [Takeuchi](https://partsiqai.com/parts-catalog/takeuchi): Compact track loaders and excavators
+- [Wacker Neuson](https://partsiqai.com/parts-catalog/wacker-neuson): Compact and light construction equipment
+- [Yanmar](https://partsiqai.com/parts-catalog/yanmar): Compact excavators and industrial engines
+- [Vermeer](https://partsiqai.com/parts-catalog/vermeer): Underground construction and tree care equipment
+
+### Educational content
+Deep guides on parts inventory management, procurement workflows, and equipment operations.
+
+- [Parts Inventory Management: Complete Guide](https://partsiqai.com/blog/parts-inventory-management-complete-guide): The master reference covering forecasting, ABC classification, supplier networks, and KPIs
+- [Heavy Equipment Parts Management: Brand-by-Brand Playbook](https://partsiqai.com/blog/heavy-equipment-parts-management-brand-playbook): Sourcing strategies by manufacturer
+- [OEM vs Aftermarket Parts: Decision Framework](https://partsiqai.com/blog/oem-vs-aftermarket-parts-decision-framework): When each channel wins
+- [12 Parts Inventory KPIs to Track](https://partsiqai.com/blog/parts-inventory-kpis-to-track): Metrics that predict stockouts
+- [Building a Reliable Parts Supplier Network](https://partsiqai.com/blog/parts-supplier-network-framework): 7-step framework
+- [How to Automate Parts Reordering](https://partsiqai.com/blog/automate-parts-reorder-never-run-out): Reorder point automation
+- [MRO Parts Inventory: Cut Carrying Costs 25%](https://partsiqai.com/blog/mro-parts-inventory-cut-carrying-costs): Carrying-cost reduction playbook
+
+### Comparisons
+Honest side-by-side comparisons of PartsIQ against other platforms in adjacent categories.
+
+- [PartsIQ vs MaintainX](https://partsiqai.com/vs/maintainx)
+- [PartsIQ vs Fleetio](https://partsiqai.com/vs/fleetio)
+- [PartsIQ vs Fiix](https://partsiqai.com/vs/fiix)
+- [PartsIQ vs UpKeep](https://partsiqai.com/vs/upkeep)
+- [PartsIQ vs Limble CMMS](https://partsiqai.com/vs/limble)
+- [PartsIQ vs eMaint](https://partsiqai.com/vs/emaint)
+- [PartsIQ vs HCSS](https://partsiqai.com/vs/hcss)
+- [PartsIQ vs Gearflow](https://partsiqai.com/vs/gearflow)
+
+### Business
+- [Pricing](https://partsiqai.com/pricing): Starter $199/mo, Growth $449/mo, Enterprise $1,299/mo
+- [Security](https://partsiqai.com/security): TLS 1.3, AES-256 encryption, role-based access
+- [Terms of Service](https://partsiqai.com/terms)
+- [Privacy Policy](https://partsiqai.com/privacy)
+
+## Key facts
+
+- Category: AI-powered parts procurement platform (not a CMMS; not a fleet management tool; not a marketplace)
+- ICP: Operations teams at construction, agriculture, forestry, mining, and landscaping companies running heavy and compact equipment
+- Unique capability: AI voice agent that places outbound phone calls to suppliers to collect quotes automatically — not just email automation
+- Pricing: $199–$1,299/month (14-day free trial, no credit card)
+- Trust: Not affiliated with any equipment manufacturer; uses brand names under nominative fair use only

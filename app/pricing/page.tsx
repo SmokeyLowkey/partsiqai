@@ -1,12 +1,13 @@
 import type { Metadata } from "next"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Check, Mail } from "lucide-react"
-import Link from "next/link"
 import { JsonLd } from "@/components/seo/json-ld"
 import { BreadcrumbJsonLd } from "@/components/seo/breadcrumb-jsonld"
+import { TrackedCTA } from "@/components/analytics/tracked-cta"
+import { AnalyticsEvents } from "@/lib/analytics"
 
 export const metadata: Metadata = {
-  title: "Pricing - Parts Ordering System",
+  title: "Pricing: Parts Procurement Software Plans",
   description:
     "Transparent pricing for PartsIQ parts procurement software. Starter, Growth, and Enterprise plans for heavy equipment dealers starting at $199/month.",
   keywords: [
@@ -136,11 +137,16 @@ export default function PricingPage() {
                   </li>
                 </ul>
 
-                <Link href="/login" className="mt-auto">
+                <TrackedCTA
+                  href="/login"
+                  event={AnalyticsEvents.PRICING_PLAN_SELECTED}
+                  properties={{ plan: "Starter", price_monthly: 199 }}
+                  className="mt-auto"
+                >
                   <Button size="lg" variant="outline" className="w-full border-slate-300 text-slate-950 hover:bg-slate-100 hover:text-slate-950 bg-transparent h-12">
                     Get Started
                   </Button>
-                </Link>
+                </TrackedCTA>
               </div>
 
               {/* Growth Plan */}
@@ -189,12 +195,17 @@ export default function PricingPage() {
                   </li>
                 </ul>
 
-                <Link href="/login" className="mt-auto">
+                <TrackedCTA
+                  href="/login"
+                  event={AnalyticsEvents.PRICING_PLAN_SELECTED}
+                  properties={{ plan: "Growth", price_monthly: 449 }}
+                  className="mt-auto"
+                >
                   <Button size="lg" className="w-full bg-slate-950 text-white hover:bg-slate-800 h-12">
                     Get Started
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
-                </Link>
+                </TrackedCTA>
               </div>
 
               {/* Enterprise Plan */}
@@ -241,11 +252,16 @@ export default function PricingPage() {
                   </li>
                 </ul>
 
-                <Link href="/contact" className="mt-auto">
+                <TrackedCTA
+                  href="/contact"
+                  event={AnalyticsEvents.CONTACT_SALES_CLICKED}
+                  properties={{ plan: "Enterprise", source: "pricing_card" }}
+                  className="mt-auto"
+                >
                   <Button size="lg" variant="outline" className="w-full border-slate-300 text-slate-950 hover:bg-slate-100 hover:text-slate-950 bg-transparent h-12">
                     Contact Sales
                   </Button>
-                </Link>
+                </TrackedCTA>
               </div>
             </div>
           </div>
@@ -312,12 +328,16 @@ export default function PricingPage() {
               <p className="text-xl text-slate-400 mb-8 max-w-2xl mx-auto">
                 Contact our sales team to get a custom quote tailored to your organization's needs
               </p>
-              <Link href="/contact">
+              <TrackedCTA
+                href="/contact"
+                event={AnalyticsEvents.CONTACT_SALES_CLICKED}
+                properties={{ source: "pricing_footer" }}
+              >
                 <Button size="lg" className="bg-white text-slate-950 hover:bg-slate-100 px-8 h-14 text-lg font-medium">
                   Contact Sales
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Button>
-              </Link>
+              </TrackedCTA>
             </div>
           </div>
         </div>

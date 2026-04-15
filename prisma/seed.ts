@@ -45,11 +45,16 @@ async function main() {
 
   console.log(`Created master admin organization: ${masterOrg.name}`)
 
-  // Create master admin user
-  const masterAdminPassword = await hash(
-    process.env.MASTER_ADMIN_PASSWORD || 'MasterAdmin123!@#',
-    12
-  )
+  // Create master admin user — password must come from env var.
+  // Never commit a real password to source; weak hardcoded defaults become
+  // credentials anyone with repo access can use against live deployments.
+  if (!process.env.MASTER_ADMIN_PASSWORD) {
+    throw new Error(
+      'MASTER_ADMIN_PASSWORD env var is required to run the seed. ' +
+      'Set a strong password before running `prisma db seed`.'
+    )
+  }
+  const masterAdminPassword = await hash(process.env.MASTER_ADMIN_PASSWORD, 12)
 
   const masterAdmin = await prisma.user.upsert({
     where: { email: 'master@yourplatform.com' },
@@ -116,8 +121,11 @@ async function main() {
 
   console.log(`Created organization: ${organization.name}`)
 
-  // Create admin user
-  const adminPassword = await hash('Admin123!', 12)
+  // Create admin user — password must come from env var.
+  if (!process.env.SEED_ADMIN_PASSWORD) {
+    throw new Error('SEED_ADMIN_PASSWORD env var is required for the demo admin user.')
+  }
+  const adminPassword = await hash(process.env.SEED_ADMIN_PASSWORD, 12)
   const admin = await prisma.user.upsert({
     where: { email: 'admin@demo-construction.com' },
     update: {},
@@ -143,13 +151,17 @@ async function main() {
 
   console.log(`Created admin user: ${admin.email}`)
 
-  // Create manager user
-  const managerPassword = await hash('Manager123!', 12)
+  // Create manager user — password must come from env var.
+  if (!process.env.SEED_MANAGER_PASSWORD) {
+    throw new Error('SEED_MANAGER_PASSWORD env var is required for the demo manager user.')
+  }
+  const managerPassword = await hash(process.env.SEED_MANAGER_PASSWORD, 12)
+  const managerEmail = process.env.SEED_MANAGER_EMAIL || 'manager@demo-construction.com'
   const manager = await prisma.user.upsert({
-    where: { email: 'yuriykondakov04@gmail.com' },
+    where: { email: managerEmail },
     update: {},
     create: {
-      email: 'yuriykondakov04@gmail.com',
+      email: managerEmail,
       name: 'Manager User',
       role: 'MANAGER',
       password: managerPassword,
@@ -171,7 +183,10 @@ async function main() {
   console.log(`Created manager user: ${manager.email}`)
 
   // Create technician user
-  const technicianPassword = await hash('Tech123!', 12)
+  if (!process.env.SEED_TECHNICIAN_PASSWORD) {
+    throw new Error('SEED_TECHNICIAN_PASSWORD env var is required for the demo technician user.')
+  }
+  const technicianPassword = await hash(process.env.SEED_TECHNICIAN_PASSWORD, 12)
   const technician = await prisma.user.upsert({
     where: { email: 'tech@demo-construction.com' },
     update: {},

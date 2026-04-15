@@ -31,7 +31,7 @@ This is the maintenance tracking problem, and it costs heavy equipment operation
   <Stat value="17%" label="Asset Life Extension" detail="Achieved through consistent preventive maintenance tracking" />
 </StatGrid>
 
-<FlowChart title="The Complete Maintenance Loop" steps={[{label: "Track the Need", detail: "PM schedule, telematics, or operator report triggers service"}, {label: "Identify the Parts", detail: "Exact parts list by machine serial and configuration"}, {label: "Source the Parts", detail: "Check inventory, query suppliers, find alternatives"}, {label: "Stage and Execute", detail: "Pre-kitted parts ready, zero mid-job delays"}, {label: "Update and Learn", detail: "History, counters, and inventory all updated automatically"}]} color="emerald" />
+<FlowChart title="The Complete Maintenance Loop" steps='[{"label":"Track the Need","detail":"PM schedule, telematics, or operator report triggers service"},{"label":"Identify the Parts","detail":"Exact parts list by machine serial and configuration"},{"label":"Source the Parts","detail":"Check inventory, query suppliers, find alternatives"},{"label":"Stage and Execute","detail":"Pre-kitted parts ready, zero mid-job delays"},{"label":"Update and Learn","detail":"History, counters, and inventory all updated automatically"}]' color="emerald" />
 
 ---
 
@@ -199,7 +199,7 @@ For teams already managing [parts inventory](/solutions/parts-inventory-manageme
   </Step>
 </StepList>
 
-<ComparisonDiagram title="Tracking-Only vs Integrated Maintenance" beforeTitle="Tracking Without Parts" afterTitle="Tracking + Parts Intelligence" before={[{label: "PM flagged as due", detail: "But parts availability unknown"}, {label: "Coordinator looks up parts manually", detail: "15 min per lookup, 240 lookups/month"}, {label: "Wrong filters ordered", detail: "Model-year mismatch causes delays"}, {label: "Service deferred 2-5 days", detail: "Waiting for correct parts to arrive"}]} after={[{label: "PM flagged with full parts list", detail: "Auto-matched to machine serial number"}, {label: "Inventory checked automatically", detail: "Shortages trigger supplier queries instantly"}, {label: "Cross-references ensure correct parts", detail: "Serial number filtering prevents errors"}, {label: "Service completed on schedule", detail: "Parts pre-staged before tech arrives"}]} />
+<ComparisonDiagram title="Tracking-Only vs Integrated Maintenance" beforeTitle="Tracking Without Parts" afterTitle="Tracking + Parts Intelligence" before='[{"label":"PM flagged as due","detail":"But parts availability unknown"},{"label":"Coordinator looks up parts manually","detail":"15 min per lookup, 240 lookups/month"},{"label":"Wrong filters ordered","detail":"Model-year mismatch causes delays"},{"label":"Service deferred 2-5 days","detail":"Waiting for correct parts to arrive"}]' after='[{"label":"PM flagged with full parts list","detail":"Auto-matched to machine serial number"},{"label":"Inventory checked automatically","detail":"Shortages trigger supplier queries instantly"},{"label":"Cross-references ensure correct parts","detail":"Serial number filtering prevents errors"},{"label":"Service completed on schedule","detail":"Parts pre-staged before tech arrives"}]' />
 
 ---
 

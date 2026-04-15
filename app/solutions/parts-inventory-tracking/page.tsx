@@ -24,7 +24,7 @@ import { RelatedSolutions } from "@/components/solutions/related-solutions"
 export const metadata: Metadata = {
   title: "Parts Inventory Tracking Software",
   description:
-    "Real-time parts inventory tracking with automated reorder alerts, multi-location support, and AI-powered forecasting. Eliminate stockouts and reduce overstock by 40%.",
+    "Real-time parts inventory tracking with automated reorder alerts and AI forecasting. Cut stockouts 40%. Built for heavy equipment fleets.",
   keywords: [
     "parts inventory tracking",
     "parts inventory system",
@@ -41,7 +41,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Parts Inventory Tracking Software for Heavy Equipment",
     description:
-      "Real-time parts inventory tracking with automated reorder alerts and AI-powered forecasting. Eliminate stockouts and reduce overstock by 40%.",
+      "Real-time parts tracking with automated reorder alerts and AI forecasting. Cut stockouts 40% and reduce overstock across multi-location fleets.",
     url: "/solutions/parts-inventory-tracking",
   },
 }

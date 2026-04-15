@@ -7,6 +7,27 @@ const nextConfig = {
   images: {
     remotePatterns: [],
   },
+  // PostHog reverse proxy — requests to /ingest are forwarded to PostHog
+  // so that ad-blockers targeting *.posthog.com don't drop analytics/recordings.
+  skipTrailingSlashRedirect: true,
+  async rewrites() {
+    return [
+      // Static assets + /array/<token>/config(.js) are on the assets CDN
+      {
+        source: '/ingest/static/:path*',
+        destination: 'https://us-assets.i.posthog.com/static/:path*',
+      },
+      {
+        source: '/ingest/array/:path*',
+        destination: 'https://us-assets.i.posthog.com/array/:path*',
+      },
+      // Everything else (events, /decide, /flags, /e, session-recording) → API host
+      {
+        source: '/ingest/:path*',
+        destination: 'https://us.i.posthog.com/:path*',
+      },
+    ]
+  },
   async headers() {
     return [
       {

@@ -5,7 +5,7 @@ import Link from "next/link"
 import { BreadcrumbJsonLd } from "@/components/seo/breadcrumb-jsonld"
 
 export const metadata: Metadata = {
-  title: "About PartsIQ",
+  title: "About",
   description:
     "Building the future of heavy equipment parts sourcing. AI-powered procurement that reduces sourcing time from hours to minutes for operations teams.",
   keywords: [

@@ -14,6 +14,10 @@ draft: false
 
 **Spare parts management is a fundamentally different problem** from retail or manufacturing inventory. Understanding why is the first step to solving it.
 
+<Callout type="tip" title="The strategic overview">
+This guide focuses on spare parts specifically. For the broader parts inventory management playbook including procurement workflows, supplier networks, and KPIs, see our [Parts Inventory Management Complete Guide](/blog/parts-inventory-management-complete-guide). For OEM vs aftermarket decisions on spare parts, see our [OEM vs Aftermarket Decision Framework](/blog/oem-vs-aftermarket-parts-decision-framework).
+</Callout>
+
 In retail, demand is relatively predictable. You sell 50 units this week, probably 45-55 next week. In manufacturing, you consume raw materials at a known rate based on production schedules.
 
 Spare parts demand is **intermittent and lumpy**. A hydraulic cylinder seal might sit on the shelf for six months, then you need three in one week because two machines failed in the same rainy season. A turbocharger gasket might be used once a year — but when you need it, you need it now, not in two weeks when the supplier can ship.
@@ -34,7 +38,7 @@ A single missing $50 seal can cause **$15,000+ in downtime** when equipment sits
 
 Standard inventory techniques designed for steady-demand environments don't work here. You need [spare parts management software](/solutions/spare-parts-management-software) specifically designed for the spare parts problem.
 
-<ComparisonDiagram title="Spare Parts vs. Regular Inventory" beforeTitle="Regular Inventory" afterTitle="Spare Parts Inventory" before={[{label: "Predictable demand", detail: "Smooth, forecastable consumption"}, {label: "Low SKU variety", detail: "Hundreds to low thousands"}, {label: "Moderate stockout cost", detail: "Reorder and wait"}, {label: "Standard forecasting works", detail: "Moving averages are reliable"}]} after={[{label: "Intermittent, lumpy demand", detail: "Months of zero, then sudden spikes"}, {label: "5,000+ unique part numbers", detail: "Many used fewer than 5 times/year"}, {label: "Extreme stockout cost", detail: "$500-$5,000/hour equipment downtime"}, {label: "Specialized methods required", detail: "Croston's method and AI forecasting"}]} />
+<ComparisonDiagram title="Spare Parts vs. Regular Inventory" beforeTitle="Regular Inventory" afterTitle="Spare Parts Inventory" before='[{"label":"Predictable demand","detail":"Smooth, forecastable consumption"},{"label":"Low SKU variety","detail":"Hundreds to low thousands"},{"label":"Moderate stockout cost","detail":"Reorder and wait"},{"label":"Standard forecasting works","detail":"Moving averages are reliable"}]' after='[{"label":"Intermittent, lumpy demand","detail":"Months of zero, then sudden spikes"},{"label":"5,000+ unique part numbers","detail":"Many used fewer than 5 times/year"},{"label":"Extreme stockout cost","detail":"$500-$5,000/hour equipment downtime"},{"label":"Specialized methods required","detail":"Croston's method and AI forecasting"}]' />
 
 ---
 
@@ -204,7 +208,7 @@ AI connects your PM schedules to parts requirements. When 15 excavators are due 
 
 Instead of static min/max levels set once and forgotten, AI continuously adjusts based on actual usage patterns. If summer usage of ground engaging tools doubles, reorder points increase automatically in April — before the season hits.
 
-<ArchitectureDiagram title="AI-Powered Spare Parts Management" center={{label: "AI Engine", detail: "Automates inventory math"}} nodes={[{label: "PM Schedule Integration", detail: "Predict parts from maintenance plans"}, {label: "Dynamic Reorder Points", detail: "Auto-adjust min/max by season"}, {label: "Cross-Reference Database", detail: "Map OEM to aftermarket alternatives"}, {label: "Natural Language Search", detail: "Find parts by description, not number"}]} />
+<ArchitectureDiagram title="AI-Powered Spare Parts Management" center='{"label":"AI Engine","detail":"Automates inventory math"}' nodes='[{"label":"PM Schedule Integration","detail":"Predict parts from maintenance plans"},{"label":"Dynamic Reorder Points","detail":"Auto-adjust min/max by season"},{"label":"Cross-Reference Database","detail":"Map OEM to aftermarket alternatives"},{"label":"Natural Language Search","detail":"Find parts by description, not number"}]' />
 
 ### Cross-Reference Identification
 

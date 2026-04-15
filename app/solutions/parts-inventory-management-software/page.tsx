@@ -26,7 +26,7 @@ import { RelatedSolutions } from "@/components/solutions/related-solutions"
 export const metadata: Metadata = {
   title: "Parts Inventory Management Software",
   description:
-    "All-in-one parts inventory management software with AI search, voice agent, quote management, and order tracking. Reduce sourcing time from 4 hours to 15 minutes.",
+    "All-in-one parts inventory management software with AI search, voice agent, and automated quoting. Source parts in 15 minutes, not 4 hours.",
   keywords: [
     "parts inventory management software",
     "parts catalog software",
@@ -43,7 +43,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Parts Inventory Management Software — AI-Powered Platform",
     description:
-      "Unified parts management with AI search, voice agent, automated quoting, and order tracking. Source parts in 15 minutes instead of 4 hours.",
+      "All-in-one parts management with AI search, voice agent, and automated quoting. Source parts in 15 minutes, not 4 hours.",
     url: "/solutions/parts-inventory-management-software",
   },
 }

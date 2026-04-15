@@ -1,0 +1,232 @@
+---
+title: "12 Parts Inventory KPIs Every Operations Team Should Track"
+description: "The metrics that predict parts stockouts and reveal where your inventory investment is leaking. Formulas, benchmarks, and how to build a parts inventory KPI dashboard."
+date: "2026-04-15"
+author: "PartsIQ Team"
+slug: "parts-inventory-kpis-to-track"
+keywords: ["parts inventory kpis", "parts inventory metrics", "inventory turnover ratio", "fill rate", "stockout rate", "parts inventory dashboard"]
+category: "Parts Management"
+readTime: "11 min read"
+draft: false
+---
+
+Parts inventory without metrics is a cost center you can't see. Most operations track two or three metrics (if any) — usually "how much did we spend" and "did we run out of anything recently." That's not enough to catch the real problems: slow-moving inventory eating carrying cost, silently-low fill rates frustrating technicians, and supplier underperformance going unaddressed.
+
+Here are the twelve KPIs that together predict whether your parts operation is healthy or bleeding money. Each one has a formula, a benchmark, and a specific action to take when it drifts.
+
+If you want the strategic context, start with our [Parts Inventory Management Complete Guide](/blog/parts-inventory-management-complete-guide).
+
+<Callout type="info" title="Measurement discipline matters">
+A KPI you don't consistently measure is a KPI you can't improve. Pick the four headline metrics first (turnover, fill rate, stockout rate, carrying cost), commit to weekly review, then add depth once that habit holds.
+</Callout>
+
+---
+
+## The four headline KPIs
+
+Start here. These four tell you 80% of what you need to know about parts inventory health.
+
+### 1. Inventory turnover ratio
+
+**Formula:** Cost of parts consumed per year ÷ Average inventory value
+
+**Benchmark:** 2x–4x annually for most equipment operations. Fast-moving fleets can hit 5x+.
+
+**What it tells you:** How efficiently your inventory dollars cycle through your operation. Low turnover = too much cash tied up. Very high turnover = likely understocked and chronically stockout-prone.
+
+**What to do if it drifts:**
+- Below 2x: Review slow-movers, prune dead stock, run ABC analysis
+- Above 5x: Check for stockouts; you may be understocking A items
+
+### 2. Fill rate
+
+**Formula:** Number of parts requests filled from on-hand stock ÷ Total parts requests
+
+**Benchmark:** 95%+ target for A items; 85-90% acceptable for overall inventory.
+
+**What it tells you:** How often your operation has what it needs, when it needs it. Low fill rate is the single clearest signal that your inventory planning is broken.
+
+**What to do if it drifts:**
+- Below 90%: Adjust reorder points upward on the SKUs driving stockouts
+- Above 98%: Likely overstocking — check if carrying cost is elevated
+
+### 3. Stockout rate
+
+**Formula:** Number of parts requests resulting in delay (ordered or escalated) ÷ Total parts requests
+
+**Benchmark:** <2% target. Every stockout on a mission-critical part should be a tracked incident.
+
+**What it tells you:** The inverse of fill rate, with emphasis on operational impact. Stockouts are the visible symptom of inventory planning failure.
+
+**What to do if it drifts:**
+- Above 5%: Full SKU-level review; prioritize reorder-point fixes on repeat offenders
+- Any single stockout on an A-critical part: root-cause analysis
+
+### 4. Carrying cost ratio
+
+**Formula:** Annual carrying cost ÷ Average inventory value
+
+Where carrying cost includes: storage, insurance, capital cost, obsolescence, shrinkage.
+
+**Benchmark:** 15–25% of inventory value annually for most operations.
+
+**What it tells you:** How much it costs to hold inventory, which is invisible in most accounting but real. A $2M parts inventory costs $300K–$500K annually just to sit on the shelf.
+
+**What to do if it drifts:**
+- Above 25%: Aggressive dead-stock purge; re-evaluate min/max levels
+- Above 30%: Deep overstock problem; likely a systemic forecasting failure
+
+<StatGrid>
+  <Stat value="2–4x" label="Inventory turnover" detail="Annual turns benchmark" />
+  <Stat value=">95%" label="Fill rate" detail="A-item target" />
+  <Stat value="<2%" label="Stockout rate" detail="Across all SKUs" />
+  <Stat value="15–25%" label="Carrying cost" detail="% of inventory value" />
+</StatGrid>
+
+---
+
+## The operational KPIs
+
+Once the headline four are healthy, these eight deepen the picture.
+
+### 5. Days of inventory on hand
+
+**Formula:** Average inventory value ÷ Daily cost of parts consumed
+
+**Benchmark:** 60–120 days for most equipment operations. Heavy seasonality can push this higher.
+
+**What it tells you:** How many days you could operate without restocking. Inverse of turnover expressed in time units.
+
+### 6. Inventory accuracy
+
+**Formula:** Number of SKUs with accurate physical count ÷ Total SKUs counted
+
+**Benchmark:** >98%.
+
+**What it tells you:** Whether the numbers in your system match reality. If inventory accuracy drops below 95%, every other metric becomes unreliable.
+
+**Tactic:** Run cycle counts — count 5-10% of SKUs monthly rather than one giant annual count.
+
+### 7. Average order lead time (by supplier)
+
+**Formula:** Days between PO issuance and delivery, averaged per supplier
+
+**Benchmark:** Varies by supplier and part type. Track trend per supplier, not absolute.
+
+**What it tells you:** Which suppliers are reliable and which are slipping. A supplier whose lead time is drifting up is a leading indicator of future stockouts.
+
+### 8. Perfect order rate
+
+**Formula:** Orders delivered complete, on time, damage-free, with correct documentation ÷ Total orders
+
+**Benchmark:** >90% target.
+
+**What it tells you:** Total procurement-to-receiving quality. Low perfect order rate means you have a supplier problem or a receiving problem — either way, money is leaking.
+
+### 9. Dead stock percentage
+
+**Formula:** SKUs with zero movement in the last 12 months ÷ Total SKUs × 100
+
+**Benchmark:** <15%.
+
+**What it tells you:** How much of your inventory is effectively dead. Dead stock is double-costly — you paid for it AND you're paying to hold it.
+
+**Tactic:** Quarterly dead-stock audit. Return to supplier if possible; liquidate if not.
+
+### 10. Obsolete inventory percentage
+
+**Formula:** SKUs for discontinued equipment or superseded parts ÷ Total SKU count × 100
+
+**Benchmark:** <5%.
+
+**What it tells you:** How much of your inventory is orphaned by equipment turnover. Different from dead stock — obsolete can't be liquidated back to supplier because it's for equipment you no longer run.
+
+### 11. Emergency order rate
+
+**Formula:** Orders flagged as emergency/rush ÷ Total orders
+
+**Benchmark:** <10%. Emergency orders cost 2-3x normal procurement cost.
+
+**What it tells you:** How much of your procurement is reactive vs planned. High emergency order rate is a forecasting failure.
+
+### 12. Parts cost per operating hour (by equipment class)
+
+**Formula:** Total parts cost for equipment class in period ÷ Total operating hours
+
+**Benchmark:** Varies wildly by equipment type. Track trend over time and across similar equipment.
+
+**What it tells you:** Which equipment is expensive to run (and by how much). Critical for replacement decisions and for identifying fleet-wide maintenance issues.
+
+---
+
+## Building the dashboard
+
+A functional parts inventory KPI dashboard has four parts:
+
+<StepList>
+<Step number={1} title="The headline strip (at top)">
+Four KPIs, always visible: turnover, fill rate, stockout rate, carrying cost. Each with current value, previous-period delta, and a sparkline trend.
+</Step>
+
+<Step number={2} title="SKU-level drill-downs">
+Filterable by ABC classification, brand, equipment category. Sort by stockout frequency, excess inventory value, dead-stock candidates. This is where root causes live.
+</Step>
+
+<Step number={3} title="Supplier performance block">
+Lead time trends, perfect order rate, and fill rate per supplier. Catches supplier underperformance before it becomes a crisis.
+</Step>
+
+<Step number={4} title="Alert feed">
+Real-time flags: "Part X at safety stock," "Supplier Y lead time increased 20%," "Dead stock SKU surfaced for liquidation." Acted-on alerts beat dashboards you have to remember to check.
+</Step>
+</StepList>
+
+---
+
+## Benchmark table
+
+Quick reference for where a healthy parts operation sits:
+
+<ComparisonTable>
+<table>
+<thead>
+<tr><th>KPI</th><th>Poor</th><th>Acceptable</th><th>Strong</th><th>World-class</th></tr>
+</thead>
+<tbody>
+<tr><td>Inventory turnover</td><td>&lt;1.5x</td><td>2–3x</td><td>3–4x</td><td>5x+</td></tr>
+<tr><td>Fill rate (A items)</td><td>&lt;85%</td><td>85–95%</td><td>95–98%</td><td>99%+</td></tr>
+<tr><td>Stockout rate</td><td>&gt;5%</td><td>2–5%</td><td>1–2%</td><td>&lt;1%</td></tr>
+<tr><td>Carrying cost ratio</td><td>&gt;30%</td><td>20–30%</td><td>15–20%</td><td>&lt;15%</td></tr>
+<tr><td>Inventory accuracy</td><td>&lt;95%</td><td>95–98%</td><td>98–99.5%</td><td>&gt;99.5%</td></tr>
+<tr><td>Dead stock %</td><td>&gt;20%</td><td>15–20%</td><td>10–15%</td><td>&lt;10%</td></tr>
+<tr><td>Perfect order rate</td><td>&lt;85%</td><td>85–92%</td><td>92–97%</td><td>&gt;97%</td></tr>
+<tr><td>Emergency order rate</td><td>&gt;15%</td><td>10–15%</td><td>5–10%</td><td>&lt;5%</td></tr>
+</tbody>
+</table>
+</ComparisonTable>
+
+---
+
+## Where AI changes the KPI game
+
+Modern parts inventory platforms auto-surface most of these KPIs from operational data — no manual spreadsheet maintenance required. Three specific AI capabilities move the needle:
+
+- **Anomaly detection** — Alert when a metric drifts outside its rolling baseline (supplier lead time creep, dead-stock accumulation)
+- **Predictive forecasting** — Project future fill rate and stockout risk based on current inventory trajectory
+- **Automated dead-stock identification** — Flag SKUs trending toward dead stock before they get there, when they're still returnable to the supplier
+
+See [AI inventory management](/solutions/ai-inventory-management) and [parts inventory tracking](/solutions/parts-inventory-tracking) for the tooling.
+
+<KeyTakeaway>
+You can't improve what you don't measure. Start with the four headlines weekly. Add depth monthly. The operations that run data-driven parts inventory dramatically outperform those that don't — often by 2-3x on turnover and 30-50% on carrying cost.
+</KeyTakeaway>
+
+---
+
+## Related reading
+
+- [Parts Inventory Management: Complete Guide](/blog/parts-inventory-management-complete-guide) — the strategic context
+- [How to Reduce Inventory Carrying Costs](/blog/how-to-reduce-inventory-carrying-costs) — tactical carrying-cost reduction
+- [MRO Parts Inventory: Cut Carrying Costs 25%](/blog/mro-parts-inventory-cut-carrying-costs) — MRO-specific tactics
+- [Building a Reliable Parts Supplier Network](/blog/parts-supplier-network-framework) — supplier performance metrics in detail
+- [AI Inventory Management solution page](/solutions/ai-inventory-management) — tooling

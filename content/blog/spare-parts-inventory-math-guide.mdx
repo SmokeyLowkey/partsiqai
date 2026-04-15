@@ -22,7 +22,7 @@ This guide covers the four pillars of spare parts inventory math: demand forecas
   <Stat value="80%" label="Of Stockouts" detail="Are preventable with proper inventory math" />
 </StatGrid>
 
-<ArchitectureDiagram title="The Four Pillars of Spare Parts Inventory Math" center={{label: "Inventory Optimization", detail: "Data-driven stocking decisions"}} nodes={[{label: "Demand Forecasting", detail: "SMA, WMA, or Croston's method"}, {label: "Min/Max Levels", detail: "Reorder points and order quantities"}, {label: "Safety Stock", detail: "Buffer against demand and lead time variability"}, {label: "Turnover Analysis", detail: "Measure inventory efficiency by category"}]} />
+<ArchitectureDiagram title="The Four Pillars of Spare Parts Inventory Math" center='{"label":"Inventory Optimization","detail":"Data-driven stocking decisions"}' nodes='[{"label":"Demand Forecasting","detail":"SMA, WMA, or Croston's method"},{"label":"Min/Max Levels","detail":"Reorder points and order quantities"},{"label":"Safety Stock","detail":"Buffer against demand and lead time variability"},{"label":"Turnover Analysis","detail":"Measure inventory efficiency by category"}]' />
 
 Whether you manage 500 SKUs or 50,000, the math is the same. The challenge is doing it consistently across every part, every month. That is where most organizations fail — not because the formulas are hard, but because applying them manually at scale is unsustainable.
 
@@ -474,7 +474,7 @@ The engine components category needs a review. At 0.4 turns, you are carrying ov
   </Step>
 </StepList>
 
-<FlowChart title="Connecting the Four Pillars" steps={[{label: "Choose Forecasting Method", detail: "SMA for regular, Croston's for intermittent demand"}, {label: "Calculate Safety Stock", detail: "Statistical formula for A-tier, simplified for B/C"}, {label: "Set Min/Max Levels", detail: "Minimum = (demand x lead time) + safety stock"}, {label: "Monitor Turnover", detail: "Validate settings against category benchmarks"}, {label: "Adjust Quarterly", detail: "Update parameters as conditions change"}]} color="emerald" />
+<FlowChart title="Connecting the Four Pillars" steps='[{"label":"Choose Forecasting Method","detail":"SMA for regular, Croston's for intermittent demand"},{"label":"Calculate Safety Stock","detail":"Statistical formula for A-tier, simplified for B/C"},{"label":"Set Min/Max Levels","detail":"Minimum = (demand x lead time) + safety stock"},{"label":"Monitor Turnover","detail":"Validate settings against category benchmarks"},{"label":"Adjust Quarterly","detail":"Update parameters as conditions change"}]' color="emerald" />
 
 The challenge is obvious: doing this for every part, every quarter, requires either a dedicated analyst or software that automates the calculations. For a 5,000-SKU warehouse, manually recalculating forecasts, safety stock, and min/max levels takes dozens of hours per cycle. Most teams simply do not do it, which is why their inventory parameters drift out of alignment with reality.
 

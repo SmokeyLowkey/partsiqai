@@ -23,7 +23,7 @@ import { RelatedSolutions } from "@/components/solutions/related-solutions"
 export const metadata: Metadata = {
   title: "AI Inventory Management Software",
   description:
-    "AI inventory management software that automates demand forecasting, reorder points, and parts search. AI powered inventory management for industrial operations.",
+    "AI inventory management with demand forecasting, smart reorder points, and predictive analytics. Cut stockouts 85% for industrial operations.",
   keywords: [
     "ai inventory management",
     "ai powered inventory management",
@@ -40,7 +40,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "AI Inventory Management Software for Industrial Operations",
     description:
-      "AI powered inventory management with demand forecasting, intelligent parts search, and automated reorder management. Reduce stockouts by 85%.",
+      "AI-powered inventory management with demand forecasting and automated reorder points. Cut stockouts 85% across industrial operations.",
     url: "/solutions/ai-inventory-management",
   },
 }

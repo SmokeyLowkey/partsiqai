@@ -24,7 +24,7 @@ import { RelatedSolutions } from "@/components/solutions/related-solutions"
 export const metadata: Metadata = {
   title: "Automated Procurement Software",
   description:
-    "Automate parts procurement with AI voice agents, automated email quoting, quote comparison, and purchase order tracking. Get quotes faster and buy smarter.",
+    "Automated procurement software for heavy equipment dealers. AI voice agent calls suppliers, compares quotes, and tracks POs end-to-end.",
   keywords: [
     "automated procurement software",
     "procurement automation",
@@ -41,7 +41,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Automated Procurement Software | PartsIQ",
     description:
-      "AI voice agent calls suppliers, automated email quoting, side-by-side quote comparison, and full purchase order tracking. End-to-end procurement automation.",
+      "AI voice agent calls suppliers, auto-emails quotes, and tracks POs end-to-end. Built for heavy equipment procurement teams.",
     url: "/solutions/automated-procurement-software",
   },
 }

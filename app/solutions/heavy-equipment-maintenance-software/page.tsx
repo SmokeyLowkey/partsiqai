@@ -24,7 +24,7 @@ import { RelatedSolutions } from "@/components/solutions/related-solutions"
 export const metadata: Metadata = {
   title: "Heavy Equipment Maintenance Software",
   description:
-    "Connect maintenance schedules to parts inventory with AI-powered PDF manual parsing, predictive alerts, and service interval tracking for heavy equipment fleets.",
+    "Link maintenance schedules to parts inventory with AI PDF manual parsing and predictive alerts. Cut downtime for heavy equipment fleets.",
   keywords: [
     "heavy equipment maintenance software",
     "equipment maintenance tracking",
@@ -41,7 +41,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Heavy Equipment Maintenance Software | PartsIQ",
     description:
-      "AI-powered maintenance scheduling linked to parts inventory. Parse PDF manuals, get predictive alerts, and track service costs across your entire fleet.",
+      "AI maintenance scheduling linked to parts inventory. Parse PDF manuals, get predictive alerts, and cut downtime for heavy equipment fleets.",
     url: "/solutions/heavy-equipment-maintenance-software",
   },
 }

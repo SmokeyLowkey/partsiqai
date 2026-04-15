@@ -12,6 +12,18 @@ export const AnalyticsEvents = {
   AI_CHAT_SESSION_STARTED: 'ai_chat_session_started',
   AI_CHAT_MESSAGE_SENT: 'ai_chat_message_sent',
   SETTINGS_UPDATED: 'settings_updated',
+  // Marketing funnel
+  CTA_CLICKED: 'cta_clicked',
+  PRICING_PLAN_SELECTED: 'pricing_plan_selected',
+  DEMO_REQUESTED: 'demo_requested',
+  CONTACT_SALES_CLICKED: 'contact_sales_clicked',
+  // Blog / lead capture
+  LEAD_CAPTURE_VIEWED: 'lead_capture_viewed',
+  LEAD_CAPTURE_SUBMITTED: 'lead_capture_submitted',
+  LEAD_CAPTURE_SUCCESS: 'lead_capture_success',
+  LEAD_CAPTURE_FAILED: 'lead_capture_failed',
+  // Homepage hero funnel
+  HERO_SCROLLED_PAST: 'hero_scrolled_past',
 } as const
 
 export function trackEvent(

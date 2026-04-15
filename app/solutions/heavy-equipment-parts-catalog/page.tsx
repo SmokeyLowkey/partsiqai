@@ -22,7 +22,7 @@ import { RelatedSolutions } from "@/components/solutions/related-solutions"
 export const metadata: Metadata = {
   title: "Heavy Equipment Parts Catalog",
   description:
-    "AI-powered digital parts catalog for heavy equipment. Search by description, part number, or diagram with 95% accuracy. Multi-brand support for CAT, Komatsu, Deere, and more.",
+    "AI-powered digital parts catalog for CAT, Komatsu, Deere & more. Diagram search with 95% accuracy. Built for heavy equipment dealers.",
   keywords: [
     "heavy equipment parts catalog",
     "digital parts catalog",
@@ -39,7 +39,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Digital Heavy Equipment Parts Catalog Software",
     description:
-      "AI-powered digital parts catalog with diagram search, cross-referencing, and multi-brand support. 95% search accuracy for heavy equipment parts.",
+      "AI-powered digital parts catalog with diagram search and cross-brand referencing. 95% accuracy for CAT, Komatsu, Deere, and more.",
     url: "/solutions/heavy-equipment-parts-catalog",
   },
 }

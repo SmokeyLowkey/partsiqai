@@ -22,7 +22,7 @@ The disconnect between work order creation and parts procurement is where mainte
 Industry research consistently shows that 40-60% of all work orders experience delays due to parts unavailability. The average delay per affected work order is 3-5 days — and for specialized heavy equipment, it can stretch to weeks.
 </Callout>
 
-<FlowChart title="Work Order Lifecycle — Where Parts Stall the Process" steps={[{label: "Request Submission", detail: "Technician or sensor creates maintenance request"}, {label: "Triage & Priority", detail: "Supervisor assigns urgency and routing"}, {label: "Parts Identification", detail: "Determine what's needed for the repair"}, {label: "Parts Procurement", detail: "Source missing parts — THIS IS THE BOTTLENECK"}, {label: "Scheduling & Execution", detail: "Work begins once parts are confirmed available"}]} color="emerald" />
+<FlowChart title="Work Order Lifecycle — Where Parts Stall the Process" steps='[{"label":"Request Submission","detail":"Technician or sensor creates maintenance request"},{"label":"Triage & Priority","detail":"Supervisor assigns urgency and routing"},{"label":"Parts Identification","detail":"Determine what's needed for the repair"},{"label":"Parts Procurement","detail":"Source missing parts — THIS IS THE BOTTLENECK"},{"label":"Scheduling & Execution","detail":"Work begins once parts are confirmed available"}]' color="emerald" />
 
 ---
 
@@ -182,7 +182,7 @@ Once parts are ordered and delivery is confirmed, the system should automaticall
 <Stat value="60%" label="Fewer Rush Orders" detail="Reduction in emergency parts purchases through predictive sourcing" />
 </StatGrid>
 
-<MetricsDashboard title="ROI of Closing the Work-Order-to-Parts Gap" metrics={[{value: "35%", label: "Faster MTTR", change: "↓ with pre-staged parts"}, {value: "18%", label: "Lower Parts Spend", change: "↓ via multi-supplier comparison"}, {value: "12 hrs/wk", label: "Recovered Labor", change: "↑ per facility"}, {value: "60%", label: "Fewer Rush Orders", change: "↓ through predictive sourcing"}]} />
+<MetricsDashboard title="ROI of Closing the Work-Order-to-Parts Gap" metrics='[{"value":"35%","label":"Faster MTTR","change":"↓ with pre-staged parts"},{"value":"18%","label":"Lower Parts Spend","change":"↓ via multi-supplier comparison"},{"value":"12 hrs/wk","label":"Recovered Labor","change":"↑ per facility"},{"value":"60%","label":"Fewer Rush Orders","change":"↓ through predictive sourcing"}]' />
 
 ### Downtime Reduction
 

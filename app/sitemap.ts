@@ -1,5 +1,7 @@
 import type { MetadataRoute } from "next"
 import { getAllPosts } from "@/lib/blog/utils"
+import { getAllCompetitorSlugs } from "@/lib/content/competitors"
+import { getAllBrandSlugs } from "@/lib/content/brands"
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://partsiqai.com"
@@ -14,6 +16,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${baseUrl}/support`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.6 },
     { url: `${baseUrl}/blog`, lastModified: new Date(), changeFrequency: "weekly", priority: 0.8 },
     { url: `${baseUrl}/solutions`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.8 },
+    { url: `${baseUrl}/parts-catalog`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.9 },
+    { url: `${baseUrl}/terms`, lastModified: new Date(), changeFrequency: "yearly", priority: 0.3 },
+    { url: `${baseUrl}/privacy`, lastModified: new Date(), changeFrequency: "yearly", priority: 0.3 },
   ]
 
   const solutionPages: MetadataRoute.Sitemap = [
@@ -36,5 +41,19 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.7,
   }))
 
-  return [...staticPages, ...solutionPages, ...blogPages]
+  const comparisonPages: MetadataRoute.Sitemap = getAllCompetitorSlugs().map((slug) => ({
+    url: `${baseUrl}/vs/${slug}`,
+    lastModified: new Date(),
+    changeFrequency: "monthly" as const,
+    priority: 0.7,
+  }))
+
+  const brandPages: MetadataRoute.Sitemap = getAllBrandSlugs().map((slug) => ({
+    url: `${baseUrl}/parts-catalog/${slug}`,
+    lastModified: new Date(),
+    changeFrequency: "monthly" as const,
+    priority: 0.8,
+  }))
+
+  return [...staticPages, ...solutionPages, ...comparisonPages, ...brandPages, ...blogPages]
 }

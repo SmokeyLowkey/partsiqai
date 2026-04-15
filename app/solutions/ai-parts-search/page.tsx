@@ -23,7 +23,7 @@ import { RelatedSolutions } from "@/components/solutions/related-solutions"
 export const metadata: Metadata = {
   title: "AI-Powered Parts Search Engine",
   description:
-    "Semantic AI parts search across 3 databases simultaneously. Natural language queries, vehicle context awareness, and 95% match accuracy for industrial parts.",
+    "Find any industrial part in seconds with semantic AI search. 95% match accuracy across 3 databases. Built for industrial procurement teams.",
   keywords: [
     "AI parts lookup",
     "semantic parts search",
@@ -40,7 +40,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "AI-Powered Industrial Parts Search Engine",
     description:
-      "Multi-agent AI search across SQL, vector, and graph databases. Natural language queries with 95% accuracy for industrial parts lookup.",
+      "Find any industrial part in seconds. Multi-agent semantic search across SQL, vector, and graph databases with 95% match accuracy.",
     url: "/solutions/ai-parts-search",
   },
 }

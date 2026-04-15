@@ -8,10 +8,21 @@ import { useSession } from 'next-auth/react'
 
 if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_POSTHOG_KEY) {
   posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY, {
-    api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com',
+    // Route through same-origin /ingest proxy (see next.config.mjs rewrites)
+    // so ad-blockers targeting *.posthog.com don't drop events/recordings.
+    api_host: '/ingest',
+    // ui_host keeps "view in PostHog" links pointing at the real dashboard.
+    ui_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com',
     person_profiles: 'identified_only',
     capture_pageview: false,
     capture_pageleave: true,
+    disable_session_recording: false,
+    session_recording: {
+      // Mask all form inputs by default — B2B app with credentials + PII.
+      maskAllInputs: true,
+      // Opt-in element masking: add data-ph-mask to anything else to hide.
+      maskTextSelector: '[data-ph-mask]',
+    },
   })
 }
 
@@ -27,7 +38,10 @@ function PostHogPageView() {
       if (params) {
         url = url + '?' + params
       }
-      posthogClient.capture('$pageview', { $current_url: url })
+      posthogClient.capture('$pageview', {
+        $current_url: url,
+        $pathname: pathname,
+      })
     }
   }, [pathname, searchParams, posthogClient])
 

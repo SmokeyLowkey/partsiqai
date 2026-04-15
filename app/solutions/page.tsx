@@ -6,7 +6,7 @@ import { PublicFooter } from "@/components/layout/public-footer"
 import { Button } from "@/components/ui/button"
 
 export const metadata: Metadata = {
-  title: "Solutions",
+  title: "Parts Procurement Solutions",
   description:
     "PartsIQ solutions for parts inventory management, tracking, AI search, supplier management, and procurement automation for heavy equipment operations.",
   alternates: {
@@ -149,6 +149,30 @@ export default function SolutionsPage() {
                   </Link>
                 )
               })}
+            </div>
+          </div>
+        </section>
+
+        {/* Cross-cluster link to /parts-catalog — gives the SEO cluster a bridge between generic solutions and brand-specific pages */}
+        <section className="py-16 bg-slate-50">
+          <div className="container mx-auto px-6">
+            <div className="max-w-4xl mx-auto text-center">
+              <div className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-4 py-1.5 text-emerald-700 text-sm font-medium mb-5">
+                <Package className="h-4 w-4" />
+                Browse parts by brand
+              </div>
+              <h2 className="text-3xl md:text-4xl font-bold text-slate-950 tracking-tight mb-4">
+                Need brand-specific parts sourcing guidance?
+              </h2>
+              <p className="text-lg text-slate-600 mb-8 max-w-2xl mx-auto">
+                We publish parts management and sourcing playbooks for every major heavy and compact equipment brand — Caterpillar, Komatsu, John Deere, Bobcat, Kubota, and more.
+              </p>
+              <Link href="/parts-catalog">
+                <Button size="lg" className="bg-slate-950 text-white hover:bg-slate-800 px-8 h-12">
+                  Explore parts catalog by brand
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Button>
+              </Link>
             </div>
           </div>
         </section>

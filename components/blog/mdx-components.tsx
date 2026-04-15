@@ -5,6 +5,7 @@ import { MetricsDashboard } from "./illustrations/metrics-dashboard"
 import { ArchitectureDiagram } from "./illustrations/architecture-diagram"
 import { CostBreakdown } from "./illustrations/cost-breakdown"
 import { TimelineDiagram } from "./illustrations/timeline-diagram"
+import { BlogCTA } from "./blog-cta"
 
 /* ─── Callout ─── */
 const calloutStyles = {
@@ -191,4 +192,5 @@ export const mdxComponents = {
   ArchitectureDiagram,
   CostBreakdown,
   TimelineDiagram,
+  BlogCTA,
 }

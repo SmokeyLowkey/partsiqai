@@ -3,7 +3,9 @@ import Link from "next/link"
 import { ArrowLeft, Calendar, Clock, Tag } from "lucide-react"
 import { notFound } from "next/navigation"
 import { MDXRemote } from "next-mdx-remote/rsc"
+import remarkGfm from "remark-gfm"
 import { mdxComponents } from "@/components/blog/mdx-components"
+import { BlogCTA } from "@/components/blog/blog-cta"
 import { getAllSlugs, getPostBySlug } from "@/lib/blog/utils"
 import { JsonLd } from "@/components/seo/json-ld"
 import { BreadcrumbJsonLd } from "@/components/seo/breadcrumb-jsonld"
@@ -142,7 +144,22 @@ export default async function BlogPostPage({ params }: Props) {
               prose-li:marker:text-emerald-500
               prose-hr:border-slate-200 dark:prose-hr:border-slate-800 prose-hr:my-12
               prose-img:rounded-xl prose-img:shadow-lg">
-              <MDXRemote source={post.content} components={mdxComponents} />
+              <MDXRemote
+                source={post.content}
+                components={mdxComponents}
+                options={{ mdxOptions: { remarkPlugins: [remarkGfm] } }}
+              />
+
+              {/* Default post-footer lead capture (MDX can also include <BlogCTA /> inline) */}
+              <BlogCTA
+                variant="footer"
+                source="post-footer"
+                postSlug={post.meta.slug}
+                postTitle={post.meta.title}
+                title="Ready to stop chasing parts manually?"
+                description="See how PartsIQ sources parts in 15 minutes instead of 4 hours — with AI search, voice agent, and automated quoting built for heavy and compact equipment operations."
+                ctaText="Request demo"
+              />
             </article>
           </div>
         </section>
