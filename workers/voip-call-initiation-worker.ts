@@ -11,6 +11,8 @@ import { initializeCallState } from '@/lib/voip/call-graph';
 import { saveCallState } from '@/lib/voip/state-manager';
 import { addMessage } from '@/lib/voip/helpers';
 import { initOverseerState, saveOverseerState } from '@/lib/voip/overseer/state';
+import { selectNumber, markNumberUsed, hasSupplierBeenCalledToday } from '@/lib/voip/phone-pool';
+import { getVoicePool } from '@/lib/voip/phone-pool';
 
 interface VapiCredentials {
   apiKey: string;
@@ -194,6 +196,7 @@ async function processVoipCallInitiation(job: Job<VoipCallInitiationJobData>) {
     const organization = await prisma.organization.findUnique({
       where: { id: metadata.organizationId },
       select: {
+        name: true,
         maxAICalls: true,
         aiCallsUsedThisMonth: true,
         aiCallsResetDate: true,
@@ -202,6 +205,8 @@ async function processVoipCallInitiation(job: Job<VoipCallInitiationJobData>) {
         hardCapEnabled: true,
         hardCapMultiplier: true,
         subscriptionTier: true,
+        subscriptionStatus: true,
+        trialEndsAt: true,
         usePlatformKeys: true,
         vapiApiKey: true,
         elevenLabsApiKey: true,
@@ -210,6 +215,46 @@ async function processVoipCallInitiation(job: Job<VoipCallInitiationJobData>) {
 
     if (!organization) {
       throw new Error(`Organization not found: ${metadata.organizationId}`);
+    }
+
+    // Subscription/trial gate — block calls for inactive subscriptions
+    const subStatus = organization.subscriptionStatus;
+    if (subStatus === 'CANCELLED' || subStatus === 'SUSPENDED') {
+      logger.warn(
+        { organizationId: metadata.organizationId, subscriptionStatus: subStatus },
+        'Call blocked — subscription inactive'
+      );
+      await prisma.supplierCall.updateMany({
+        where: { quoteRequestId, supplierId, status: 'INITIATED' },
+        data: { status: 'FAILED', notes: `Subscription ${subStatus.toLowerCase()} — call blocked` },
+      });
+      throw new Error(`Subscription inactive (${subStatus}) — call blocked`);
+    }
+
+    if (
+      subStatus === 'TRIAL' &&
+      organization.trialEndsAt &&
+      new Date() > new Date(organization.trialEndsAt)
+    ) {
+      logger.warn(
+        { organizationId: metadata.organizationId, trialEndsAt: organization.trialEndsAt },
+        'Call blocked — trial expired'
+      );
+      await prisma.supplierCall.updateMany({
+        where: { quoteRequestId, supplierId, status: 'INITIATED' },
+        data: { status: 'FAILED', notes: 'Trial expired — call blocked' },
+      });
+      throw new Error('Trial expired — call blocked');
+    }
+
+    // Per-supplier daily call frequency cap
+    const supplierCalledToday = await hasSupplierBeenCalledToday(supplierId);
+    if (supplierCalledToday) {
+      logger.info(
+        { supplierId, quoteRequestId },
+        'Call skipped — supplier already called today'
+      );
+      throw new Error('Supplier already called today — per-supplier daily limit reached');
     }
 
     // Check if monthly reset is needed (first day of new month)
@@ -311,17 +356,17 @@ async function processVoipCallInitiation(job: Job<VoipCallInitiationJobData>) {
       },
     });
 
-    // Get VAPI credentials using CredentialsManager
+    // Get VAPI credentials using CredentialsManager (API key only — phone number comes from pool)
     const credentialsManager = new CredentialsManager();
     const vapiCreds = await credentialsManager.getCredentialsWithFallback<VapiCredentials>(
       metadata.organizationId,
       'VAPI'
     );
 
-    if (!vapiCreds || !vapiCreds.apiKey || !vapiCreds.phoneNumberId) {
+    if (!vapiCreds || !vapiCreds.apiKey) {
       logger.error(
         { organizationId: metadata.organizationId, hasCredentials: !!vapiCreds },
-        'Missing VAPI credentials in integration_credentials table'
+        'Missing VAPI API key in integration_credentials table'
       );
       throw new Error(
         'VAPI credentials not configured. Please add VAPI credentials in the Admin Integrations settings.'
@@ -329,16 +374,41 @@ async function processVoipCallInitiation(job: Job<VoipCallInitiationJobData>) {
     }
 
     const vapiApiKey = vapiCreds.apiKey;
-    const vapiPhoneNumber = vapiCreds.phoneNumberId;
-    
+
+    // Select phone number from pool (LRU, daily-cap-aware, area-code-preferred)
+    const supplierAreaCode = supplierPhone.replace(/\D/g, '').slice(1, 4); // Extract area code from supplier number
+    let poolNumber;
+    try {
+      poolNumber = await selectNumber({ preferredAreaCode: supplierAreaCode });
+    } catch (poolError: any) {
+      logger.error(
+        { organizationId: metadata.organizationId, error: poolError.message },
+        'Phone pool exhausted — falling back to email'
+      );
+      throw new Error('PHONE_POOL_EXHAUSTED: ' + poolError.message);
+    }
+
+    // Link the selected pool number to the call log
+    await prisma.supplierCall.update({
+      where: { id: callLog.id },
+      data: { vapiPhoneNumberRowId: poolNumber.id },
+    });
+
+    // Mark number as used (increment daily count, update lastUsedAt)
+    await markNumberUsed(poolNumber.id);
+
+    const vapiPhoneNumber = poolNumber.vapiPhoneNumberId;
+
     logger.info(
-      { 
+      {
         organizationId: metadata.organizationId,
         usePlatformKeys: organization.usePlatformKeys,
         hasApiKey: !!vapiApiKey,
-        hasPhoneNumber: !!vapiPhoneNumber
+        poolNumberId: poolNumber.id,
+        poolNumberE164: poolNumber.e164,
+        poolNumberAreaCode: poolNumber.areaCode,
       },
-      'Retrieved VAPI credentials from integration_credentials'
+      'Retrieved VAPI credentials and selected pool number'
     );
 
     // Extract custom call settings
@@ -592,6 +662,39 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
       keywords: transcriberKeywords,
     };
 
+    // Voice rotation: persistent per quote request, rotating across requests
+    const voicePool = await getVoicePool();
+    let voiceConfigIndex: number;
+
+    const quoteRequest = await prisma.quoteRequest.findUnique({
+      where: { id: quoteRequestId },
+      select: { voiceConfigIndex: true },
+    });
+
+    if (quoteRequest?.voiceConfigIndex != null) {
+      // Follow-up call — use same voice as first call in this quote request
+      voiceConfigIndex = quoteRequest.voiceConfigIndex % voicePool.length;
+    } else {
+      // First call for this quote request — assign a voice index
+      // Use a simple hash of the quoteRequestId for deterministic distribution
+      let hash = 0;
+      for (let i = 0; i < quoteRequestId.length; i++) {
+        hash = ((hash << 5) - hash + quoteRequestId.charCodeAt(i)) | 0;
+      }
+      voiceConfigIndex = Math.abs(hash) % voicePool.length;
+
+      await prisma.quoteRequest.update({
+        where: { id: quoteRequestId },
+        data: { voiceConfigIndex },
+      });
+    }
+
+    const selectedVoice = voicePool[voiceConfigIndex];
+    logger.info(
+      { voiceConfigIndex, voiceProvider: selectedVoice.provider, voiceId: selectedVoice.voiceId, quoteRequestId },
+      'Selected voice for call'
+    );
+
     // Build VAPI assistant configuration (only if not using assistant ID)
     const vapiAssistantConfig = vapiAssistantId ? undefined : {
       firstMessage: firstMessage,
@@ -606,8 +709,8 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
         },
       },
       voice: {
-        provider: 'azure',
-        voiceId: 'andrew',
+        provider: selectedVoice.provider,
+        voiceId: selectedVoice.voiceId,
       },
       tools: [{ type: 'endCall' }],
       endCallPhrases: [
@@ -671,6 +774,10 @@ CRITICAL: Always start by asking for the parts department. Once connected, expla
       callPayload.assistantOverrides = {
         firstMessage: firstMessage,
         transcriber: transcriberConfig,
+        voice: {
+          provider: selectedVoice.provider,
+          voiceId: selectedVoice.voiceId,
+        },
         model: {
           provider: 'custom-llm',
           model: 'langgraph-state-machine',

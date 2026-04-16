@@ -89,7 +89,7 @@ const faqJsonLd = {
       name: "Does PartsIQ integrate with my existing CMMS or ERP?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "PartsIQ integrates with email (Gmail and Microsoft 365 via OAuth) and Stripe for billing. Direct API integrations with CMMS platforms and ERP systems are on the roadmap. Many operations use PartsIQ alongside their existing CMMS — PartsIQ handles parts sourcing and supplier workflows while the CMMS continues to run work orders and maintenance scheduling.",
+        text: "PartsIQ integrates with Gmail and Microsoft 365 via OAuth for supplier email communication. You can export quote requests and orders as CSV to import into your ERP or accounting system. Enterprise customers can bring their own API keys (BYOK) for voice and AI services. Native ERP/DMS connectors are on the roadmap — visit partsiqai.com/integrations for details and to request your ERP.",
       },
     },
     {

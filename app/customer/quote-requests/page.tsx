@@ -30,6 +30,7 @@ import {
   Building2,
   UserCheck,
   CheckCircle,
+  Download,
 } from 'lucide-react';
 import { QuoteStatus } from '@prisma/client';
 
@@ -133,10 +134,23 @@ export default function QuoteRequestsPage() {
             Manage your quote requests and track supplier responses
           </p>
         </div>
-        <Button onClick={() => router.push('/customer/ai-chat')}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Quote Request
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              const params = new URLSearchParams();
+              if (statusFilter !== 'all') params.append('status', statusFilter);
+              window.location.href = `/api/quote-requests/export?${params.toString()}`;
+            }}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
+          <Button onClick={() => router.push('/customer/ai-chat')}>
+            <Plus className="h-4 w-4 mr-2" />
+            New Quote Request
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}

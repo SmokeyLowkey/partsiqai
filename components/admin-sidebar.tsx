@@ -1,6 +1,7 @@
 "use client"
 
 import { signOut, useSession } from "next-auth/react"
+import { ThemeLogo } from "@/components/theme-logo"
 import {
   Sidebar,
   SidebarContent,
@@ -145,7 +146,7 @@ export function AdminSidebar() {
     <Sidebar>
       <SidebarHeader>
         <div className="flex items-center space-x-2 px-2">
-          <img src="/dark-theme-icon-logo-no-text.svg" alt="PartsIQ" className="h-8 w-8" />
+          <ThemeLogo className="h-8 w-8" />
           <div className="flex flex-col">
             <span className="font-semibold">Admin Portal</span>
             {!isMasterAdmin && session?.user?.role && (

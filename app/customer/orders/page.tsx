@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Search, Filter, Plus, Eye, CheckCircle, Clock, AlertCircle, Package, Truck } from "lucide-react"
+import { Search, Filter, Plus, Eye, CheckCircle, Clock, AlertCircle, Package, Truck, Download } from "lucide-react"
 import Link from "next/link"
 
 type OrderStatus = 'PENDING' | 'PENDING_QUOTE' | 'PROCESSING' | 'IN_TRANSIT' | 'DELIVERED' | 'CANCELLED' | 'RETURNED';
@@ -125,10 +125,23 @@ export default function OrdersPage() {
           <h1 className="text-2xl font-bold">Orders</h1>
           <p className="text-muted-foreground">Manage your parts orders and track deliveries</p>
         </div>
-        <Button>
-          <Plus className="h-4 w-4 mr-2" />
-          New Order
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              const params = new URLSearchParams();
+              if (statusFilter !== 'all') params.append('status', statusFilter);
+              window.location.href = `/api/orders/export?${params.toString()}`;
+            }}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
+          <Button>
+            <Plus className="h-4 w-4 mr-2" />
+            New Order
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}

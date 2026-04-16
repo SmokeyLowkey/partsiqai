@@ -1218,6 +1218,73 @@ async function main() {
       description: 'System maintenance mode',
       category: 'system',
     },
+    // Phone pool settings
+    {
+      key: 'PHONE_POOL_MIN_SIZE',
+      value: '3',
+      description: 'Minimum healthy numbers in pool — alert admin when below',
+      category: 'VOIP',
+    },
+    {
+      key: 'PHONE_POOL_DAILY_CAP',
+      value: '50',
+      description: 'Max calls per number per day (carrier safety)',
+      category: 'VOIP',
+    },
+    {
+      key: 'PHONE_POOL_DEFAULT_AREA_CODE',
+      value: '',
+      description: 'Area code for auto-provisioned numbers (blank = any)',
+      category: 'VOIP',
+    },
+    {
+      key: 'PHONE_POOL_DEGRADED_THRESHOLD',
+      value: '3',
+      description: 'SIP 607/608 count in 24h to flag number as DEGRADED',
+      category: 'VOIP',
+    },
+    {
+      key: 'PHONE_POOL_BLOCKED_THRESHOLD',
+      value: '10',
+      description: 'SIP 607/608 count in 24h to flag number as BLOCKED',
+      category: 'VOIP',
+    },
+    {
+      key: 'PHONE_POOL_SUPPLIER_DAILY_LIMIT',
+      value: '1',
+      description: 'Max calls to same supplier per day across all numbers',
+      category: 'VOIP',
+    },
+    {
+      key: 'VAPI_PLATFORM_ASSISTANT_ID',
+      value: '',
+      description: 'Vapi assistant ID for inbound call routing (shared PARTSIQAI assistant)',
+      category: 'VOIP',
+    },
+    {
+      key: 'VAPI_SERVER_URL',
+      value: 'https://quotarc.com/api/voice/webhook',
+      description: 'Webhook URL configured on each provisioned number',
+      category: 'VOIP',
+    },
+    {
+      key: 'VAPI_CREDENTIAL_ID',
+      value: '',
+      description: 'Vapi credential ID for webhook auth (Bearer Token)',
+      category: 'VOIP',
+    },
+    {
+      key: 'VAPI_PLATFORM_FALLBACK_NUMBER',
+      value: '',
+      description: 'Platform safety-net fallback number (per-call fallback uses requesting user phone)',
+      category: 'VOIP',
+    },
+    {
+      key: 'VAPI_VOICE_POOL',
+      value: '[{"provider":"azure","voiceId":"andrew"},{"provider":"11labs","voiceId":"Nbttze9nhGhK1czblc6j"}]',
+      description: 'JSON array of voice configs — rotated per quote request',
+      category: 'VOIP',
+    },
   ]
 
   for (const setting of systemSettings) {

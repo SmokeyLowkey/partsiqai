@@ -236,7 +236,7 @@ export default function PricingPage() {
                   </li>
                   <li className="flex items-start gap-3">
                     <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
-                    <span className="text-slate-700">ERP integrations</span>
+                    <span className="text-slate-700">ERP/CMMS data bridge (CSV export + API access)</span>
                   </li>
                   <li className="flex items-start gap-3">
                     <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />

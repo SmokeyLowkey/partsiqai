@@ -49,6 +49,7 @@ const COMMON_FEATURES: Omit<CompetitorFeatureRow, "competitor">[] = [
   { label: "Automated email quote requests + follow-up", partsiq: "yes" },
   { label: "Work order / CMMS management", partsiq: "partial" },
   { label: "Fleet vehicle management (telematics, driver)", partsiq: "no" },
+  { label: "CSV data export (quotes, orders, parts)", partsiq: "yes" },
   { label: "Built specifically for heavy & compact equipment parts", partsiq: "yes" },
 ]
 

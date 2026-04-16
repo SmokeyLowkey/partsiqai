@@ -5,6 +5,7 @@ import { initializeCallState } from '@/lib/voip/call-graph';
 import { getLastAIMessage, determineOutcome, addMessage } from '@/lib/voip/helpers';
 import { workerLogger } from '@/lib/logger';
 import { notifyQuoteReceived } from '@/lib/notifications/quote-received';
+import { recordCallOutcome } from '@/lib/voip/phone-pool/health';
 
 const logger = workerLogger.child({ module: 'voip-webhooks' });
 
@@ -217,10 +218,19 @@ async function handleCallEnded(callId: string, vapiCallId: string | undefined, e
   // Extract final outcome
   const outcome = state ? determineOutcome(state) : 'NO_ANSWER';
 
-  // Get call record with supplier name for notifications
+  // Get call record with supplier name and pool number for health tracking
   const call = await prisma.supplierCall.findUnique({
     where: { id: callId },
-    include: { supplier: { select: { name: true } } },
+    select: {
+      id: true,
+      quoteRequestId: true,
+      supplierId: true,
+      organizationId: true,
+      vapiCallId: true,
+      vapiPhoneNumberRowId: true,
+      conversationLog: true,
+      supplier: { select: { name: true } },
+    },
   });
 
   if (!call) {
@@ -260,12 +270,18 @@ async function handleCallEnded(callId: string, vapiCallId: string | undefined, e
     }
   }
 
+  // Extract endedReason and SIP code from Vapi event for health tracking
+  const endedReason = event.endedReason || event.call?.endedReason || null;
+  const sipCode = event.call?.status?.sipCode || event.sipCode || null;
+
   // Update call record with all final data
   const updateData: any = {
     status: 'COMPLETED',
     endedAt: new Date(),
     duration: event.durationSeconds || 0,
     recordingUrl: event.recordingUrl,
+    endedReason,
+    sipCode: sipCode ? String(sipCode) : null,
     conversationLog: {
       ...existingLog,
       conversationHistory,
@@ -295,6 +311,20 @@ async function handleCallEnded(callId: string, vapiCallId: string | undefined, e
     where: { id: callId },
     data: updateData,
   });
+
+  // Phone pool health tracking — record outcome for the number used
+  if (call.vapiPhoneNumberRowId) {
+    try {
+      await recordCallOutcome(call.vapiPhoneNumberRowId, {
+        endedReason,
+        sipCode: sipCode ? String(sipCode) : null,
+        status: updateData.status,
+      });
+    } catch (healthError) {
+      // Non-critical — don't fail the webhook if health tracking fails
+      logger.warn({ callId, error: healthError }, 'Failed to record call outcome for phone pool health');
+    }
+  }
 
   // If quote received, create SupplierQuoteItems and update quote status
   if (extractedQuotes.length > 0 && call.quoteRequestId) {

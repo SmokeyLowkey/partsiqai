@@ -1,6 +1,7 @@
 "use client"
 
 import { Suspense, useState } from "react"
+import { ThemeLogo } from "@/components/theme-logo"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -47,7 +48,7 @@ function VerifyEmailContent() {
         <Card className="shadow-xl border-purple-100">
           <CardHeader className="space-y-1 text-center">
             <div className="flex justify-center mb-4">
-              <img src="/dark-theme-icon-logo-no-text.svg" alt="PartsIQ" className="h-16 w-16" />
+              <ThemeLogo className="h-16 w-16" />
             </div>
             <CardTitle className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-cyan-600 bg-clip-text text-transparent">
               Check Your Email

@@ -24,7 +24,7 @@ export async function GET() {
     await ensureSystemOrganization();
 
     // Get decrypted credentials for each integration type
-    const types: IntegrationType[] = ['VAPI', 'OPENROUTER', 'PINECONE', 'NEO4J', 'MISTRAL', 'SERPER'];
+    const types: IntegrationType[] = ['VAPI', 'OPENROUTER', 'PINECONE', 'NEO4J', 'MISTRAL', 'SERPER', 'TWILIO'];
     const credentials: any = {};
 
     for (const type of types) {

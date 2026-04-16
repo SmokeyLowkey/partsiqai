@@ -957,6 +957,7 @@ model QuoteRequest {
   convertingBy               String?
   convertingStartedAt        DateTime?
   isConverting               Boolean                   @default(false)
+  voiceConfigIndex           Int?
   editedEmails               EditedEmail[]
   emailThread                EmailThread[]
   emailThreads               QuoteRequestEmailThread[]
@@ -1143,20 +1144,49 @@ model SupplierCall {
   extractedQuotes  Json?
   threadRole       ThreadRole    @default(TECHNICIAN)
   visibleToCreator Boolean       @default(true)
-  organizationId   String
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  caller           User          @relation(fields: [callerId], references: [id], onDelete: Restrict)
-  organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  quoteRequest     QuoteRequest? @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
-  supplier         Supplier      @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  organizationId       String
+  vapiPhoneNumberRowId String?
+  endedReason          String?
+  sipCode              String?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  caller               User             @relation(fields: [callerId], references: [id], onDelete: Restrict)
+  organization         Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quoteRequest         QuoteRequest?    @relation(fields: [quoteRequestId], references: [id], onDelete: Cascade)
+  supplier             Supplier         @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  vapiPhoneNumber      VapiPhoneNumber? @relation(fields: [vapiPhoneNumberRowId], references: [id], onDelete: SetNull)
 
   @@index([quoteRequestId])
   @@index([supplierId])
   @@index([status])
   @@index([nextRetryAt])
   @@index([organizationId])
+  @@index([vapiPhoneNumberRowId])
   @@map("supplier_calls")
+}
+
+model VapiPhoneNumber {
+  id                    String              @id @default(cuid())
+  vapiPhoneNumberId     String              @unique
+  twilioSid             String?             @unique
+  e164                  String              @unique
+  areaCode              String?
+  provider              PhoneNumberProvider  @default(TWILIO)
+  isActive              Boolean             @default(true)
+  healthStatus          PhoneNumberHealth   @default(HEALTHY)
+  vapiStatus            String?
+  blockedReason         String?
+  blockedAt             DateTime?
+  dailyCallCount        Int                 @default(0)
+  dailyCallCountResetAt DateTime            @default(now())
+  lastUsedAt            DateTime?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  supplierCalls         SupplierCall[]
+
+  @@index([isActive, healthStatus, dailyCallCount])
+  @@index([healthStatus])
+  @@map("vapi_phone_numbers")
 }
 
 model JobQueue {
@@ -1728,6 +1758,18 @@ enum IntegrationType {
   MISTRAL
   VAPI
   SERPER
+  TWILIO
+}
+
+enum PhoneNumberProvider {
+  TWILIO
+}
+
+enum PhoneNumberHealth {
+  HEALTHY
+  DEGRADED
+  BLOCKED
+  RETIRED
 }
 
 enum TestStatus {

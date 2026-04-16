@@ -1,6 +1,7 @@
 "use client"
 
 import { signOut, useSession } from "next-auth/react"
+import { ThemeLogo } from "@/components/theme-logo"
 import { useEffect, useState } from "react"
 import {
   Sidebar,
@@ -116,7 +117,7 @@ export function CustomerSidebar() {
     <Sidebar variant="sidebar" collapsible="icon">
       <SidebarHeader>
         <div className="flex items-center justify-center px-2 py-4 group-data-[collapsible=icon]:px-0">
-          <img src="/dark-theme-icon-logo-no-text.svg" alt="PartsIQ" className="h-8 w-8 group-data-[collapsible=icon]:h-6 group-data-[collapsible=icon]:w-6" />
+          <ThemeLogo className="h-8 w-8 group-data-[collapsible=icon]:h-6 group-data-[collapsible=icon]:w-6" />
           <span className="font-semibold ml-2 group-data-[collapsible=icon]:hidden">PartsIQ AI</span>
         </div>
       </SidebarHeader>

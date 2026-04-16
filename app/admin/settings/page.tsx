@@ -63,6 +63,7 @@ import {
   FileSearch,
   Trash2,
 } from "lucide-react";
+import { PhonePoolPanel } from "@/components/admin/phone-pool-panel";
 
 type SystemSetting = {
   id: string;
@@ -2133,90 +2134,8 @@ export default function SettingsPage() {
 
       <Separator />
 
-      {/* Organization VAPI Phone & Assistant Mapping */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Zap className="h-5 w-5" />
-            Organization VAPI Mapping
-          </CardTitle>
-          <CardDescription>
-            Assign dedicated VAPI phone numbers and assistant IDs to specific organizations. Leave blank to use the platform defaults.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="rounded-lg border">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-muted/50">
-                  <tr>
-                    <th className="text-left p-3 font-medium">Organization</th>
-                    <th className="text-left p-3 font-medium">Phone Number ID</th>
-                    <th className="text-left p-3 font-medium">Assistant ID</th>
-                    <th className="text-right p-3 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {organizations.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="p-8 text-center text-muted-foreground">
-                        No organizations found
-                      </td>
-                    </tr>
-                  ) : (
-                    organizations.map((org) => (
-                      <tr key={org.id} className="hover:bg-muted/30">
-                        <td className="p-3 font-medium">{org.name}</td>
-                        <td className="p-3">
-                          <Input
-                            value={vapiPhoneNumberMappings[org.id] || ""}
-                            onChange={(e) => handleUpdateVapiMapping(org.id, "phone", e.target.value)}
-                            placeholder="e.g. abc123-def456..."
-                            className="max-w-xs"
-                          />
-                        </td>
-                        <td className="p-3">
-                          <Input
-                            value={vapiAssistantIdMappings[org.id] || ""}
-                            onChange={(e) => handleUpdateVapiMapping(org.id, "assistant", e.target.value)}
-                            placeholder="e.g. xyz789-uvw012..."
-                            className="max-w-xs"
-                          />
-                        </td>
-                        <td className="p-3 text-right">
-                          {(vapiPhoneNumberMappings[org.id] || vapiAssistantIdMappings[org.id]) && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleRemoveVapiMapping(org.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="flex justify-end pt-4">
-            <Button
-              onClick={handleSaveVapiMappings}
-              disabled={savingVapiMappings}
-            >
-              {savingVapiMappings ? (
-                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4 mr-2" />
-              )}
-              Save All Mappings
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Phone Number Pool Management */}
+      <PhonePoolPanel />
 
       <Separator />
 

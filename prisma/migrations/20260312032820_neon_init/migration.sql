@@ -1,0 +1,4 @@
+-- This migration was a Neon baseline migration.
+-- The original SQL was not committed to source control.
+-- This placeholder exists so Prisma can find the migration directory.
+-- The migration has already been applied to the database.

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, Suspense } from "react"
+import { ThemeLogo } from "@/components/theme-logo"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -191,7 +192,7 @@ function ResetPasswordContent() {
         <Card className="shadow-xl border-purple-100">
           <CardHeader className="space-y-1 text-center">
             <div className="flex justify-center mb-4">
-              <img src="/dark-theme-icon-logo-no-text.svg" alt="PartsIQ" className="h-12 w-12" />
+              <ThemeLogo className="h-12 w-12" />
             </div>
             <CardTitle className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-cyan-600 bg-clip-text text-transparent">
               Set New Password
