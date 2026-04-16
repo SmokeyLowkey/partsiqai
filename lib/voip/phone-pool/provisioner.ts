@@ -209,10 +209,73 @@ export async function releaseNumber(phoneNumberRowId: string): Promise<void> {
 }
 
 /**
- * Sync all active pool numbers with current SystemSetting values.
- * PATCHes Vapi config on each number (server URL, assistant, fallback).
+ * Import phone numbers from Vapi that aren't already in the local pool.
+ * Fetches all numbers from the Vapi account and upserts them into the DB.
  */
-export async function syncPoolConfig(): Promise<{ updated: number; failed: number }> {
+async function importNumbersFromVapi(apiKey: string): Promise<{ imported: number; failed: number }> {
+  const response = await fetch('https://api.vapi.ai/phone-number', {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Failed to fetch numbers from Vapi (${response.status}): ${error}`);
+  }
+
+  const vapiNumbers = await response.json() as Array<{
+    id: string;
+    number?: string;
+    provider?: string;
+    name?: string;
+    status?: string;
+    twilioAccountSid?: string;
+    twilioAuthToken?: string;
+  }>;
+
+  let imported = 0;
+  let failed = 0;
+
+  for (const vn of vapiNumbers) {
+    const e164 = vn.number;
+    if (!e164) {
+      failed++;
+      continue;
+    }
+
+    try {
+      // Upsert: skip if already tracked, insert if new
+      await prisma.vapiPhoneNumber.upsert({
+        where: { vapiPhoneNumberId: vn.id },
+        update: {
+          vapiStatus: vn.status || null,
+        },
+        create: {
+          vapiPhoneNumberId: vn.id,
+          e164,
+          areaCode: e164.startsWith('+1') ? e164.slice(2, 5) : null,
+          provider: 'TWILIO',
+          vapiStatus: vn.status || null,
+        },
+      });
+      imported++;
+    } catch (error) {
+      console.error(`[Provisioner] Failed to import Vapi number ${vn.id} (${e164}):`, error);
+      failed++;
+    }
+  }
+
+  return { imported, failed };
+}
+
+/**
+ * Sync all pool numbers: import from Vapi, then update config on active numbers.
+ * 1. Fetches all phone numbers from Vapi and upserts into local DB
+ * 2. PATCHes Vapi config on each active number (server URL, assistant, fallback)
+ */
+export async function syncPoolConfig(): Promise<{ imported: number; updated: number; failed: number }> {
   const credentialsManager = new CredentialsManager();
   const vapiCreds = await credentialsManager.getCredentialsWithFallback<VapiCredentials>(
     'system-platform-credentials',
@@ -223,6 +286,10 @@ export async function syncPoolConfig(): Promise<{ updated: number; failed: numbe
     throw new Error('Vapi API key not configured');
   }
 
+  // Step 1: Import/discover numbers from Vapi
+  const importResult = await importNumbersFromVapi(vapiCreds.apiKey);
+
+  // Step 2: Update config on all active numbers
   const vapiConfig = await getVapiPlatformConfig();
   const numbers = await prisma.vapiPhoneNumber.findMany({
     where: { isActive: true },
@@ -230,7 +297,7 @@ export async function syncPoolConfig(): Promise<{ updated: number; failed: numbe
   });
 
   let updated = 0;
-  let failed = 0;
+  let failed = importResult.failed;
 
   const patchPayload: Record<string, unknown> = {};
 
@@ -256,29 +323,34 @@ export async function syncPoolConfig(): Promise<{ updated: number; failed: numbe
     };
   }
 
-  for (const number of numbers) {
-    try {
-      const response = await fetch(
-        `https://api.vapi.ai/phone-number/${number.vapiPhoneNumberId}`,
-        {
-          method: 'PATCH',
-          headers: {
-            Authorization: `Bearer ${vapiCreds.apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(patchPayload),
-        }
-      );
+  // Only PATCH if there's config to push
+  if (Object.keys(patchPayload).length > 0) {
+    for (const number of numbers) {
+      try {
+        const response = await fetch(
+          `https://api.vapi.ai/phone-number/${number.vapiPhoneNumberId}`,
+          {
+            method: 'PATCH',
+            headers: {
+              Authorization: `Bearer ${vapiCreds.apiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(patchPayload),
+          }
+        );
 
-      if (response.ok) {
-        updated++;
-      } else {
+        if (response.ok) {
+          updated++;
+        } else {
+          failed++;
+        }
+      } catch {
         failed++;
       }
-    } catch {
-      failed++;
     }
+  } else {
+    updated = numbers.length;
   }
 
-  return { updated, failed };
+  return { imported: importResult.imported, updated, failed };
 }

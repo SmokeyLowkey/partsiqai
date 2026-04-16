@@ -1285,6 +1285,31 @@ async function main() {
       description: 'JSON array of voice configs — rotated per quote request',
       category: 'VOIP',
     },
+    // Pinecone provisioning settings
+    {
+      key: 'PINECONE_INDEX_CLOUD',
+      value: 'aws',
+      description: 'Cloud provider for new Pinecone indexes (aws, gcp, azure)',
+      category: 'PINECONE',
+    },
+    {
+      key: 'PINECONE_INDEX_REGION',
+      value: 'us-east-1',
+      description: 'Region for new Pinecone indexes',
+      category: 'PINECONE',
+    },
+    {
+      key: 'PINECONE_INDEX_METRIC',
+      value: 'cosine',
+      description: 'Distance metric for Pinecone indexes (cosine, euclidean, dotproduct)',
+      category: 'PINECONE',
+    },
+    {
+      key: 'PINECONE_INDEX_DIMENSION',
+      value: '1024',
+      description: 'Embedding dimension for Pinecone indexes (must match llama-text-embed-v2)',
+      category: 'PINECONE',
+    },
   ]
 
   for (const setting of systemSettings) {

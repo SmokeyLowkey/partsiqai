@@ -127,7 +127,8 @@ export function PhonePoolPanel() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      alert(`Synced ${data.updated} numbers (${data.failed} failed)`);
+      const imported = data.imported || 0;
+      alert(`Imported ${imported} numbers from Vapi, updated config on ${data.updated} (${data.failed} failed)`);
       await fetchPool();
     } catch (error: any) {
       alert(`Sync failed: ${error.message}`);

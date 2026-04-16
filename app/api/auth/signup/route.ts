@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
 import { sendEmail, getVerificationEmailHtml, getMasterAdminNotificationHtml, getBaseUrl } from "@/lib/email/resend";
 import { checkRateLimit, getClientIp, rateLimits } from "@/lib/rate-limit";
+import { provisionIndexForOrg } from "@/lib/services/pinecone/index-provisioner";
 
 // Helper to generate organization slug from company name
 function generateSlug(name: string): string {
@@ -266,6 +267,12 @@ export async function POST(request: NextRequest) {
       });
 
       return { organization, user };
+    });
+
+    // Provision Pinecone index for the new org (non-blocking)
+    provisionIndexForOrg(result.organization.id, slug).catch((error) => {
+      console.error(`Failed to provision Pinecone index for org ${slug}:`, error);
+      // Don't fail signup — admin can manually provision later
     });
 
     // Send verification email only (welcome email will be sent after verification)

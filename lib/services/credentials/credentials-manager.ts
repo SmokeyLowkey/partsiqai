@@ -85,11 +85,11 @@ export class CredentialsManager {
         break;
       
       case 'VAPI':
-        if (process.env.VAPI_API_KEY && process.env.VAPI_PHONE_NUMBER_ID) {
+        if (process.env.VAPI_API_KEY) {
           return {
             apiKey: process.env.VAPI_API_KEY,
-            phoneNumberId: process.env.VAPI_PHONE_NUMBER_ID,
-            assistantId: process.env.VAPI_ASSISTANT_ID, // Optional assistant ID
+            phoneNumberId: process.env.VAPI_PHONE_NUMBER_ID || undefined,
+            assistantId: process.env.VAPI_ASSISTANT_ID || undefined,
           } as T;
         }
         break;

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { SubscriptionTier, SubscriptionStatus } from "@prisma/client";
+import { deleteTenantIndex } from "@/lib/services/pinecone/index-provisioner";
 
 // GET /api/admin/tenants/[id] - Get single organization details
 export async function GET(
@@ -146,7 +147,8 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/admin/tenants/[id] - Delete organization (soft delete by suspending)
+// DELETE /api/admin/tenants/[id] - Delete organization
+// Default: soft delete (suspend). Use ?hard=true for permanent deletion.
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -154,7 +156,7 @@ export async function DELETE(
   try {
     const session = await getServerSession();
     const currentUser = session?.user;
-    
+
     if (!currentUser || currentUser.role !== "MASTER_ADMIN") {
       return NextResponse.json(
         { error: "Unauthorized - Master Admin access required" },
@@ -163,6 +165,8 @@ export async function DELETE(
     }
 
     const { id: organizationId } = await params;
+    const url = new URL(request.url);
+    const hardDelete = url.searchParams.get("hard") === "true";
 
     // Check if organization exists
     const organization = await prisma.organization.findUnique({
@@ -176,17 +180,37 @@ export async function DELETE(
       );
     }
 
-    // Suspend the organization instead of deleting
+    if (hardDelete) {
+      // Hard delete: remove all data and cleanup external resources
+      // Delete Pinecone index (non-blocking — don't fail if Pinecone is down)
+      if (organization.slug) {
+        deleteTenantIndex(organization.slug).catch((error) => {
+          console.error(`Failed to delete Pinecone index for org ${organization.slug}:`, error);
+        });
+      }
+
+      // Hard delete the organization (cascades to related records via Prisma schema)
+      await prisma.organization.delete({
+        where: { id: organizationId },
+      });
+
+      return NextResponse.json({
+        message: "Organization permanently deleted",
+        organizationId,
+      });
+    }
+
+    // Soft delete: suspend the organization
     const updatedOrganization = await prisma.organization.update({
       where: { id: organizationId },
-      data: { 
+      data: {
         subscriptionStatus: "SUSPENDED",
       },
     });
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       message: "Organization suspended successfully",
-      organizationId: updatedOrganization.id 
+      organizationId: updatedOrganization.id
     });
   } catch (error) {
     console.error("Error deleting organization:", error);
