@@ -73,7 +73,7 @@ export async function POST(request: Request) {
     }
 
     // Validate integration type
-    const validTypes: IntegrationType[] = ['OPENROUTER', 'PINECONE', 'NEO4J', 'MISTRAL', 'VAPI', 'SERPER'];
+    const validTypes: IntegrationType[] = ['OPENROUTER', 'PINECONE', 'NEO4J', 'MISTRAL', 'VAPI', 'SERPER', 'TWILIO'];
     if (!validTypes.includes(type as IntegrationType)) {
       return NextResponse.json(
         { error: "Invalid integration type" },

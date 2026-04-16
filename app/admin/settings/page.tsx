@@ -62,6 +62,7 @@ import {
   AlertCircle,
   FileSearch,
   Trash2,
+  Phone,
 } from "lucide-react";
 import { PhonePoolPanel } from "@/components/admin/phone-pool-panel";
 
@@ -220,6 +221,10 @@ export default function SettingsPage() {
   });
   const [platformSerperConfig, setPlatformSerperConfig] = useState({
     apiKey: "",
+  });
+  const [platformTwilioConfig, setPlatformTwilioConfig] = useState({
+    accountSid: "",
+    authToken: "",
   });
   const [savingPlatformIntegration, setSavingPlatformIntegration] = useState<string | null>(null);
 
@@ -491,6 +496,13 @@ export default function SettingsPage() {
         const serperCreds = creds.SERPER || {};
         setPlatformSerperConfig({
           apiKey: serperCreds.apiKey || "",
+        });
+
+        // Twilio
+        const twilioCreds = creds.TWILIO || {};
+        setPlatformTwilioConfig({
+          accountSid: twilioCreds.accountSid || "",
+          authToken: twilioCreds.authToken || "",
         });
       }
     } catch (error) {
@@ -777,6 +789,13 @@ export default function SettingsPage() {
         case "SERPER":
           credentials = {
             apiKey: platformSerperConfig.apiKey,
+          };
+          break;
+
+        case "TWILIO":
+          credentials = {
+            accountSid: platformTwilioConfig.accountSid,
+            authToken: platformTwilioConfig.authToken,
           };
           break;
       }
@@ -2343,6 +2362,89 @@ export default function SettingsPage() {
                 disabled={savingPlatformIntegration === "SERPER" || !platformSerperConfig.apiKey}
               >
                 {savingPlatformIntegration === "SERPER" ? (
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4 mr-2" />
+                )}
+                Save
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Separator />
+
+      {/* Platform Twilio */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Phone className="h-5 w-5" />
+            Platform Twilio
+          </CardTitle>
+          <CardDescription>
+            Configure platform-wide Twilio credentials for purchasing and managing phone numbers in the pool.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-red-100 dark:bg-red-900 rounded-lg">
+                <Phone className="h-5 w-5 text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <h3 className="font-medium">Twilio Phone Numbers</h3>
+                <p className="text-sm text-muted-foreground">
+                  Required for provisioning new phone numbers in the pool
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-12">
+              <div className="space-y-2">
+                <Label>Account SID</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type={showApiKeys["platform_twilio_sid"] ? "text" : "password"}
+                    value={platformTwilioConfig.accountSid}
+                    onChange={(e) => setPlatformTwilioConfig({ ...platformTwilioConfig, accountSid: e.target.value })}
+                    placeholder="Enter Twilio Account SID"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => toggleShowApiKey("platform_twilio_sid")}
+                  >
+                    {showApiKeys["platform_twilio_sid"] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Auth Token</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type={showApiKeys["platform_twilio_token"] ? "text" : "password"}
+                    value={platformTwilioConfig.authToken}
+                    onChange={(e) => setPlatformTwilioConfig({ ...platformTwilioConfig, authToken: e.target.value })}
+                    placeholder="Enter Twilio Auth Token"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => toggleShowApiKey("platform_twilio_token")}
+                  >
+                    {showApiKeys["platform_twilio_token"] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pl-12">
+              <Button
+                onClick={() => handleSavePlatformIntegration("TWILIO")}
+                disabled={savingPlatformIntegration === "TWILIO" || !platformTwilioConfig.accountSid || !platformTwilioConfig.authToken}
+              >
+                {savingPlatformIntegration === "TWILIO" ? (
                   <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
                   <Save className="h-4 w-4 mr-2" />
