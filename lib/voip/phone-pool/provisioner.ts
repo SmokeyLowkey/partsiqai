@@ -72,7 +72,7 @@ export async function provisionNumber(options: {
       twilioAccountSid: twilioCreds.accountSid,
       twilioAuthToken: twilioCreds.authToken,
       name: options.label || `PARTSIQ_POOL_${areaCode}_${Date.now()}`,
-      smsEnabled: true,
+      smsEnabled: false,
     };
 
     // Server config
@@ -210,9 +210,10 @@ export async function releaseNumber(phoneNumberRowId: string): Promise<void> {
 
 /**
  * Import phone numbers from Vapi that aren't already in the local pool.
- * Fetches all numbers from the Vapi account and upserts them into the DB.
+ * Only imports numbers whose server URL matches our configured VAPI_SERVER_URL,
+ * so numbers belonging to other applications on the same Vapi account are skipped.
  */
-async function importNumbersFromVapi(apiKey: string): Promise<{ imported: number; failed: number }> {
+async function importNumbersFromVapi(apiKey: string, serverUrl: string): Promise<{ imported: number; skipped: number; failed: number }> {
   const response = await fetch('https://api.vapi.ai/phone-number', {
     method: 'GET',
     headers: {
@@ -231,11 +232,11 @@ async function importNumbersFromVapi(apiKey: string): Promise<{ imported: number
     provider?: string;
     name?: string;
     status?: string;
-    twilioAccountSid?: string;
-    twilioAuthToken?: string;
+    server?: { url?: string };
   }>;
 
   let imported = 0;
+  let skipped = 0;
   let failed = 0;
 
   for (const vn of vapiNumbers) {
@@ -245,8 +246,15 @@ async function importNumbersFromVapi(apiKey: string): Promise<{ imported: number
       continue;
     }
 
+    // Only import numbers that match our server URL
+    const numberServerUrl = vn.server?.url || '';
+    if (serverUrl && numberServerUrl !== serverUrl) {
+      console.log(`[Provisioner] Skipping Vapi number ${vn.id} (${e164}) — server URL "${numberServerUrl}" does not match "${serverUrl}"`);
+      skipped++;
+      continue;
+    }
+
     try {
-      // Upsert: skip if already tracked, insert if new
       await prisma.vapiPhoneNumber.upsert({
         where: { vapiPhoneNumberId: vn.id },
         update: {
@@ -267,7 +275,7 @@ async function importNumbersFromVapi(apiKey: string): Promise<{ imported: number
     }
   }
 
-  return { imported, failed };
+  return { imported, skipped, failed };
 }
 
 /**
@@ -286,11 +294,13 @@ export async function syncPoolConfig(): Promise<{ imported: number; updated: num
     throw new Error('Vapi API key not configured');
   }
 
-  // Step 1: Import/discover numbers from Vapi
-  const importResult = await importNumbersFromVapi(vapiCreds.apiKey);
+  // Get Vapi platform config (used for both import filtering and config patching)
+  const vapiConfig = await getVapiPlatformConfig();
+
+  // Step 1: Import/discover numbers from Vapi (filtered by our server URL)
+  const importResult = await importNumbersFromVapi(vapiCreds.apiKey, vapiConfig.serverUrl);
 
   // Step 2: Update config on all active numbers
-  const vapiConfig = await getVapiPlatformConfig();
   const numbers = await prisma.vapiPhoneNumber.findMany({
     where: { isActive: true },
     select: { vapiPhoneNumberId: true },
