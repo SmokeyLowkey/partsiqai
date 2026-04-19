@@ -24,6 +24,13 @@ interface ProvisionResult {
 }
 
 /**
+ * Naming convention for PartsIQ-owned Vapi phone numbers. The sync importer
+ * uses this prefix to distinguish our numbers from any other apps that share
+ * the same Vapi account.
+ */
+const PARTSIQ_NAME_PREFIX = 'PARTSIQ_POOL_';
+
+/**
  * Provision a new phone number: buy from Twilio, import into Vapi, store in DB.
  */
 export async function provisionNumber(options: {
@@ -68,12 +75,19 @@ export async function provisionNumber(options: {
 
   try {
     // Step 2: Import into Vapi with full configuration
+    // Always prefix with PARTSIQ_POOL_ so the sync importer can identify our numbers
+    // and skip numbers belonging to other apps on the same Vapi account.
+    const labelSuffix = options.label || `${areaCode}_${Date.now()}`;
+    const vapiName = labelSuffix.startsWith(PARTSIQ_NAME_PREFIX)
+      ? labelSuffix
+      : `${PARTSIQ_NAME_PREFIX}${labelSuffix}`;
+
     const vapiPayload: Record<string, unknown> = {
       provider: 'twilio',
       number: e164,
       twilioAccountSid: twilioCreds.accountSid,
       twilioAuthToken: twilioCreds.authToken,
-      name: options.label || `PARTSIQ_POOL_${areaCode}_${Date.now()}`,
+      name: vapiName,
       smsEnabled: false,
     };
 
@@ -89,13 +103,16 @@ export async function provisionNumber(options: {
       vapiPayload.server = server;
     }
 
-    // Inbound assistant
-    if (vapiConfig.platformAssistantId) {
-      vapiPayload.assistantId = vapiConfig.platformAssistantId;
+    // Inbound assistant — pool numbers route inbound (supplier callbacks) to the
+    // receptionist assistant. Outbound calls override this via assistantId in the
+    // createCall payload, so this only affects inbound.
+    const inboundAssistantId = receptionistConfig.assistantId || vapiConfig.platformAssistantId;
+    if (inboundAssistantId) {
+      vapiPayload.assistantId = inboundAssistantId;
     }
 
-    // Fallback destination — receptionist number for inbound calls
-    // Prefer receptionist; fall back to platform safety-net number
+    // Fallback destination — if the receptionist assistant fails, forward the call
+    // to the receptionist's PSTN number as a safety net.
     const fallbackNumber = receptionistConfig.e164 || vapiConfig.platformFallbackNumber;
     if (fallbackNumber) {
       vapiPayload.fallbackDestination = {
@@ -214,8 +231,10 @@ export async function releaseNumber(phoneNumberRowId: string): Promise<void> {
 
 /**
  * Import phone numbers from Vapi that aren't already in the local pool.
- * Only imports numbers whose server URL matches our configured VAPI_SERVER_URL,
- * so numbers belonging to other applications on the same Vapi account are skipped.
+ * Filters strictly to PartsIQ-owned numbers:
+ *   1. Name must start with PARTSIQ_POOL_ (the provisioner's naming convention), AND
+ *   2. Server URL must match our configured VAPI_SERVER_URL (when set).
+ * Numbers belonging to other applications on the same Vapi account are skipped.
  */
 async function importNumbersFromVapi(apiKey: string, serverUrl: string): Promise<{ imported: number; skipped: number; failed: number }> {
   const response = await fetch('https://api.vapi.ai/phone-number', {
@@ -250,7 +269,15 @@ async function importNumbersFromVapi(apiKey: string, serverUrl: string): Promise
       continue;
     }
 
-    // Only import numbers that match our server URL
+    // PartsIQ-only filter: name must use our naming convention
+    const name = vn.name || '';
+    if (!name.startsWith(PARTSIQ_NAME_PREFIX)) {
+      console.log(`[Provisioner] Skipping Vapi number ${vn.id} (${e164}) — name "${name}" does not start with "${PARTSIQ_NAME_PREFIX}"`);
+      skipped++;
+      continue;
+    }
+
+    // Additional defense-in-depth: server URL must match ours when configured
     const numberServerUrl = vn.server?.url || '';
     if (serverUrl && numberServerUrl !== serverUrl) {
       console.log(`[Provisioner] Skipping Vapi number ${vn.id} (${e164}) — server URL "${numberServerUrl}" does not match "${serverUrl}"`);
@@ -327,11 +354,13 @@ export async function syncPoolConfig(): Promise<{ imported: number; updated: num
     patchPayload.server = server;
   }
 
-  if (vapiConfig.platformAssistantId) {
-    patchPayload.assistantId = vapiConfig.platformAssistantId;
+  // Inbound assistant — receptionist (pool numbers route inbound to receptionist)
+  const syncInboundAssistantId = receptionistConfig.assistantId || vapiConfig.platformAssistantId;
+  if (syncInboundAssistantId) {
+    patchPayload.assistantId = syncInboundAssistantId;
   }
 
-  // Fallback destination — receptionist number for inbound; falls back to platform number
+  // Fallback destination — receptionist PSTN number as safety net if the assistant fails
   const syncFallbackNumber = receptionistConfig.e164 || vapiConfig.platformFallbackNumber;
   if (syncFallbackNumber) {
     patchPayload.fallbackDestination = {
