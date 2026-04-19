@@ -22,7 +22,9 @@ const PUBLIC_API_PREFIXES = [
   "/api/og",              // Open Graph image
   "/api/cron/",           // Cron jobs (use CRON_SECRET)
   "/api/voip/webhooks",   // VoIP callbacks (external service)
-  "/api/voip/langgraph-handler", // Vapi LLM handler
+  "/api/voip/langgraph-handler", // Vapi LLM handler (outbound)
+  "/api/voip/receptionist-handler", // Vapi LLM handler (inbound receptionist)
+  "/api/voip/receptionist-webhooks", // Vapi webhook for receptionist inbound events
   "/api/invitations/",    // Invitation accept/validate (token-based)
   "/api/leads",           // Public lead capture form (blog CTAs)
   "/api/legal-contact",   // Public legal/privacy contact form
