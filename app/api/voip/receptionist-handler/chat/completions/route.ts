@@ -162,11 +162,20 @@ export async function POST(req: NextRequest) {
 
   try {
     // Verify auth
-    const authHeader = req.headers.get('authorization') || req.headers.get('Authorization');
     const webhookSecret = process.env.VOIP_WEBHOOK_SECRET;
     if (!webhookSecret) {
       return NextResponse.json({ error: 'VOIP_WEBHOOK_SECRET not configured' }, { status: 500 });
     }
+
+    // Vapi sometimes sends the header as "Authorization " (trailing space) — iterate all headers
+    // and find any authorization-like header, case-insensitive, space-tolerant.
+    let authHeader: string | null = null;
+    req.headers.forEach((value, key) => {
+      if (key.trim().toLowerCase() === 'authorization') {
+        authHeader = value;
+      }
+    });
+
     // Normalize: strip all "Bearer " prefixes (Vapi sometimes sends "Bearer Bearer <token>" when
     // the credential value already starts with "Bearer ")
     const token = (authHeader || '').replace(/^(Bearer\s+)+/i, '').trim();

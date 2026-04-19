@@ -14,8 +14,14 @@ export async function POST(req: NextRequest) {
   try {
     // Verify auth — Vapi sends both X-Vapi-Secret header and Authorization Bearer <token>
     // depending on which webhook secret / credential is configured. Accept either.
+    // Also: Vapi sometimes uses a trailing space in "Authorization " header name.
     const vapiSecret = req.headers.get('x-vapi-secret');
-    const authHeader = req.headers.get('authorization') || req.headers.get('Authorization');
+    let authHeader: string | null = null;
+    req.headers.forEach((value, key) => {
+      if (key.trim().toLowerCase() === 'authorization') {
+        authHeader = value;
+      }
+    });
     const vapiWebhookSecret = process.env.VAPI_WEBHOOK_SECRET;
     const voipWebhookSecret = process.env.VOIP_WEBHOOK_SECRET;
 
