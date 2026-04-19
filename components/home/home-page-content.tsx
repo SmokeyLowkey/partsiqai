@@ -243,7 +243,15 @@ export default function HomePageContent() {
                 </p>
               </div>
               <div className="md:col-span-2 md:text-right">
-                <Link href="/parts-catalog">
+                <Link
+                  href="/parts-catalog"
+                  onClick={() =>
+                    trackEvent(AnalyticsEvents.CTA_CLICKED, {
+                      source: "browse_brands",
+                      cta_text: "Explore parts catalog",
+                    })
+                  }
+                >
                   <Button size="lg" className="bg-slate-950 text-white hover:bg-slate-800 px-8 h-12">
                     Explore parts catalog
                     <ArrowRight className="ml-2 h-5 w-5" />
@@ -1244,7 +1252,15 @@ export default function HomePageContent() {
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4">
-                <Link href="/signup">
+                <Link
+                  href="/signup"
+                  onClick={() =>
+                    trackEvent(AnalyticsEvents.CTA_CLICKED, {
+                      source: "bottom_signup",
+                      cta_text: "Start Free Trial",
+                    })
+                  }
+                >
                   <Button
                     size="lg"
                     className="bg-white text-slate-950 hover:bg-slate-100 px-8 h-14 text-lg font-medium"
@@ -1253,7 +1269,15 @@ export default function HomePageContent() {
                     <ArrowRight className="ml-2 h-5 w-5" />
                   </Button>
                 </Link>
-                <Link href="/login">
+                <Link
+                  href="/login"
+                  onClick={() =>
+                    trackEvent(AnalyticsEvents.CTA_CLICKED, {
+                      source: "bottom_login",
+                      cta_text: "Sign In",
+                    })
+                  }
+                >
                   <Button
                     size="lg"
                     variant="outline"

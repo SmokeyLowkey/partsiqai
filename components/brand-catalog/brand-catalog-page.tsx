@@ -6,7 +6,28 @@ import { RelatedSolutions } from "@/components/solutions/related-solutions"
 import { BlogCTA } from "@/components/blog/blog-cta"
 import { JsonLd } from "@/components/seo/json-ld"
 import { BreadcrumbJsonLd } from "@/components/seo/breadcrumb-jsonld"
-import type { BrandEntry } from "@/lib/content/brands"
+import { BRANDS, type BrandEntry } from "@/lib/content/brands"
+
+// Maps each brand category to its primary commercial landing page so each
+// brand-hub passes link equity into the matching solutions cluster.
+const CATEGORY_TO_SOLUTION: Record<BrandEntry["category"], { slug: string; title: string }> = {
+  "heavy construction equipment": {
+    slug: "heavy-equipment-maintenance-software",
+    title: "Heavy equipment maintenance software",
+  },
+  "compact construction equipment": {
+    slug: "parts-inventory-management-software",
+    title: "Parts inventory management software",
+  },
+  "agricultural equipment": {
+    slug: "spare-parts-management-software",
+    title: "Spare parts management software",
+  },
+  "forestry equipment": {
+    slug: "spare-parts-management-software",
+    title: "Spare parts management software",
+  },
+}
 
 /**
  * Programmatic brand-catalog page template. Targets brand-name keyword
@@ -15,7 +36,12 @@ import type { BrandEntry } from "@/lib/content/brands"
  * out to the OEM's official catalog; renders a disclaimer footer.
  */
 export function BrandCatalogPage({ brand }: { brand: BrandEntry }) {
-  const { name, legalName, slug, tagline, description, equipmentTypes, popularModels, popularPartsCategories, oemCatalogUrl, sourcingChallenges, oemVsAftermarket, faq } = brand
+  const { name, legalName, slug, tagline, description, equipmentTypes, popularModels, popularPartsCategories, oemCatalogUrl, sourcingChallenges, oemVsAftermarket, faq, category } = brand
+
+  // Sibling brands in the same equipment category — drives cross-cluster
+  // internal linking so each brand page passes authority to its peers.
+  const siblingBrands = BRANDS.filter((b) => b.category === category && b.slug !== slug).slice(0, 3)
+  const matchingSolution = CATEGORY_TO_SOLUTION[category]
 
   const faqJsonLd = {
     "@context": "https://schema.org",
@@ -264,6 +290,120 @@ export function BrandCatalogPage({ brand }: { brand: BrandEntry }) {
                     <p className="text-slate-600 leading-relaxed">{item.answer}</p>
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Related guides — cross-cluster internal linking to blog pillar,
+            sibling brand pages, and the matching commercial solution.
+            Passes authority across the content graph instead of leaving each
+            brand page as an island. */}
+        <section className="py-20 bg-slate-50 border-t border-slate-200">
+          <div className="container mx-auto px-6">
+            <div className="max-w-6xl mx-auto">
+              <div className="mb-12">
+                <h2 className="text-3xl md:text-4xl font-bold text-slate-950 tracking-tight mb-3">
+                  Continue your {name} parts research
+                </h2>
+                <p className="text-slate-600">
+                  Guides, sibling brands, and the procurement platform built for {category}.
+                </p>
+              </div>
+
+              {/* Row 1 — sibling brand pages */}
+              {siblingBrands.length > 0 && (
+                <div className="mb-10">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4">
+                    Other {category} brands
+                  </p>
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {siblingBrands.map((b) => (
+                      <Link
+                        key={b.slug}
+                        href={`/parts-catalog/${b.slug}`}
+                        className="group rounded-xl bg-white border border-slate-200 p-5 hover:border-emerald-400 hover:shadow-md transition-all"
+                      >
+                        <h3 className="text-lg font-bold text-slate-950 mb-1.5 group-hover:text-emerald-700 transition-colors">
+                          {b.name} Parts
+                        </h3>
+                        <p className="text-sm text-slate-600 leading-relaxed mb-3">{b.tagline}</p>
+                        <span className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-600 group-hover:gap-2 transition-all">
+                          View {b.name} guide
+                          <ArrowRight className="h-4 w-4" />
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Row 2 — pillar guide + page-1 blog posts + commercial solution */}
+              <div>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4">
+                  Parts management guides
+                </p>
+                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Link
+                    href="/blog/parts-inventory-management-complete-guide"
+                    className="group rounded-xl bg-white border border-slate-200 p-5 hover:border-emerald-400 hover:shadow-md transition-all"
+                  >
+                    <div className="rounded-lg bg-slate-900 p-2 text-white w-fit mb-3">
+                      <BookOpen className="h-4 w-4" />
+                    </div>
+                    <h3 className="font-bold text-slate-950 mb-1.5 group-hover:text-emerald-700 transition-colors">
+                      Parts Inventory Management: Complete Guide
+                    </h3>
+                    <p className="text-sm text-slate-600 leading-relaxed">
+                      End-to-end pillar: forecasting, stock levels, KPIs, supplier networks.
+                    </p>
+                  </Link>
+
+                  <Link
+                    href="/blog/mro-parts-inventory-cut-carrying-costs"
+                    className="group rounded-xl bg-white border border-slate-200 p-5 hover:border-emerald-400 hover:shadow-md transition-all"
+                  >
+                    <div className="rounded-lg bg-emerald-600 p-2 text-white w-fit mb-3">
+                      <BookOpen className="h-4 w-4" />
+                    </div>
+                    <h3 className="font-bold text-slate-950 mb-1.5 group-hover:text-emerald-700 transition-colors">
+                      Cut MRO Carrying Costs by 30%
+                    </h3>
+                    <p className="text-sm text-slate-600 leading-relaxed">
+                      5-step playbook — ABC classify, audit dead stock, automate replenishment.
+                    </p>
+                  </Link>
+
+                  <Link
+                    href="/blog/automate-parts-reorder-never-run-out"
+                    className="group rounded-xl bg-white border border-slate-200 p-5 hover:border-emerald-400 hover:shadow-md transition-all"
+                  >
+                    <div className="rounded-lg bg-emerald-600 p-2 text-white w-fit mb-3">
+                      <BookOpen className="h-4 w-4" />
+                    </div>
+                    <h3 className="font-bold text-slate-950 mb-1.5 group-hover:text-emerald-700 transition-colors">
+                      Automate Reorder Points
+                    </h3>
+                    <p className="text-sm text-slate-600 leading-relaxed">
+                      The formula that stops 60% of stockouts before they happen.
+                    </p>
+                  </Link>
+
+                  <Link
+                    href={`/solutions/${matchingSolution.slug}`}
+                    className="group rounded-xl bg-slate-950 text-white border border-slate-800 p-5 hover:border-emerald-400 hover:shadow-md transition-all"
+                  >
+                    <div className="rounded-lg bg-emerald-500/20 border border-emerald-500/30 p-2 text-emerald-400 w-fit mb-3">
+                      <Search className="h-4 w-4" />
+                    </div>
+                    <h3 className="font-bold text-white mb-1.5 group-hover:text-emerald-400 transition-colors">
+                      {matchingSolution.title}
+                    </h3>
+                    <p className="text-sm text-slate-400 leading-relaxed">
+                      The PartsIQ solution built for {category} operations.
+                    </p>
+                  </Link>
+                </div>
               </div>
             </div>
           </div>
