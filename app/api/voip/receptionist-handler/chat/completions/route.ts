@@ -162,12 +162,19 @@ export async function POST(req: NextRequest) {
 
   try {
     // Verify auth
-    const authHeader = req.headers.get('authorization');
+    const authHeader = req.headers.get('authorization') || req.headers.get('Authorization');
     const webhookSecret = process.env.VOIP_WEBHOOK_SECRET;
     if (!webhookSecret) {
       return NextResponse.json({ error: 'VOIP_WEBHOOK_SECRET not configured' }, { status: 500 });
     }
-    if (authHeader !== `Bearer ${webhookSecret}`) {
+    // Normalize: strip all "Bearer " prefixes (Vapi sometimes sends "Bearer Bearer <token>" when
+    // the credential value already starts with "Bearer ")
+    const token = (authHeader || '').replace(/^(Bearer\s+)+/i, '').trim();
+    if (token !== webhookSecret) {
+      logger.warn(
+        { authHeaderPreview: (authHeader || '').slice(0, 30) },
+        'Unauthorized receptionist request'
+      );
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

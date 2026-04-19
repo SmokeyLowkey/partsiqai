@@ -12,11 +12,29 @@ const logger = workerLogger.child({ module: 'receptionist-webhooks' });
  */
 export async function POST(req: NextRequest) {
   try {
-    // Verify Vapi webhook secret
+    // Verify auth — Vapi sends both X-Vapi-Secret header and Authorization Bearer <token>
+    // depending on which webhook secret / credential is configured. Accept either.
     const vapiSecret = req.headers.get('x-vapi-secret');
-    const expectedSecret = process.env.VAPI_WEBHOOK_SECRET;
-    if (expectedSecret && vapiSecret !== expectedSecret) {
-      logger.warn('Invalid Vapi webhook secret on receptionist webhook');
+    const authHeader = req.headers.get('authorization') || req.headers.get('Authorization');
+    const vapiWebhookSecret = process.env.VAPI_WEBHOOK_SECRET;
+    const voipWebhookSecret = process.env.VOIP_WEBHOOK_SECRET;
+
+    const bearerToken = (authHeader || '').replace(/^(Bearer\s+)+/i, '').trim();
+
+    const vapiSecretValid = vapiWebhookSecret && vapiSecret === vapiWebhookSecret;
+    const bearerValid =
+      (voipWebhookSecret && bearerToken === voipWebhookSecret) ||
+      (vapiWebhookSecret && bearerToken === vapiWebhookSecret);
+
+    if (!vapiSecretValid && !bearerValid) {
+      logger.warn(
+        {
+          hasVapiSecret: !!vapiSecret,
+          hasAuthHeader: !!authHeader,
+          authHeaderPreview: (authHeader || '').slice(0, 30),
+        },
+        'Invalid auth on receptionist webhook'
+      );
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
