@@ -77,6 +77,7 @@ model Organization {
   vehicles               Vehicle[]
   locations              OrganizationLocation[]
   adminEmails            AdminEmail[]
+  inboundMessages        InboundMessage[]
 
   @@index([slug])
   @@index([stripeCustomerId])
@@ -508,6 +509,7 @@ model Supplier {
   quoteRequests            QuoteRequest[]            @relation("PrimaryQuoteSupplier")
   supplierCalls            SupplierCall[]
   supplierQuoteItems       SupplierQuoteItem[]
+  inboundMessages          InboundMessage[]
   organization             Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, supplierId])
@@ -1187,6 +1189,27 @@ model VapiPhoneNumber {
   @@index([isActive, healthStatus, dailyCallCount])
   @@index([healthStatus])
   @@map("vapi_phone_numbers")
+}
+
+model InboundMessage {
+  id             String        @id @default(cuid())
+  callerPhone    String
+  callerName     String?
+  callerCompany  String?
+  reason         String?
+  callbackNumber String?
+  vapiCallId     String?       @unique
+  supplierId     String?
+  organizationId String?
+  isRead         Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+  supplier       Supplier?     @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([callerPhone])
+  @@index([organizationId, isRead])
+  @@index([supplierId])
+  @@map("inbound_messages")
 }
 
 model JobQueue {

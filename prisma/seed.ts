@@ -1310,6 +1310,67 @@ async function main() {
       description: 'Embedding dimension for Pinecone indexes (must match llama-text-embed-v2)',
       category: 'PINECONE',
     },
+    // Receptionist settings (values populated manually per environment)
+    {
+      key: 'RECEPTIONIST_PHONE_NUMBER_ID',
+      value: '',
+      description: 'Vapi phone number ID for the receptionist line',
+      category: 'VOIP',
+    },
+    {
+      key: 'RECEPTIONIST_ASSISTANT_ID',
+      value: '',
+      description: 'Vapi assistant ID for PARTSIQ_RECEPTIONIST',
+      category: 'VOIP',
+    },
+    {
+      key: 'RECEPTIONIST_E164',
+      value: '',
+      description: 'Receptionist phone number in E.164 (used as fallback for pool numbers)',
+      category: 'VOIP',
+    },
+    {
+      key: 'RECEPTIONIST_MAX_CALL_DURATION_SEC',
+      value: '120',
+      description: 'Max seconds for receptionist before force-routing',
+      category: 'VOIP',
+    },
+    {
+      key: 'RECEPTIONIST_IDENTIFICATION_TIMEOUT_SEC',
+      value: '60',
+      description: 'Max time to identify caller before taking message',
+      category: 'VOIP',
+    },
+    {
+      key: 'RECEPTIONIST_CALLER_RATE_LIMIT_PER_HOUR',
+      value: '5',
+      description: 'Max inbound calls per caller number per hour',
+      category: 'VOIP',
+    },
+    {
+      key: 'RECEPTIONIST_SPAM_BLOCKLIST',
+      value: '[]',
+      description: 'JSON array of blocked caller numbers',
+      category: 'VOIP',
+    },
+    {
+      key: 'RECEPTIONIST_BUSINESS_HOURS_START',
+      value: '09:00',
+      description: 'Org default business hours start (HH:MM)',
+      category: 'VOIP',
+    },
+    {
+      key: 'RECEPTIONIST_BUSINESS_HOURS_END',
+      value: '17:00',
+      description: 'Org default business hours end (HH:MM)',
+      category: 'VOIP',
+    },
+    {
+      key: 'RECEPTIONIST_BUSINESS_HOURS_TZ',
+      value: 'America/New_York',
+      description: 'Default timezone for business hours',
+      category: 'VOIP',
+    },
   ]
 
   for (const setting of systemSettings) {

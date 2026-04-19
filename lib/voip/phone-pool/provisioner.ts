@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import Twilio from 'twilio';
 import { CredentialsManager } from '@/lib/services/credentials/credentials-manager';
 import { getVapiPlatformConfig } from './config';
+import { getReceptionistConfig } from '@/lib/voip/receptionist/config';
 
 interface TwilioCredentials {
   accountSid: string;
@@ -51,6 +52,7 @@ export async function provisionNumber(options: {
 
   // Get Vapi platform config from SystemSettings
   const vapiConfig = await getVapiPlatformConfig();
+  const receptionistConfig = await getReceptionistConfig();
 
   // Step 1: Buy number from Twilio
   const twilioClient = Twilio(twilioCreds.accountSid, twilioCreds.authToken);
@@ -92,11 +94,13 @@ export async function provisionNumber(options: {
       vapiPayload.assistantId = vapiConfig.platformAssistantId;
     }
 
-    // Fallback destination (platform safety net)
-    if (vapiConfig.platformFallbackNumber) {
+    // Fallback destination — receptionist number for inbound calls
+    // Prefer receptionist; fall back to platform safety-net number
+    const fallbackNumber = receptionistConfig.e164 || vapiConfig.platformFallbackNumber;
+    if (fallbackNumber) {
       vapiPayload.fallbackDestination = {
         type: 'number',
-        number: vapiConfig.platformFallbackNumber,
+        number: fallbackNumber,
       };
     }
 
@@ -296,6 +300,7 @@ export async function syncPoolConfig(): Promise<{ imported: number; updated: num
 
   // Get Vapi platform config (used for both import filtering and config patching)
   const vapiConfig = await getVapiPlatformConfig();
+  const receptionistConfig = await getReceptionistConfig();
 
   // Step 1: Import/discover numbers from Vapi (filtered by our server URL)
   const importResult = await importNumbersFromVapi(vapiCreds.apiKey, vapiConfig.serverUrl);
@@ -326,10 +331,12 @@ export async function syncPoolConfig(): Promise<{ imported: number; updated: num
     patchPayload.assistantId = vapiConfig.platformAssistantId;
   }
 
-  if (vapiConfig.platformFallbackNumber) {
+  // Fallback destination — receptionist number for inbound; falls back to platform number
+  const syncFallbackNumber = receptionistConfig.e164 || vapiConfig.platformFallbackNumber;
+  if (syncFallbackNumber) {
     patchPayload.fallbackDestination = {
       type: 'number',
-      number: vapiConfig.platformFallbackNumber,
+      number: syncFallbackNumber,
     };
   }
 
