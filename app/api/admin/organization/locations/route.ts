@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { withHardening } from "@/lib/api/with-hardening";
+import { auditAdminAction } from "@/lib/audit-admin";
 
 // GET /api/admin/organization/locations - List all locations for the current org
 export async function GET() {
@@ -32,15 +34,19 @@ export async function GET() {
 }
 
 // POST /api/admin/organization/locations - Create a new location
-export async function POST(req: NextRequest) {
+export const POST = withHardening(
+  {
+    roles: ["ADMIN", "MASTER_ADMIN"],
+    rateLimit: { limit: 30, windowSeconds: 60, prefix: "admin-location-create", keyBy: "org" },
+  },
+  async (req: Request) => {
   try {
     const session = await getServerSession();
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const isAdmin =
-      session.user.role === "ADMIN" || session.user.role === "MASTER_ADMIN";
+    const isAdmin = true;
     if (!isAdmin) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
@@ -79,6 +85,14 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    await auditAdminAction({
+      req,
+      session: { user: { id: session.user.id, organizationId: session.user.organizationId } },
+      eventType: "LOCATION_MANAGED",
+      description: `${session.user.email} created location ${location.name}`,
+      metadata: { action: "create", locationId: location.id, name: location.name, isPrimary: location.isPrimary },
+    });
+
     return NextResponse.json({ location }, { status: 201 });
   } catch (error) {
     console.error("Error creating location:", error);
@@ -87,4 +101,5 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+  }
+);

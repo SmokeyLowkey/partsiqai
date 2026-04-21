@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { encrypt, decrypt, maskApiKey, validateEncryption } from '@/lib/encryption';
+import { withHardening } from '@/lib/api/with-hardening';
+import { auditAdminAction } from '@/lib/audit-admin';
 
 /**
  * GET /api/admin/organizations/[id]/api-keys
@@ -84,10 +86,12 @@ export async function GET(
  * PATCH /api/admin/organizations/[id]/api-keys
  * Update BYOK settings for an organization (Master Admin only)
  */
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const PATCH = withHardening(
+  {
+    roles: ['MASTER_ADMIN'],
+    rateLimit: { limit: 30, windowSeconds: 60, prefix: 'admin-api-keys-update', keyBy: 'user' },
+  },
+  async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params;
     const session = await getServerSession();
@@ -217,6 +221,19 @@ export async function PATCH(
       },
     });
 
+    await auditAdminAction({
+      req: request,
+      session: { user: { id: session.user.id, organizationId: session.user.organizationId } },
+      eventType: 'API_KEY_CREATED',
+      description: `${session.user.email} updated BYOK settings for org ${id} (usePlatformKeys=${updated.usePlatformKeys})`,
+      targetOrganizationId: id,
+      metadata: {
+        organizationId: id,
+        usePlatformKeys: updated.usePlatformKeys,
+        keysUpdated: Object.keys(updateData).filter(k => k.includes('ApiKey')),
+      },
+    });
+
     return NextResponse.json({
       success: true,
       message: 'BYOK settings updated successfully',
@@ -230,16 +247,19 @@ export async function PATCH(
       { status: 500 }
     );
   }
-}
+  }
+);
 
 /**
  * DELETE /api/admin/organizations/[id]/api-keys
  * Remove all BYOK keys and revert to platform keys (Master Admin only)
  */
-export async function DELETE(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const DELETE = withHardening(
+  {
+    roles: ['MASTER_ADMIN'],
+    rateLimit: { limit: 15, windowSeconds: 60, prefix: 'admin-api-keys-delete', keyBy: 'user' },
+  },
+  async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params;
     const session = await getServerSession();
@@ -275,6 +295,15 @@ export async function DELETE(
       },
     });
 
+    await auditAdminAction({
+      req: request,
+      session: { user: { id: session.user.id, organizationId: session.user.organizationId } },
+      eventType: 'API_KEY_DELETED',
+      description: `${session.user.email} removed all BYOK keys for org ${id}`,
+      targetOrganizationId: id,
+      metadata: { organizationId: id },
+    });
+
     return NextResponse.json({
       success: true,
       message: 'All BYOK keys removed, reverted to platform keys',
@@ -287,4 +316,5 @@ export async function DELETE(
       { status: 500 }
     );
   }
-}
+  }
+);

@@ -1,27 +1,20 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { canApproveQuotes } from "@/lib/auth";
+import { withHardening } from "@/lib/api/with-hardening";
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const POST = withHardening(
+  {
+    // Middleware already enforces authenticated customer role; wrapper adds
+    // role whitelist for approval-level users, CSRF, and rate limit to protect
+    // against automated double-submits that would otherwise race the state machine.
+    roles: ["MANAGER", "ADMIN", "MASTER_ADMIN"],
+    rateLimit: { limit: 20, windowSeconds: 60, prefix: "quote-approve", keyBy: "userOrg" },
+  },
+  async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
-    const currentUser = session?.user;
-
-    if (!currentUser) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user can approve quotes
-    if (!canApproveQuotes(currentUser.role)) {
-      return NextResponse.json(
-        { error: "You do not have permission to approve quotes" },
-        { status: 403 }
-      );
-    }
+    const currentUser = session!.user; // guaranteed by wrapper
 
     const { id: quoteRequestId } = await params;
     const body = await request.json();
@@ -134,4 +127,5 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+  }
+);

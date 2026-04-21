@@ -3,22 +3,19 @@ import { getServerSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { UserRole } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { withHardening } from "@/lib/api/with-hardening";
+import { auditAdminAction } from "@/lib/audit-admin";
 
 // PATCH /api/admin/users/[id] - Update user
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const PATCH = withHardening(
+  {
+    roles: ["ADMIN", "MASTER_ADMIN"],
+    rateLimit: { limit: 60, windowSeconds: 60, prefix: "admin-user-update", keyBy: "user" },
+  },
+  async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
-    const currentUser = session?.user;
-    
-    if (!currentUser || !["MASTER_ADMIN", "ADMIN"].includes(currentUser.role)) {
-      return NextResponse.json(
-        { error: "Unauthorized - Admin access required" },
-        { status: 403 }
-      );
-    }
+    const currentUser = session!.user;
 
     const { id: userId } = await params;
     const body = await request.json();
@@ -83,6 +80,42 @@ export async function PATCH(
     // Remove password from response
     const { password: _, ...userWithoutPassword } = updatedUser;
 
+    // Differentiate the audit event: role changes and (de)activation are
+    // higher-severity than a name/email update.
+    const roleChanged = body.role !== undefined && body.role !== userToUpdate.role;
+    const deactivated = body.isActive === false && userToUpdate.isActive === true;
+    const reactivated = body.isActive === true && userToUpdate.isActive === false;
+
+    const eventType = roleChanged
+      ? "ROLE_CHANGED"
+      : deactivated
+      ? "USER_DEACTIVATED"
+      : reactivated
+      ? "USER_REACTIVATED"
+      : "USER_UPDATED";
+
+    const description = roleChanged
+      ? `${currentUser.email} changed role of ${userToUpdate.email}: ${userToUpdate.role} → ${body.role}`
+      : deactivated
+      ? `${currentUser.email} deactivated ${userToUpdate.email}`
+      : reactivated
+      ? `${currentUser.email} reactivated ${userToUpdate.email}`
+      : `${currentUser.email} updated user ${userToUpdate.email}`;
+
+    await auditAdminAction({
+      req: request,
+      session: { user: { id: currentUser.id, organizationId: currentUser.organizationId } },
+      eventType,
+      description,
+      targetOrganizationId: userToUpdate.organizationId,
+      metadata: {
+        targetUserId: userToUpdate.id,
+        targetUserEmail: userToUpdate.email,
+        changedFields: Object.keys(updateData),
+        ...(roleChanged ? { previousRole: userToUpdate.role, newRole: body.role } : {}),
+      },
+    });
+
     return NextResponse.json(userWithoutPassword);
   } catch (error) {
     console.error("Error updating user:", error);
@@ -91,23 +124,19 @@ export async function PATCH(
       { status: 500 }
     );
   }
-}
+  }
+);
 
 // DELETE /api/admin/users/[id] - Delete user (soft delete by setting isActive = false)
-export async function DELETE(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const DELETE = withHardening(
+  {
+    roles: ["ADMIN", "MASTER_ADMIN"],
+    rateLimit: { limit: 20, windowSeconds: 60, prefix: "admin-user-delete", keyBy: "user" },
+  },
+  async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
-    const currentUser = session?.user;
-    
-    if (!currentUser || !["MASTER_ADMIN", "ADMIN"].includes(currentUser.role)) {
-      return NextResponse.json(
-        { error: "Unauthorized - Admin access required" },
-        { status: 403 }
-      );
-    }
+    const currentUser = session!.user;
 
     const { id: userId } = await params;
 
@@ -148,9 +177,21 @@ export async function DELETE(
       data: { isActive: false },
     });
 
-    return NextResponse.json({ 
+    await auditAdminAction({
+      req: request,
+      session: { user: { id: currentUser.id, organizationId: currentUser.organizationId } },
+      eventType: "USER_DEACTIVATED",
+      description: `${currentUser.email} deactivated ${userToDelete.email}`,
+      targetOrganizationId: userToDelete.organizationId,
+      metadata: {
+        targetUserId: userToDelete.id,
+        targetUserEmail: userToDelete.email,
+      },
+    });
+
+    return NextResponse.json({
       message: "User deactivated successfully",
-      userId: updatedUser.id 
+      userId: updatedUser.id
     });
   } catch (error) {
     console.error("Error deleting user:", error);
@@ -159,7 +200,8 @@ export async function DELETE(
       { status: 500 }
     );
   }
-}
+  }
+);
 
 // GET /api/admin/users/[id] - Get single user details
 export async function GET(

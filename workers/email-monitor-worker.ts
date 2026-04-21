@@ -5,6 +5,8 @@ import { Worker, Job } from 'bullmq';
 import { createWorkerConnection } from '@/lib/queue/connection';
 import { EmailMonitorJobData } from '@/lib/queue/types';
 import { getEmailClientForUser, EmailClient } from '@/lib/services/email/email-client-factory';
+import { isOAuthReauthError, markEmailIntegrationNeedsReauth } from '@/lib/email/reauth';
+import { verifyJobAuthorization } from '@/lib/queue/verify-job-authorization';
 import { EmailData } from '@/lib/services/email/gmail-client';
 import { EmailParser } from '@/lib/services/email/email-parser';
 import { BounceDetector, BounceType } from '@/lib/services/email/bounce-detector';
@@ -45,6 +47,10 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
     const { organizationId } = job.data;
 
     try {
+      // Re-verify tenant before fanning out to N users — a deleted org
+      // shouldn't trigger N OAuth refreshes + N inbox polls.
+      await verifyJobAuthorization({ organizationId });
+
       // Find ALL users with email integration configured for this organization
       const usersWithEmail = await prisma.userEmailIntegration.findMany({
         where: {
@@ -605,6 +611,17 @@ export const emailMonitorWorker = new Worker<EmailMonitorJobData>(
 
         } catch (userError: any) {
           workerLogger.error({ err: userError, userId }, 'Error processing inbox for user');
+
+          // If the failure is a revoked/expired OAuth token, flag the
+          // integration so workers stop re-enqueueing and the dashboard
+          // surfaces a reconnect banner. Without this the sync would fail
+          // silently on every run — the fix documented in H16 of the audit.
+          if (isOAuthReauthError(userError)) {
+            await markEmailIntegrationNeedsReauth(
+              userId,
+              userError?.message ?? 'OAuth token revoked or expired'
+            );
+          }
 
           // Update sync state with error for this user
           await prisma.userEmailSyncState.upsert({

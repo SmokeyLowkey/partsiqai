@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { withHardening } from "@/lib/api/with-hardening";
 
-// POST /api/invitations/accept - Accept invitation and create account
-export async function POST(request: Request) {
+// POST /api/invitations/accept - Accept invitation and create account.
+// Token-based; no session required. IP rate-limit to prevent token enumeration.
+export const POST = withHardening(
+  {
+    requireSession: false,
+    rateLimit: { limit: 10, windowSeconds: 900, prefix: "invitation-accept", keyBy: "ip" },
+  },
+  async (request: Request) => {
   try {
     const body = await request.json();
     const { token, name, temporaryPassword, password, phone } = body;
@@ -163,4 +170,5 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
-}
+  }
+);

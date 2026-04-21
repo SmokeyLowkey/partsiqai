@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { checkPermission } from '@/lib/auth/permissions';
+import { withHardening } from '@/lib/api/with-hardening';
 
 export async function GET(
   req: NextRequest,
@@ -39,10 +40,11 @@ export async function GET(
   }
 }
 
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const PUT = withHardening(
+  {
+    rateLimit: { limit: 30, windowSeconds: 60, prefix: 'vehicle-search-mapping', keyBy: 'userOrg' },
+  },
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params;
     const session = await getServerSession();
@@ -123,4 +125,5 @@ export async function PUT(
       { status: 500 }
     );
   }
-}
+  }
+);

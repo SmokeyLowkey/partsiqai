@@ -1,11 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { withHardening } from '@/lib/api/with-hardening';
 
-export async function POST(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> }
-) {
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 60, windowSeconds: 60, prefix: 'quote-update-items', keyBy: 'userOrg' },
+  },
+  async (request: Request, context: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
     if (!session?.user?.id) {
@@ -107,4 +109,5 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+  }
+);

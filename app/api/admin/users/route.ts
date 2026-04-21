@@ -6,6 +6,8 @@ import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { sendEmail, getBaseUrl } from "@/lib/email/resend";
 import { escapeHtml } from "@/lib/sanitize";
+import { withHardening } from "@/lib/api/with-hardening";
+import { auditAdminAction } from "@/lib/audit-admin";
 
 // Generate a random temporary password
 function generateTemporaryPassword(): string {
@@ -113,17 +115,17 @@ export async function GET(request: Request) {
 }
 
 // POST /api/admin/users - Create new user
-export async function POST(request: Request) {
+// Invite-spam risk: an ADMIN could enumerate-spam invites without the rate limit.
+// 20/hr is generous for legitimate admin onboarding flows.
+export const POST = withHardening(
+  {
+    roles: ["ADMIN", "MASTER_ADMIN"],
+    rateLimit: { limit: 20, windowSeconds: 3600, prefix: "admin-user-create", keyBy: "user" },
+  },
+  async (request: Request) => {
   try {
     const session = await getServerSession();
-    const currentUser = session?.user;
-    
-    if (!currentUser || !["MASTER_ADMIN", "ADMIN"].includes(currentUser.role)) {
-      return NextResponse.json(
-        { error: "Unauthorized - Admin access required" },
-        { status: 403 }
-      );
-    }
+    const currentUser = session!.user;
 
     const body = await request.json();
     const {
@@ -272,6 +274,7 @@ export async function POST(request: Request) {
         to: email,
         subject: `Your PartsIQ Account - ${newUser.organization.name}`,
         html,
+        organizationId: newUser.organizationId ?? undefined,
       });
     } catch (emailError) {
       console.error("Failed to send temporary password email:", emailError);
@@ -281,6 +284,20 @@ export async function POST(request: Request) {
     // Remove password from response
     const { password: _, ...userWithoutPassword } = newUser;
 
+    await auditAdminAction({
+      req: request,
+      session: { user: { id: currentUser.id, organizationId: currentUser.organizationId } },
+      eventType: "USER_CREATED",
+      description: `${currentUser.email} created user ${newUser.email} (role=${newUser.role})`,
+      targetOrganizationId: newUser.organizationId,
+      metadata: {
+        newUserId: newUser.id,
+        newUserEmail: newUser.email,
+        role: newUser.role,
+        actorRole: currentUser.role,
+      },
+    });
+
     return NextResponse.json(userWithoutPassword, { status: 201 });
   } catch (error) {
     console.error("Error creating user:", error);
@@ -289,4 +306,5 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
-}
+  }
+);

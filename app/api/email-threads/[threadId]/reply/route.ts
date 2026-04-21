@@ -1,14 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getEmailClientForUser } from '@/lib/services/email/email-client-factory';
 import { escapeHtml } from '@/lib/sanitize';
+import { withHardening } from '@/lib/api/with-hardening';
 
 // POST /api/email-threads/[threadId]/reply - Reply to a supplier message
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ threadId: string }> }
-) {
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 60, windowSeconds: 3600, prefix: 'email-reply', keyBy: 'user' },
+  },
+  async (req: Request, { params }: { params: Promise<{ threadId: string }> }) => {
   try {
     const session = await getServerSession();
 
@@ -307,4 +309,5 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+  }
+);

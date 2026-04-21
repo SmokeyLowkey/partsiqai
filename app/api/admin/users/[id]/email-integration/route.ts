@@ -3,6 +3,8 @@ import { getServerSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { EmailProviderType } from "@prisma/client";
 import { encryptCredentials } from "@/lib/services/credentials/encryption";
+import { withHardening } from "@/lib/api/with-hardening";
+import { auditAdminAction } from "@/lib/audit-admin";
 
 // GET /api/admin/users/[id]/email-integration - Get user's email integration
 export async function GET(
@@ -70,20 +72,15 @@ export async function GET(
 }
 
 // POST /api/admin/users/[id]/email-integration - Create/Update user's email integration
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const POST = withHardening(
+  {
+    roles: ["ADMIN", "MASTER_ADMIN"],
+    rateLimit: { limit: 20, windowSeconds: 60, prefix: "admin-user-email-config", keyBy: "user" },
+  },
+  async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
-    const currentUser = session?.user;
-
-    if (!currentUser || !["MASTER_ADMIN", "ADMIN"].includes(currentUser.role)) {
-      return NextResponse.json(
-        { error: "Unauthorized - Admin access required" },
-        { status: 403 }
-      );
-    }
+    const currentUser = session!.user;
 
     const { id: userId } = await params;
 
@@ -177,6 +174,20 @@ export async function POST(
       },
     });
 
+    await auditAdminAction({
+      req: request,
+      session: { user: { id: currentUser.id, organizationId: currentUser.organizationId } },
+      eventType: "USER_EMAIL_INTEGRATION_CONFIGURED",
+      description: `${currentUser.email} configured ${providerType} email integration for ${user.email}`,
+      targetOrganizationId: user.organizationId,
+      metadata: {
+        targetUserId: user.id,
+        targetUserEmail: user.email,
+        providerType,
+        emailAddress,
+      },
+    });
+
     return NextResponse.json({
       message: "Email integration configured successfully",
       emailIntegration,
@@ -188,23 +199,19 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+  }
+);
 
 // DELETE /api/admin/users/[id]/email-integration - Remove user's email integration
-export async function DELETE(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const DELETE = withHardening(
+  {
+    roles: ["ADMIN", "MASTER_ADMIN"],
+    rateLimit: { limit: 20, windowSeconds: 60, prefix: "admin-user-email-remove", keyBy: "user" },
+  },
+  async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
-    const currentUser = session?.user;
-
-    if (!currentUser || !["MASTER_ADMIN", "ADMIN"].includes(currentUser.role)) {
-      return NextResponse.json(
-        { error: "Unauthorized - Admin access required" },
-        { status: 403 }
-      );
-    }
+    const currentUser = session!.user;
 
     const { id: userId } = await params;
 
@@ -230,6 +237,15 @@ export async function DELETE(
       where: { userId },
     });
 
+    await auditAdminAction({
+      req: request,
+      session: { user: { id: currentUser.id, organizationId: currentUser.organizationId } },
+      eventType: "USER_EMAIL_INTEGRATION_REMOVED",
+      description: `${currentUser.email} removed email integration for user ${user.id}`,
+      targetOrganizationId: user.organizationId,
+      metadata: { targetUserId: user.id },
+    });
+
     return NextResponse.json({ message: "Email integration removed" });
   } catch (error: any) {
     if (error.code === "P2025") {
@@ -244,4 +260,5 @@ export async function DELETE(
       { status: 500 }
     );
   }
-}
+  }
+);

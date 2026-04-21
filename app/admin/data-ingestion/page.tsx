@@ -52,6 +52,14 @@ import {
   Truck,
 } from "lucide-react";
 
+type BackendCounts = {
+  PENDING: number;
+  IN_PROGRESS: number;
+  OK: number;
+  FAILED: number;
+  REJECTED: number;
+};
+
 type IngestionJob = {
   id: string;
   organizationId: string;
@@ -65,6 +73,8 @@ type IngestionJob = {
   processedRecords: number;
   successRecords: number;
   failedRecords: number;
+  totalChunks?: number;
+  preparedChunks?: number;
   postgresStatus: string;
   pineconeStatus: string;
   neo4jStatus: string;
@@ -74,10 +84,19 @@ type IngestionJob = {
   createdAt: string;
   organization: { name: string };
   user: { name: string | null; email: string };
+  // Only present on the detail endpoint response. Holds chunk counts per
+  // backend once the prepare phase has fanned out.
+  backendBreakdown?: {
+    POSTGRES: BackendCounts;
+    PINECONE: BackendCounts;
+    NEO4J: BackendCounts;
+  };
 };
 
 const STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: React.ComponentType<any> }> = {
   PENDING: { label: "Pending", variant: "outline", icon: Clock },
+  PREPARING: { label: "Preparing", variant: "secondary", icon: Loader2 },
+  READY: { label: "Ready", variant: "secondary", icon: Loader2 },
   VALIDATING: { label: "Validating", variant: "secondary", icon: Loader2 },
   PROCESSING: { label: "Processing", variant: "secondary", icon: Loader2 },
   COMPLETED: { label: "Completed", variant: "default", icon: CheckCircle2 },
@@ -708,20 +727,38 @@ export default function DataIngestionPage() {
 
               {/* Phase Status */}
               <div>
-                <h4 className="font-medium mb-2">Phase Status</h4>
+                <h4 className="font-medium mb-2">
+                  Phase Status
+                  {selectedJob.totalChunks ? (
+                    <span className="text-xs text-muted-foreground ml-2 font-normal">
+                      ({selectedJob.preparedChunks ?? 0} / {selectedJob.totalChunks} chunks prepared)
+                    </span>
+                  ) : null}
+                </h4>
                 <div className="grid grid-cols-3 gap-3">
-                  {[
-                    { label: "PostgreSQL", status: selectedJob.postgresStatus },
-                    { label: "Pinecone", status: selectedJob.pineconeStatus },
-                    { label: "Neo4j", status: selectedJob.neo4jStatus },
-                  ].map((phase) => (
-                    <div key={phase.label} className="border rounded-lg p-3 text-center">
-                      <div className="text-sm font-medium">{phase.label}</div>
-                      <div className={`text-xs mt-1 ${PHASE_CONFIG[phase.status]?.color}`}>
-                        {phase.status}
+                  {(["POSTGRES", "PINECONE", "NEO4J"] as const).map((backend) => {
+                    const label = backend === "POSTGRES" ? "PostgreSQL" : backend === "PINECONE" ? "Pinecone" : "Neo4j";
+                    const phase = backend === "POSTGRES" ? selectedJob.postgresStatus
+                      : backend === "PINECONE" ? selectedJob.pineconeStatus
+                      : selectedJob.neo4jStatus;
+                    const counts = selectedJob.backendBreakdown?.[backend];
+                    const total = counts ? counts.PENDING + counts.IN_PROGRESS + counts.OK + counts.FAILED + counts.REJECTED : 0;
+                    return (
+                      <div key={backend} className="border rounded-lg p-3 text-center">
+                        <div className="text-sm font-medium">{label}</div>
+                        <div className={`text-xs mt-1 ${PHASE_CONFIG[phase]?.color}`}>{phase}</div>
+                        {counts && total > 0 ? (
+                          <div className="text-[11px] mt-2 space-y-0.5 text-left">
+                            {counts.OK > 0 && <div className="text-green-500">OK: {counts.OK} / {total}</div>}
+                            {counts.IN_PROGRESS > 0 && <div className="text-blue-500">Running: {counts.IN_PROGRESS}</div>}
+                            {counts.PENDING > 0 && <div className="text-muted-foreground">Pending: {counts.PENDING}</div>}
+                            {counts.FAILED > 0 && <div className="text-red-500">Failed: {counts.FAILED}</div>}
+                            {counts.REJECTED > 0 && <div className="text-orange-500">Rejected: {counts.REJECTED}</div>}
+                          </div>
+                        ) : null}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 

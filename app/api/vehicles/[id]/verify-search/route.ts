@@ -1,12 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { requirePermission } from '@/lib/auth/permissions';
+import { withHardening } from '@/lib/api/with-hardening';
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 30, windowSeconds: 60, prefix: 'vehicle-verify-search', keyBy: 'userOrg' },
+  },
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
     if (!session?.user) {
@@ -49,4 +51,5 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+  }
+);

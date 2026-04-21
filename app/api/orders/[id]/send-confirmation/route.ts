@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getEmailClientForUser } from '@/lib/services/email/email-client-factory';
+import { withHardening } from '@/lib/api/with-hardening';
 import { z } from 'zod';
 
 const SendConfirmationSchema = z.object({
@@ -11,10 +12,11 @@ const SendConfirmationSchema = z.object({
 });
 
 // POST /api/orders/[id]/send-confirmation - Send order confirmation email to supplier
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 20, windowSeconds: 3600, prefix: 'order-send-confirmation', keyBy: 'user' },
+  },
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
 
@@ -189,4 +191,5 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+  }
+);

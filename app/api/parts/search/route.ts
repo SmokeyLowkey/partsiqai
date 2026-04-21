@@ -3,6 +3,7 @@ import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { partsSearchQueue } from '@/lib/queue/queues';
 import { PartsSearchJobSchema } from '@/lib/queue/types';
+import { withHardening } from '@/lib/api/with-hardening';
 import { z } from 'zod';
 
 const SearchRequestSchema = z.object({
@@ -18,7 +19,13 @@ const SearchRequestSchema = z.object({
     .optional(),
 });
 
-export async function POST(req: NextRequest) {
+// Parts search enqueues a worker job that hits Pinecone + OpenRouter — rate-limit
+// to prevent search-spam from burning external-API credits.
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 60, windowSeconds: 60, prefix: 'parts-search', keyBy: 'user' },
+  },
+  async (req: Request) => {
   try {
     const session = await getServerSession();
 
@@ -103,4 +110,5 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+  }
+);

@@ -6,6 +6,8 @@ import { OpenRouterClient } from '@/lib/services/llm/openrouter-client';
 import { CallState } from '@/lib/voip/types';
 import { runOverseerAsync, consumeNudge, OverseerNudge } from '@/lib/voip/overseer';
 import { workerLogger } from '@/lib/logger';
+import { timingSafeStringEqual } from '@/lib/api-utils';
+import { prisma } from '@/lib/prisma';
 import crypto from 'crypto';
 
 const logger = workerLogger.child({ module: 'langgraph-handler' });
@@ -389,7 +391,11 @@ export async function POST(req: NextRequest) {
   let isStreaming = false;
 
   try {
-    // Verify authorization - check VOIP_WEBHOOK_SECRET from environment
+    // Verify authorization. This endpoint is listed in middleware's PUBLIC_API_PREFIXES
+    // so the Next session gate does NOT apply — the only thing keeping a random
+    // internet actor from driving our LLM is the shared secret below and the
+    // callId → supplierCall binding further down. Timing-safe compare so a
+    // guess-the-secret brute-force can't leak its length from response times.
     const authHeader = req.headers.get('authorization');
     const webhookSecret = process.env.VOIP_WEBHOOK_SECRET;
 
@@ -401,8 +407,7 @@ export async function POST(req: NextRequest) {
       }, { status: 500 });
     }
 
-    const expectedAuth = `Bearer ${webhookSecret}`;
-    if (authHeader !== expectedAuth) {
+    if (!timingSafeStringEqual(authHeader, `Bearer ${webhookSecret}`)) {
       logger.warn({
         authHeaderPreview: authHeader?.substring(0, 20),
       }, 'Unauthorized LangGraph handler request - auth mismatch');
@@ -500,6 +505,32 @@ export async function POST(req: NextRequest) {
       const errorContent = "I apologize, I'm experiencing a technical issue. Could you hold for just a moment?";
       if (isStreaming) return buildStreamingResponse(errorContent);
       return NextResponse.json(buildChatCompletionResponse(errorContent));
+    }
+
+    // Bind the request to a real in-flight SupplierCall. Even with a valid
+    // shared secret, an attacker who learns the secret shouldn't be able to
+    // drive arbitrary LLM conversations by fabricating a callLogId. We accept
+    // PENDING / ANSWERED / RINGING / IN_PROGRESS — anything downstream-terminal
+    // (COMPLETED, FAILED, TIMED_OUT) shouldn't receive more turns.
+    const callBinding = await prisma.supplierCall.findUnique({
+      where: { id: callId },
+      select: { id: true, status: true },
+    });
+    if (!callBinding) {
+      logger.warn({ callId }, 'Rejecting LLM request: callId does not map to a SupplierCall');
+      return NextResponse.json({ error: 'Unknown callId' }, { status: 403 });
+    }
+    // Live = anything short of terminal. VOICEMAIL / NO_ANSWER / BUSY /
+    // COMPLETED / FAILED / CANCELLED / HUMAN_ESCALATED are all terminal.
+    const liveStatuses = ['INITIATED', 'RINGING', 'ANSWERED', 'IN_PROGRESS'] as const;
+    if (!liveStatuses.includes(callBinding.status as any)) {
+      logger.warn(
+        { callId, status: callBinding.status },
+        'Rejecting LLM request: call is not in a live state'
+      );
+      const goodbye = 'Thank you, goodbye!';
+      if (isStreaming) return buildStreamingResponse(goodbye, { endCall: true });
+      return NextResponse.json(buildChatCompletionResponse(goodbye, { endCall: true }));
     }
 
     // Acquire per-call lock to prevent concurrent processing

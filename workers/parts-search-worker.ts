@@ -7,6 +7,7 @@ import { PartsSearchJobData } from '@/lib/queue/types';
 import { MultiAgentOrchestrator } from '@/lib/services/search/multi-agent-orchestrator';
 import { prisma } from '@/lib/prisma';
 import { workerLogger } from '@/lib/logger';
+import { verifyJobAuthorization } from '@/lib/queue/verify-job-authorization';
 
 const QUEUE_NAME = 'parts-search';
 
@@ -19,6 +20,10 @@ export const partsSearchWorker = new Worker<PartsSearchJobData>(
     const { organizationId, conversationId, query, vehicleContext } = job.data;
 
     try {
+      // Re-verify tenant. Search runs paid Pinecone + LLM calls — short-
+      // circuit on deleted orgs so a stale queue can't bleed credits.
+      await verifyJobAuthorization({ organizationId });
+
       // Initialize multi-agent orchestrator
       const orchestrator = new MultiAgentOrchestrator();
 

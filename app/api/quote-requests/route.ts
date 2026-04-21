@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { apiError } from '@/lib/api-utils';
+import { withHardening } from '@/lib/api/with-hardening';
 import { z } from 'zod';
 import { generateQuoteNumber } from '@/lib/utils/quote-number';
 
@@ -125,7 +126,11 @@ export async function GET(req: NextRequest) {
 }
 
 // POST /api/quote-requests - Create a new quote request from a pick list
-export async function POST(req: NextRequest) {
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 30, windowSeconds: 60, prefix: 'quote-create', keyBy: 'userOrg' },
+  },
+  async (req: Request) => {
   try {
     const session = await getServerSession();
 
@@ -246,4 +251,5 @@ export async function POST(req: NextRequest) {
 
     return apiError('Failed to create quote request', 500, { code: 'INTERNAL_ERROR' });
   }
-}
+  }
+);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { CredentialsManager } from '@/lib/services/credentials/credentials-manager';
+import { withHardening } from '@/lib/api/with-hardening';
 
 const credentialsManager = new CredentialsManager();
 
@@ -70,10 +71,12 @@ export async function GET(
 }
 
 // DELETE /api/integrations/[type] - Delete integration credentials
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: Promise<{ type: string }> }
-) {
+export const DELETE = withHardening(
+  {
+    roles: ['ADMIN', 'MASTER_ADMIN'],
+    rateLimit: { limit: 20, windowSeconds: 60, prefix: 'integrations-delete', keyBy: 'org' },
+  },
+  async (req: Request, { params }: { params: Promise<{ type: string }> }) => {
   try {
     const session = await getServerSession();
 
@@ -108,4 +111,5 @@ export async function DELETE(
       { status: 500 }
     );
   }
-}
+  }
+);

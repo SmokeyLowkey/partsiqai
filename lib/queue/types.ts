@@ -124,6 +124,23 @@ export const PartsIngestionJobSchema = z.object({
 
 export type PartsIngestionJobData = z.infer<typeof PartsIngestionJobSchema>;
 
+// Ingestion Prepare Job — one per uploaded file. The prepare worker loads
+// full job context from the DB by ingestionJobId; nothing else is passed so
+// payload can't go stale between enqueue and process.
+export const IngestionPrepareJobSchema = z.object({
+  ingestionJobId: z.string(),
+});
+export type IngestionPrepareJobData = z.infer<typeof IngestionPrepareJobSchema>;
+
+// Ingestion Backend Write Job — one per (job, backend, chunk) outbox row.
+// Worker loads the outbox row (and its parent job) by outboxId; we pass the
+// backend for convenience/dispatch but the row itself is the source of truth.
+export const IngestionBackendWriteJobSchema = z.object({
+  outboxId: z.string(),
+  backend: z.enum(['POSTGRES', 'PINECONE', 'NEO4J']),
+});
+export type IngestionBackendWriteJobData = z.infer<typeof IngestionBackendWriteJobSchema>;
+
 // Analytics Collection Job
 export const AnalyticsCollectionJobSchema = z.object({
   orderId: z.string(),

@@ -1,13 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { OpenRouterClient } from '@/lib/services/llm/openrouter-client';
+import { withHardening } from '@/lib/api/with-hardening';
 
 // POST /api/quote-requests/[id]/generate-email - Generate quote request email content using AI
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// LLM-cost DoS surface: each call hits OpenRouter. 20/hr/user is enough for
+// real drafting flows but cuts off a compromised session burning tokens.
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 20, windowSeconds: 3600, prefix: 'quote-generate-email', keyBy: 'user' },
+  },
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
 
@@ -183,4 +187,5 @@ ${quoteRequest.createdBy.email}`,
       { status: 500 }
     );
   }
-}
+  }
+);

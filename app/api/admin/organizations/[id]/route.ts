@@ -1,25 +1,23 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { withHardening } from "@/lib/api/with-hardening";
+import { auditAdminAction } from "@/lib/audit-admin";
 
 /**
  * PATCH /api/admin/organizations/[id]
  * Update organization settings (Master Admin only)
  */
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const PATCH = withHardening(
+  {
+    roles: ["MASTER_ADMIN"],
+    rateLimit: { limit: 30, windowSeconds: 60, prefix: "admin-org-update", keyBy: "user" },
+  },
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
-    
-    if (!session?.user?.id) {
+    if (!session?.user) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
-
-    // Only MASTER_ADMIN can update organizations
-    if (session.user.role !== "MASTER_ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
     const { id: organizationId } = await params;
@@ -70,6 +68,19 @@ export async function PATCH(
       },
     });
 
+    await auditAdminAction({
+      req,
+      session: { user: { id: session.user.id, organizationId: session.user.organizationId } },
+      eventType: "ORGANIZATION_SETTINGS_CHANGED",
+      description: `${session.user.email} updated platform-routing fields on org ${organization.name}`,
+      targetOrganizationId: organizationId,
+      metadata: {
+        organizationId,
+        organizationName: organization.name,
+        changedFields: Object.keys(updateData),
+      },
+    });
+
     return NextResponse.json({ organization: updatedOrganization });
   } catch (error: any) {
     console.error("Error updating organization:", error);
@@ -78,4 +89,5 @@ export async function PATCH(
       { status: 500 }
     );
   }
-}
+  }
+);

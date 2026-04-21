@@ -13,6 +13,7 @@ import { getReceptionistConfig, isWithinBusinessHours } from '@/lib/voip/recepti
 import { lookupCaller } from '@/lib/voip/receptionist/caller-lookup';
 import { initReceptionistState } from '@/lib/voip/receptionist/state';
 import { checkAndIncrementRateLimit, isSpamBlocked } from '@/lib/voip/receptionist/abuse-prevention';
+import { timingSafeStringEqual } from '@/lib/api-utils';
 
 const logger = workerLogger.child({ module: 'receptionist-handler' });
 
@@ -176,10 +177,12 @@ export async function POST(req: NextRequest) {
       }
     });
 
-    // Normalize: strip all "Bearer " prefixes (Vapi sometimes sends "Bearer Bearer <token>" when
-    // the credential value already starts with "Bearer ")
+    // Normalize: strip all "Bearer " prefixes (Vapi sometimes sends
+    // "Bearer Bearer <token>" when the credential value already starts with
+    // "Bearer "). Use timing-safe compare so a would-be attacker can't
+    // fingerprint the secret's length from response-time side channels.
     const token = (authHeader || '').replace(/^(Bearer\s+)+/i, '').trim();
-    if (token !== webhookSecret) {
+    if (!timingSafeStringEqual(token, webhookSecret)) {
       logger.warn(
         { authHeaderPreview: (authHeader || '').slice(0, 30) },
         'Unauthorized receptionist request'

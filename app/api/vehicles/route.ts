@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { z } from 'zod';
 import { notifyVehiclePending } from '@/lib/notifications/vehicle-pending';
 import { getTierLimits } from '@/lib/subscription-limits';
+import { withHardening } from '@/lib/api/with-hardening';
 
 const VehicleSchema = z.object({
   vehicleId: z.string().min(1, 'Vehicle ID is required'),
@@ -112,7 +113,11 @@ export async function GET(req: NextRequest) {
 }
 
 // POST /api/vehicles - Create a new vehicle
-export async function POST(req: NextRequest) {
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 20, windowSeconds: 60, prefix: 'vehicle-create', keyBy: 'userOrg' },
+  },
+  async (req: Request) => {
   try {
     const session = await getServerSession();
 
@@ -220,4 +225,5 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+  }
+);

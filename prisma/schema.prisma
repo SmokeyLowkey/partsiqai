@@ -840,6 +840,20 @@ model SecurityAuditLog {
   @@map("security_audit_logs")
 }
 
+// Idempotency-key table for inbound webhooks. Each row represents one event
+// we've already processed — duplicate deliveries short-circuit before any
+// side-effects fire. Composite PK (source, externalId) gives O(1) lookup and
+// lets us enforce the invariant at the DB level via unique-violation retry.
+model ProcessedWebhook {
+  source      String // e.g. "stripe" | "resend" | "vapi" | "vapi-receptionist"
+  externalId  String // event id / svix-id / vapi message id
+  processedAt DateTime @default(now())
+
+  @@id([source, externalId])
+  @@index([processedAt]) // retention sweep in cron/cleanup-jobs
+  @@map("processed_webhooks")
+}
+
 model SystemSetting {
   id          String   @id @default(cuid())
   key         String   @unique
@@ -1121,31 +1135,31 @@ model AuxiliaryPhone {
 }
 
 model SupplierCall {
-  id               String        @id @default(cuid())
-  quoteRequestId   String?
-  supplierId       String
-  callDirection    CallDirection
-  callType         CallType      @default(QUOTE_REQUEST)
-  callerId         String
-  phoneNumber      String
-  startedAt        DateTime      @default(now())
-  answeredAt       DateTime?
-  endedAt          DateTime?
-  duration         Int?
-  status           CallStatus    @default(INITIATED)
-  vapiCallId       String?       @unique
-  recordingUrl     String?
-  graphStateId     String?
-  conversationLog  Json?
-  outcome          CallOutcome?
-  notes            String?
-  nextAction       String?
-  retryCount       Int           @default(0)
-  maxRetries       Int           @default(3)
-  nextRetryAt      DateTime?
-  extractedQuotes  Json?
-  threadRole       ThreadRole    @default(TECHNICIAN)
-  visibleToCreator Boolean       @default(true)
+  id                   String           @id @default(cuid())
+  quoteRequestId       String?
+  supplierId           String
+  callDirection        CallDirection
+  callType             CallType         @default(QUOTE_REQUEST)
+  callerId             String
+  phoneNumber          String
+  startedAt            DateTime         @default(now())
+  answeredAt           DateTime?
+  endedAt              DateTime?
+  duration             Int?
+  status               CallStatus       @default(INITIATED)
+  vapiCallId           String?          @unique
+  recordingUrl         String?
+  graphStateId         String?
+  conversationLog      Json?
+  outcome              CallOutcome?
+  notes                String?
+  nextAction           String?
+  retryCount           Int              @default(0)
+  maxRetries           Int              @default(3)
+  nextRetryAt          DateTime?
+  extractedQuotes      Json?
+  threadRole           ThreadRole       @default(TECHNICIAN)
+  visibleToCreator     Boolean          @default(true)
   organizationId       String
   vapiPhoneNumberRowId String?
   endedReason          String?
@@ -1173,7 +1187,7 @@ model VapiPhoneNumber {
   twilioSid             String?             @unique
   e164                  String              @unique
   areaCode              String?
-  provider              PhoneNumberProvider  @default(TWILIO)
+  provider              PhoneNumberProvider @default(TWILIO)
   isActive              Boolean             @default(true)
   healthStatus          PhoneNumberHealth   @default(HEALTHY)
   vapiStatus            String?
@@ -1379,59 +1393,98 @@ model UsageOverage {
 }
 
 model IngestionJob {
-  id               String               @id @default(cuid())
-  organizationId   String
-  userId           String
-  s3Key            String
-  fileName         String
-  fileType         String
-  fileSize         Int
-  status           IngestionJobStatus   @default(PENDING)
-  startedAt        DateTime?
-  completedAt      DateTime?
-  totalRecords     Int                  @default(0)
-  processedRecords Int                  @default(0)
-  successRecords   Int                  @default(0)
-  failedRecords    Int                  @default(0)
-  postgresStatus   IngestionPhaseStatus @default(PENDING)
-  pineconeStatus   IngestionPhaseStatus @default(PENDING)
-  neo4jStatus      IngestionPhaseStatus @default(PENDING)
-  errors           Json?
-  warnings         Json?
-  summary          Json?
-  options          Json?
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
-  organization     Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user             User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  id                 String               @id @default(cuid())
+  organizationId     String
+  userId             String
+  s3Key              String
+  fileName           String
+  fileType           String
+  fileSize           Int
+  status             IngestionJobStatus   @default(PENDING)
+  startedAt          DateTime?
+  completedAt        DateTime?
+  totalRecords       Int                  @default(0)
+  processedRecords   Int                  @default(0)
+  successRecords     Int                  @default(0)
+  failedRecords      Int                  @default(0)
+  // Chunked outbox pipeline bookkeeping. totalChunks is set by the prepare
+  // worker once the stream finishes; preparedChunks increments as each chunk
+  // is written to S3 + outbox rows created.
+  totalChunks        Int                  @default(0)
+  preparedChunks     Int                  @default(0)
+  // Snapshot of the initiating user's role at enqueue. Every backend-write
+  // job re-verifies the initiator still has >= this role at process time —
+  // closes the role-downgrade race window.
+  initiatedByRole    UserRole             @default(USER)
+  // Backends the initiator was authorized to target. MASTER_ADMIN → all three;
+  // org ADMIN → POSTGRES is excluded. Enforced in schema by creating outbox
+  // rows only for these backends; re-enforced at worker process time.
+  authorizedBackends IngestionBackend[]
+  postgresStatus     IngestionPhaseStatus @default(PENDING)
+  pineconeStatus     IngestionPhaseStatus @default(PENDING)
+  neo4jStatus        IngestionPhaseStatus @default(PENDING)
+  errors             Json?
+  warnings           Json?
+  summary            Json?
+  options            Json?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  organization       Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user               User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  outbox             IngestionOutbox[]
 
   @@index([organizationId, status])
   @@index([status, createdAt])
   @@map("ingestion_jobs")
 }
 
+// One row per (job, backend, chunk). The prepare worker fans out to these;
+// backend writers drain them with per-chunk idempotency and independent retry.
+model IngestionOutbox {
+  id             String                @id @default(cuid())
+  ingestionJobId String
+  backend        IngestionBackend
+  chunkIndex     Int
+  // S3 key of the gzipped chunk blob: chunks/<jobId>/batch-NNNN.json.gz
+  chunkS3Key     String
+  recordCount    Int
+  status         IngestionOutboxStatus @default(PENDING)
+  attempts       Int                   @default(0)
+  lastError      String?
+  startedAt      DateTime?
+  processedAt    DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  job            IngestionJob          @relation(fields: [ingestionJobId], references: [id], onDelete: Cascade)
+
+  @@unique([ingestionJobId, backend, chunkIndex])
+  @@index([backend, status])
+  @@index([ingestionJobId, status])
+  @@map("ingestion_outbox")
+}
+
 model AdminEmail {
-  id               String        @id @default(cuid())
-  subject          String
-  htmlBody         String        @db.Text
-  templateType     String?
-  templateVars     Json?
-  senderEmail      String
-  recipientEmail   String
-  recipientName    String?
-  recipientUserId  String?
-  organizationId   String?
-  sentById         String
-  resendMessageId  String?
-  status           String        @default("sent")
-  errorMessage     String?
-  createdAt        DateTime      @default(now())
+  id              String   @id @default(cuid())
+  subject         String
+  htmlBody        String   @db.Text
+  templateType    String?
+  templateVars    Json?
+  senderEmail     String
+  recipientEmail  String
+  recipientName   String?
+  recipientUserId String?
+  organizationId  String?
+  sentById        String
+  resendMessageId String?
+  status          String   @default("sent")
+  errorMessage    String?
+  createdAt       DateTime @default(now())
 
   sentBy       User          @relation("AdminEmailsSent", fields: [sentById], references: [id], onDelete: Restrict)
   recipient    User?         @relation("AdminEmailsReceived", fields: [recipientUserId], references: [id], onDelete: SetNull)
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
-  replies  AdminEmailReply[]
+  replies AdminEmailReply[]
 
   @@index([organizationId])
   @@index([sentById])
@@ -1671,6 +1724,24 @@ enum SecurityEventType {
   API_KEY_DELETED
   ROLE_CHANGED
   SUSPICIOUS_ACTIVITY
+  // Admin mutation audit events (added 2026-04-20 for H1 from hardening audit).
+  // Granular where the action has distinct semantics; broad where the specific
+  // verb is carried in `description` + `metadata`.
+  USER_CREATED
+  USER_UPDATED
+  USER_DEACTIVATED
+  USER_REACTIVATED
+  USER_EMAIL_INTEGRATION_CONFIGURED
+  USER_EMAIL_INTEGRATION_REMOVED
+  ORGANIZATION_SETTINGS_CHANGED
+  TENANT_MANAGED
+  PLATFORM_CREDENTIAL_CHANGED
+  INGESTION_TRIGGERED
+  MAINTENANCE_SCHEDULE_REVIEWED
+  BILLING_ACTION
+  PHONE_POOL_ACTION
+  ADMIN_EMAIL_SENT
+  LOCATION_MANAGED
 }
 
 enum FulfillmentMethod {
@@ -1846,6 +1917,13 @@ enum InvoiceStatus {
 
 enum IngestionJobStatus {
   PENDING
+  // Streaming parse + chunk fan-out in progress (new, replaces VALIDATING for
+  // the outbox pipeline — VALIDATING is kept for backward compatibility with
+  // historical rows from the pre-outbox pipeline).
+  PREPARING
+  // All chunks written to S3 + outbox rows created. Backend writers are
+  // draining the outbox now.
+  READY
   VALIDATING
   PROCESSING
   COMPLETED
@@ -1859,6 +1937,22 @@ enum IngestionPhaseStatus {
   COMPLETED
   FAILED
   SKIPPED
+}
+
+enum IngestionBackend {
+  POSTGRES
+  PINECONE
+  NEO4J
+}
+
+enum IngestionOutboxStatus {
+  PENDING
+  IN_PROGRESS
+  OK
+  FAILED
+  // The initiator lost authorization for this backend between enqueue and
+  // process. Distinct from FAILED so the retry endpoint won't naively re-run.
+  REJECTED
 }
 
 enum ContactMethod {

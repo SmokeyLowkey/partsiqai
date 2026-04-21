@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import { checkRateLimit, getClientIp, rateLimits } from "@/lib/rate-limit";
+import { withHardening } from "@/lib/api/with-hardening";
+import { auditAdminAction } from "@/lib/audit-admin";
 
 // GET /api/auth/reset-password?token=xxx — validate token
 export async function GET(request: NextRequest) {
@@ -37,14 +38,15 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/auth/reset-password — reset password with token
-export async function POST(request: NextRequest) {
+// POST /api/auth/reset-password — reset password with token.
+// Matches the previous inlined rateLimits.authAction (5 per 15min per IP).
+export const POST = withHardening(
+  {
+    requireSession: false,
+    rateLimit: { limit: 5, windowSeconds: 900, prefix: "auth-reset-password", keyBy: "ip" },
+  },
+  async (request: Request) => {
   try {
-    // Rate limit by IP to prevent token brute force
-    const ip = getClientIp(request);
-    const rateCheck = await checkRateLimit(`reset-pwd:${ip}`, rateLimits.authAction);
-    if (!rateCheck.success) return rateCheck.response;
-
     const { token, password } = await request.json();
 
     if (!token || !password) {
@@ -104,6 +106,14 @@ export async function POST(request: NextRequest) {
     // Delete used token
     await prisma.passwordReset.delete({ where: { id: resetRecord.id } });
 
+    await auditAdminAction({
+      req: request,
+      session: { user: { id: resetRecord.userId, organizationId: resetRecord.user.organizationId } },
+      eventType: "PASSWORD_RESET_COMPLETE",
+      description: `${resetRecord.user.email} completed password reset via email link`,
+      metadata: { email: resetRecord.user.email },
+    });
+
     console.log("[Reset Password] Password reset for user:", resetRecord.user.email);
 
     return NextResponse.json({ message: "Password has been reset successfully" });
@@ -114,4 +124,5 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+  }
+);

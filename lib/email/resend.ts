@@ -1,5 +1,6 @@
 import { Resend } from "resend";
 import { escapeHtml } from "@/lib/sanitize";
+import { assertQuota } from "@/lib/cost-quota";
 
 // Initialize Resend client
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -16,14 +17,27 @@ export async function sendEmail({
   html,
   from = "PartsIQ <onboarding@partsiqai.com>",
   headers: customHeaders,
+  organizationId,
 }: {
   to: string;
   subject: string;
   html: string;
   from?: string;
   headers?: Record<string, string>;
+  // When provided, debits the org's daily Resend email quota. Platform-scoped
+  // email (signup/verify/contact/leads) omits this — those paths are protected
+  // by rate limits at the route layer instead.
+  organizationId?: string;
 }) {
   try {
+    if (organizationId) {
+      await assertQuota({
+        provider: 'resend',
+        organizationId,
+        cost: 1,
+      });
+    }
+
     const { data, error } = await resend.emails.send({
       from,
       to,

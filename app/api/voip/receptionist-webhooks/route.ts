@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { workerLogger } from '@/lib/logger';
 import { prisma } from '@/lib/prisma';
 import { getReceptionistState, deleteReceptionistState } from '@/lib/voip/receptionist/state';
+import { timingSafeStringEqual, isWebhookTimestampFresh } from '@/lib/api-utils';
+import { claimWebhook } from '@/lib/webhook-dedupe';
 
 const logger = workerLogger.child({ module: 'receptionist-webhooks' });
 
@@ -27,10 +29,10 @@ export async function POST(req: NextRequest) {
 
     const bearerToken = (authHeader || '').replace(/^(Bearer\s+)+/i, '').trim();
 
-    const vapiSecretValid = vapiWebhookSecret && vapiSecret === vapiWebhookSecret;
+    const vapiSecretValid = timingSafeStringEqual(vapiSecret, vapiWebhookSecret);
     const bearerValid =
-      (voipWebhookSecret && bearerToken === voipWebhookSecret) ||
-      (vapiWebhookSecret && bearerToken === vapiWebhookSecret);
+      timingSafeStringEqual(bearerToken, voipWebhookSecret) ||
+      timingSafeStringEqual(bearerToken, vapiWebhookSecret);
 
     if (!vapiSecretValid && !bearerValid) {
       logger.warn(
@@ -49,6 +51,33 @@ export async function POST(req: NextRequest) {
     const eventType = event.type;
     const vapiCallId = event.call?.id || body.call?.id;
     const callId = event.call?.id || vapiCallId;
+
+    // Replay window (5 min). Skip when no timestamp; signature + dedupe still guard.
+    const tsMs =
+      typeof event.timestamp === 'number'
+        ? event.timestamp
+        : typeof body.timestamp === 'number'
+        ? body.timestamp
+        : null;
+    if (tsMs !== null && !isWebhookTimestampFresh(Math.floor(tsMs / 1000))) {
+      logger.warn({ tsMs, eventType, callId }, 'Receptionist webhook rejected: stale timestamp');
+      return NextResponse.json({ error: 'Stale webhook' }, { status: 401 });
+    }
+
+    // Dedupe only terminal events that cause writes. Non-terminal events
+    // (status-update, transcript, etc.) are no-ops below, so skipping
+    // dedupe for them keeps the table small and avoids useless INSERTs.
+    if (eventType === 'call-ended' || eventType === 'end-of-call-report') {
+      const eventId = event.id ?? body.id ?? null;
+      const dedupeKey = eventId
+        ? `${callId}:${eventId}`
+        : `${callId}:${eventType}:${tsMs ?? Date.now()}`;
+      const fresh = await claimWebhook('vapi-receptionist', dedupeKey);
+      if (!fresh) {
+        logger.info({ dedupeKey, eventType, callId }, 'Receptionist webhook dedupe hit');
+        return NextResponse.json({ ok: true, deduped: true });
+      }
+    }
 
     logger.info(
       { eventType, callId, vapiCallId },

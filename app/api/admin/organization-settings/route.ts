@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { withHardening } from "@/lib/api/with-hardening";
+import { auditAdminAction } from "@/lib/audit-admin";
 
 // GET /api/admin/organization-settings - Get organization settings
 export async function GET() {
@@ -58,17 +60,15 @@ export async function GET() {
 }
 
 // PUT /api/admin/organization-settings - Update organization settings
-export async function PUT(request: Request) {
+export const PUT = withHardening(
+  {
+    roles: ["ADMIN", "MASTER_ADMIN"],
+    rateLimit: { limit: 30, windowSeconds: 60, prefix: "admin-org-settings", keyBy: "org" },
+  },
+  async (request: Request) => {
   try {
     const session = await getServerSession();
-    const currentUser = session?.user;
-
-    if (!currentUser || !["MASTER_ADMIN", "ADMIN"].includes(currentUser.role)) {
-      return NextResponse.json(
-        { error: "Unauthorized - Admin access required" },
-        { status: 403 }
-      );
-    }
+    const currentUser = session!.user;
 
     const body = await request.json();
     const {
@@ -124,6 +124,16 @@ export async function PUT(request: Request) {
       },
     });
 
+    await auditAdminAction({
+      req: request,
+      session: { user: { id: currentUser.id, organizationId: currentUser.organizationId } },
+      eventType: "ORGANIZATION_SETTINGS_CHANGED",
+      description: `${currentUser.email} updated organization settings`,
+      metadata: {
+        changedFields: Object.keys(body),
+      },
+    });
+
     return NextResponse.json({
       message: "Organization settings updated successfully",
       organization,
@@ -135,4 +145,5 @@ export async function PUT(request: Request) {
       { status: 500 }
     );
   }
-}
+  }
+);

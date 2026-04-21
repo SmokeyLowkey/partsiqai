@@ -2,18 +2,16 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { requiresApproval } from "@/lib/auth";
+import { withHardening } from "@/lib/api/with-hardening";
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 20, windowSeconds: 60, prefix: "quote-request-approval", keyBy: "user" },
+  },
+  async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
-    const currentUser = session?.user;
-
-    if (!currentUser) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const currentUser = session!.user;
 
     const { id: quoteRequestId } = await params;
     const body = await request.json();
@@ -26,9 +24,9 @@ export async function POST(
     const quoteRequest = await prisma.quoteRequest.findFirst({
       where: {
         id: quoteRequestId,
-        organizationId: session.user.organizationId,
+        organizationId: currentUser.organizationId,
         // Technicians can only request approval for their own quotes
-        ...(session.user.role === 'TECHNICIAN' && { createdById: session.user.id }),
+        ...(currentUser.role === 'TECHNICIAN' && { createdById: currentUser.id }),
       },
       include: {
         createdBy: {
@@ -118,4 +116,5 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+  }
+);

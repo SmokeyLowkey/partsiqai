@@ -1,7 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { requirePermission } from '@/lib/auth/permissions';
+import { withHardening } from '@/lib/api/with-hardening';
+import { auditAdminAction } from '@/lib/audit-admin';
 import { z } from 'zod';
 
 const RejectSchema = z.object({
@@ -10,10 +12,11 @@ const RejectSchema = z.object({
 });
 
 // POST /api/admin/maintenance-schedules/[id]/reject - Reject a maintenance schedule
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 30, windowSeconds: 60, prefix: 'maintenance-reject', keyBy: 'userOrg' },
+  },
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
     if (!session?.user) {
@@ -106,6 +109,19 @@ export async function POST(
       },
     });
 
+    await auditAdminAction({
+      req,
+      session: { user: { id: session.user.id, organizationId: session.user.organizationId } },
+      eventType: 'MAINTENANCE_SCHEDULE_REVIEWED',
+      description: `${session.user.email} ${statusLabel.toLowerCase()} maintenance schedule ${schedule.id} (reason: ${reason})`,
+      metadata: {
+        action: needsCorrection ? 'needs_correction' : 'reject',
+        scheduleId: schedule.id,
+        vehicleId: schedule.vehicleId,
+        reason,
+      },
+    });
+
     return NextResponse.json({
       message: `Maintenance schedule ${statusLabel.toLowerCase()}`,
       schedule,
@@ -123,4 +139,5 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+  }
+);

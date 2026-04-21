@@ -72,7 +72,7 @@ export async function notifyQuoteReceived(params: NotifyQuoteReceivedParams): Pr
       itemsExtracted: itemsExtracted ?? -1,
     });
 
-    await sendEmail({ to: createdBy.email, subject, html });
+    await sendEmail({ to: createdBy.email, subject, html, organizationId });
   } catch (error) {
     // Log but never throw — notifications must not break the caller
     console.error('[notifyQuoteReceived] Failed to send notification:', error);

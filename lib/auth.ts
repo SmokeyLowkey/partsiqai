@@ -243,6 +243,13 @@ export function requiresApproval(role: UserRole): boolean {
   return role === "TECHNICIAN"
 }
 
+// Vehicle fleet-identity fields (vehicleId, serialNumber, make/model/year/type, engine specs)
+// should only be editable by fleet managers and admins. Technicians and regular users can
+// edit operational/maintenance data only.
+export function canEditVehicleIdentity(role: UserRole): boolean {
+  return role === "MANAGER" || role === "ADMIN" || role === "MASTER_ADMIN"
+}
+
 // Subscription status utilities
 export function isSubscriptionActive(status: SubscriptionStatus): boolean {
   return status === "ACTIVE" || status === "TRIAL"

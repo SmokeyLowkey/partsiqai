@@ -1,29 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession, canConvertToOrder } from '@/lib/auth';
+import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getEmailClientForUser } from '@/lib/services/email/email-client-factory';
 import { generateOrderNumber } from '@/lib/utils/order-number';
 import { checkIdempotency, cacheResponse, getIdempotencyKey } from '@/lib/middleware/idempotency';
 import { escapeHtml } from '@/lib/sanitize';
+import { withHardening } from '@/lib/api/with-hardening';
 
 // POST /api/quote-requests/[id]/confirm-order - Actually create order and send email
 // EDGE CASE #1: Protected by idempotency to prevent duplicate orders from double-clicking
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const POST = withHardening(
+  {
+    roles: ['MANAGER', 'ADMIN', 'MASTER_ADMIN'],
+    rateLimit: { limit: 30, windowSeconds: 60, prefix: 'quote-confirm-order', keyBy: 'userOrg' },
+  },
+  async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
 
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    if (!canConvertToOrder(session.user.role)) {
-      return NextResponse.json(
-        { error: 'You do not have permission to convert quotes to orders.' },
-        { status: 403 }
-      );
     }
 
     // EDGE CASE #1: Check for duplicate request via idempotency key
@@ -511,4 +507,5 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+  }
+);

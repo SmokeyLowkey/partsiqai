@@ -1,11 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { withHardening } from '@/lib/api/with-hardening';
 
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const DELETE = withHardening(
+  {
+    rateLimit: { limit: 60, windowSeconds: 60, prefix: 'chat-delete-conversation', keyBy: 'user' },
+  },
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
 
@@ -52,4 +54,5 @@ export async function DELETE(
       { status: 500 }
     );
   }
-}
+  }
+);

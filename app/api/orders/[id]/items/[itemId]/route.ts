@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { withHardening } from '@/lib/api/with-hardening';
 import { z } from 'zod';
 
 const UpdateOrderItemSchema = z.object({
@@ -10,10 +11,11 @@ const UpdateOrderItemSchema = z.object({
 });
 
 // PATCH /api/orders/[id]/items/[itemId] - Update order item received status
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string; itemId: string }> }
-) {
+export const PATCH = withHardening(
+  {
+    rateLimit: { limit: 120, windowSeconds: 60, prefix: 'order-item-update', keyBy: 'userOrg' },
+  },
+  async (req: Request, { params }: { params: Promise<{ id: string; itemId: string }> }) => {
   try {
     const session = await getServerSession();
 
@@ -97,4 +99,5 @@ export async function PATCH(
       { status: 500 }
     );
   }
-}
+  }
+);

@@ -68,7 +68,7 @@ export async function notifyVehiclePending(params: NotifyVehiclePendingParams): 
         pendingUrl,
       });
 
-      await sendEmail({ to: admin.email, subject, html });
+      await sendEmail({ to: admin.email, subject, html, organizationId });
     }
   } catch (error) {
     // Log but never throw — notifications must not break the caller

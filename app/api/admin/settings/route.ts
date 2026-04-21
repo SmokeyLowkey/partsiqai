@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { withHardening } from "@/lib/api/with-hardening";
+import { auditAdminAction } from "@/lib/audit-admin";
 
 // GET /api/admin/settings - Get system settings
 export async function GET(request: Request) {
@@ -30,17 +32,15 @@ export async function GET(request: Request) {
 }
 
 // POST /api/admin/settings - Create or update system setting
-export async function POST(request: Request) {
+export const POST = withHardening(
+  {
+    roles: ["MASTER_ADMIN"],
+    rateLimit: { limit: 30, windowSeconds: 60, prefix: "admin-settings-write", keyBy: "user" },
+  },
+  async (request: Request) => {
   try {
     const session = await getServerSession();
-    const currentUser = session?.user;
-    
-    if (!currentUser || currentUser.role !== "MASTER_ADMIN") {
-      return NextResponse.json(
-        { error: "Unauthorized - Master Admin access required" },
-        { status: 403 }
-      );
-    }
+    const currentUser = session!.user;
 
     const body = await request.json();
     const { key, value, category, description } = body;
@@ -58,6 +58,14 @@ export async function POST(request: Request) {
       create: { key, value, category, description },
     });
 
+    await auditAdminAction({
+      req: request,
+      session: { user: { id: currentUser.id, organizationId: currentUser.organizationId } },
+      eventType: "ORGANIZATION_SETTINGS_CHANGED",
+      description: `${currentUser.email} set platform setting ${key}`,
+      metadata: { key, category },
+    });
+
     return NextResponse.json(setting);
   } catch (error) {
     console.error("Error updating setting:", error);
@@ -66,4 +74,5 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
-}
+  }
+);

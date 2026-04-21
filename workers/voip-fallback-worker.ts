@@ -5,6 +5,7 @@ import { VoipFallbackJobData } from '@/lib/queue/types';
 import { workerLogger } from '@/lib/logger';
 import { prisma } from '@/lib/prisma';
 import { getEmailClientForUser } from '@/lib/services/email/email-client-factory';
+import { verifyJobAuthorization } from '@/lib/queue/verify-job-authorization';
 
 const logger = workerLogger.child({ worker: 'voip-fallback' });
 
@@ -24,6 +25,37 @@ async function processVoipFallback(job: Job<VoipFallbackJobData>) {
   );
 
   try {
+    // Re-verify enqueuer identity. Fallback sends email on behalf of the
+    // user — if they've been deactivated since the call failed, don't send.
+    await verifyJobAuthorization({
+      organizationId: metadata.organizationId,
+      initiatedById: metadata.userId,
+    });
+
+    // Idempotency: the fallback writes a QuoteRequestEmailThread as part of
+    // its side-effects. If one already exists for this (quoteRequestId,
+    // supplierId) pair, a prior attempt already succeeded — returning here
+    // prevents BullMQ's retry (up to 3 attempts by default) from sending
+    // duplicate emails to the supplier. Gmail/Graph have no native
+    // Idempotency-Key header, so this is the dedupe layer.
+    const existingThread = await prisma.quoteRequestEmailThread.findFirst({
+      where: { quoteRequestId, supplierId },
+      select: { id: true },
+    });
+    if (existingThread) {
+      logger.warn(
+        { quoteRequestId, supplierId, existingThreadId: existingThread.id, jobId: job.id },
+        'VOIP fallback dedupe: thread already exists for this supplier, skipping send'
+      );
+      return {
+        success: true,
+        deduped: true,
+        email: supplierEmail,
+        quoteRequestId,
+        supplierId,
+      };
+    }
+
     // Fetch quote request details
     const quoteRequest = await prisma.quoteRequest.findUnique({
       where: { id: quoteRequestId },

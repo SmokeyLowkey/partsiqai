@@ -2,24 +2,43 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { uploadIngestionFile } from '@/lib/services/storage/s3-client';
-import { partsIngestionQueue } from '@/lib/queue/queues';
-import type { PartsIngestionJobData } from '@/lib/queue/types';
+import { ingestionPrepareQueue } from '@/lib/queue/queues';
+import type { IngestionPrepareJobData } from '@/lib/queue/types';
+import { IngestionBackend, UserRole } from '@prisma/client';
 import { getTierLimits } from '@/lib/subscription-limits';
+import { withHardening } from '@/lib/api/with-hardening';
+import { auditAdminAction } from '@/lib/audit-admin';
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+// 500 MB — feasible now that the prepare worker streams S3 → parse → chunks
+// without ever holding the full file in memory. Bump again once we switch
+// the route to multipart streaming upload (today the request body is still
+// buffered once here).
+const MAX_FILE_SIZE = 500 * 1024 * 1024;
+
+// Compute which backends the initiating user is authorized to write to.
+// MASTER_ADMIN writes to the shared platform catalog in Postgres; org ADMIN
+// may only write their org's slice of Pinecone + Neo4j. Enforced both here
+// (outbox rows are only created for authorized backends) and re-enforced in
+// each backend worker at process time.
+function authorizedBackendsFor(role: UserRole): IngestionBackend[] {
+  if (role === 'MASTER_ADMIN') {
+    return [IngestionBackend.POSTGRES, IngestionBackend.PINECONE, IngestionBackend.NEO4J];
+  }
+  return [IngestionBackend.PINECONE, IngestionBackend.NEO4J];
+}
 
 // POST /api/admin/ingestion/upload - Upload file and start ingestion
-export async function POST(request: Request) {
+// Low cap: each upload enqueues an expensive multi-backend job. 10/hr is
+// generous for legitimate admin ingestion work but blocks accidental loops.
+export const POST = withHardening(
+  {
+    roles: ['ADMIN', 'MASTER_ADMIN'],
+    rateLimit: { limit: 10, windowSeconds: 3600, prefix: 'admin-ingestion-upload', keyBy: 'user' },
+  },
+  async (request: Request) => {
   try {
     const session = await getServerSession();
-    const currentUser = session?.user;
-
-    if (!currentUser || (currentUser.role !== 'ADMIN' && currentUser.role !== 'MASTER_ADMIN')) {
-      return NextResponse.json(
-        { error: 'Unauthorized - Admin access required' },
-        { status: 403 }
-      );
-    }
+    const currentUser = session!.user;
 
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
@@ -105,7 +124,12 @@ export async function POST(request: Request) {
 
     const tierLimits = getTierLimits(org.subscriptionTier, org.subscriptionStatus);
 
-    // Only MASTER_ADMIN can write to PostgreSQL (products table)
+    // Compute authorization snapshot at enqueue time. Only MASTER_ADMIN may
+    // write to the shared Postgres parts catalog — the outbox pipeline enforces
+    // this by simply not creating a POSTGRES outbox row for other roles. The
+    // legacy `skipPostgres` flag is also set to keep the old monolithic
+    // pipeline safe while any in-flight legacy jobs drain.
+    const authorizedBackends = authorizedBackendsFor(currentUser.role as UserRole);
     if (currentUser.role !== 'MASTER_ADMIN') {
       options.skipPostgres = true;
     }
@@ -135,7 +159,17 @@ export async function POST(request: Request) {
     const contentType = isCSV ? 'text/csv' : 'application/json';
     const { key: s3Key } = await uploadIngestionFile(buffer, file.name, contentType, organizationId);
 
-    // Create IngestionJob record
+    // If the admin skipped a whole backend via options, honor that by not
+    // creating outbox rows for it. This collapses `skipPinecone: true` /
+    // `skipNeo4j: true` from the legacy options into the outbox pipeline.
+    let effectiveBackends = authorizedBackends;
+    if (options.skipPinecone) effectiveBackends = effectiveBackends.filter(b => b !== IngestionBackend.PINECONE);
+    if (options.skipNeo4j) effectiveBackends = effectiveBackends.filter(b => b !== IngestionBackend.NEO4J);
+    if (options.skipPostgres) effectiveBackends = effectiveBackends.filter(b => b !== IngestionBackend.POSTGRES);
+
+    // Create IngestionJob record in PREPARING state. Prepare worker will
+    // transition it to READY once chunks are fanned out, then backend writers
+    // aggregate to COMPLETED / COMPLETED_WITH_ERRORS / FAILED.
     const ingestionJob = await prisma.ingestionJob.create({
       data: {
         organizationId,
@@ -144,33 +178,41 @@ export async function POST(request: Request) {
         fileName: file.name,
         fileType: isCSV ? 'csv' : 'json',
         fileSize: buffer.length,
+        status: 'PENDING',
         options,
+        initiatedByRole: currentUser.role as UserRole,
+        authorizedBackends: effectiveBackends,
+        // Mark skipped phases as SKIPPED up front so per-backend status is
+        // meaningful from the start (PENDING means "will run", SKIPPED means
+        // "intentionally not running for this job").
+        postgresStatus: effectiveBackends.includes(IngestionBackend.POSTGRES) ? 'PENDING' : 'SKIPPED',
+        pineconeStatus: effectiveBackends.includes(IngestionBackend.PINECONE) ? 'PENDING' : 'SKIPPED',
+        neo4jStatus:    effectiveBackends.includes(IngestionBackend.NEO4J)    ? 'PENDING' : 'SKIPPED',
       },
     });
 
-    // Enqueue BullMQ job
-    const jobData: PartsIngestionJobData = {
-      organizationId,
-      ingestionJobId: ingestionJob.id,
-      s3Key,
-      fileType: isCSV ? 'csv' : 'json',
-      userId: currentUser.id,
-      options: {
-        dryRun: options.dryRun || false,
-        skipPinecone: options.skipPinecone || false,
-        skipNeo4j: options.skipNeo4j || false,
-        skipPostgres: options.skipPostgres || false,
-        batchSize: options.batchSize || 100,
-        defaultNamespace: options.defaultNamespace,
-        defaultManufacturer: options.defaultManufacturer,
-        defaultMachineModel: options.defaultMachineModel,
-        defaultTechnicalDomain: options.defaultTechnicalDomain,
-        defaultSerialNumberRange: options.defaultSerialNumberRange,
-      },
-    };
-
-    await partsIngestionQueue.add('ingest-parts', jobData, {
+    // Enqueue prepare job — all other job context is loaded from the DB at
+    // process time, not carried in the payload.
+    const jobData: IngestionPrepareJobData = { ingestionJobId: ingestionJob.id };
+    await ingestionPrepareQueue.add('prepare', jobData, {
       jobId: ingestionJob.id,
+    });
+
+    await auditAdminAction({
+      req: request,
+      session: { user: { id: currentUser.id, organizationId: currentUser.organizationId } },
+      eventType: 'INGESTION_TRIGGERED',
+      description: `${currentUser.email} uploaded ${file.name} for ingestion (${ingestionJob.id})`,
+      targetOrganizationId: organizationId,
+      metadata: {
+        action: 'upload',
+        ingestionJobId: ingestionJob.id,
+        fileName: file.name,
+        fileType: ingestionJob.fileType,
+        fileSizeBytes: file.size,
+        targetOrganizationId: organizationId,
+        skipPostgres: options.skipPostgres ?? false,
+      },
     });
 
     return NextResponse.json({
@@ -185,4 +227,5 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
-}
+  }
+);

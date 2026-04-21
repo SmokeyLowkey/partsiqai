@@ -1,7 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from '@/lib/auth';
+import { getServerSession, canEditVehicleIdentity } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { withHardening } from '@/lib/api/with-hardening';
 import { z } from 'zod';
+
+// Fleet-identity fields: only MANAGER / ADMIN / MASTER_ADMIN may edit these.
+// Rewriting vehicleId or serialNumber on a fleet asset is a privileged action.
+const IDENTITY_FIELDS = [
+  'vehicleId',
+  'serialNumber',
+  'make',
+  'model',
+  'year',
+  'type',
+  'industryCategory',
+  'engineModel',
+  'specifications',
+] as const;
 
 const UpdateVehicleSchema = z.object({
   vehicleId: z.string().min(1).optional(),
@@ -82,10 +97,11 @@ export async function GET(
 }
 
 // PATCH /api/vehicles/[id] - Update a vehicle
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const PATCH = withHardening(
+  {
+    rateLimit: { limit: 60, windowSeconds: 60, prefix: 'vehicle-update', keyBy: 'userOrg' },
+  },
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
 
@@ -121,6 +137,24 @@ export async function PATCH(
     }
 
     const data = validationResult.data;
+
+    // If caller lacks fleet-identity edit permission, reject the request when any
+    // identity field is in the payload rather than silently stripping — a 403 makes
+    // the authorization failure visible instead of masquerading as a successful update.
+    if (!canEditVehicleIdentity(session.user.role)) {
+      const attemptedIdentityFields = IDENTITY_FIELDS.filter(
+        (f) => (data as Record<string, unknown>)[f] !== undefined
+      );
+      if (attemptedIdentityFields.length > 0) {
+        return NextResponse.json(
+          {
+            error: 'Forbidden: your role cannot modify vehicle identity fields',
+            fields: attemptedIdentityFields,
+          },
+          { status: 403 }
+        );
+      }
+    }
 
     // Update vehicle
     const vehicle = await prisma.vehicle.update({
@@ -165,21 +199,21 @@ export async function PATCH(
       { status: 500 }
     );
   }
-}
+  }
+);
 
 // PUT /api/vehicles/[id] - Update a vehicle (alias for PATCH)
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  return PATCH(req, { params });
-}
+export const PUT = PATCH;
 
 // DELETE /api/vehicles/[id] - Delete a vehicle
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const DELETE = withHardening(
+  {
+    // Fleet managers+ can retire/delete. Protects from TECHNICIAN accidentally
+    // deleting an active fleet asset they happen to have page access to.
+    roles: ['MANAGER', 'ADMIN', 'MASTER_ADMIN'],
+    rateLimit: { limit: 20, windowSeconds: 60, prefix: 'vehicle-delete', keyBy: 'userOrg' },
+  },
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
 
@@ -242,4 +276,5 @@ export async function DELETE(
       { status: 500 }
     );
   }
-}
+  }
+);

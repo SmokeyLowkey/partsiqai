@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { CredentialsManager } from '@/lib/services/credentials/credentials-manager';
+import { withHardening } from '@/lib/api/with-hardening';
 import { z } from 'zod';
 
 const credentialsManager = new CredentialsManager();
@@ -53,8 +54,14 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/integrations - Create or update integration credentials
-export async function POST(req: NextRequest) {
+// POST /api/integrations - Create or update integration credentials.
+// These are per-org secrets so only admins should set them.
+export const POST = withHardening(
+  {
+    roles: ['ADMIN', 'MASTER_ADMIN'],
+    rateLimit: { limit: 30, windowSeconds: 60, prefix: 'integrations-write', keyBy: 'org' },
+  },
+  async (req: Request) => {
   try {
     const session = await getServerSession();
 
@@ -118,4 +125,5 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+  }
+);

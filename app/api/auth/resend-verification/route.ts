@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { randomUUID } from "crypto";
 import { sendEmail, getVerificationEmailHtml, getBaseUrl } from "@/lib/email/resend";
-import { checkRateLimit as checkIpRateLimit, getClientIp, rateLimits } from "@/lib/rate-limit";
+import { checkRateLimit as checkIpRateLimit, rateLimits } from "@/lib/rate-limit";
+import { withHardening } from "@/lib/api/with-hardening";
 
 // Per-email rate limiting now uses the shared Redis-backed rate limiter.
 // The in-memory Map approach was unreliable in serverless (each invocation gets a fresh Map).
@@ -24,14 +25,17 @@ async function sendVerificationEmail(
   });
 }
 
-// POST /api/auth/resend-verification - Resend verification email
-export async function POST(request: NextRequest) {
+// POST /api/auth/resend-verification - Resend verification email.
+// Wrapper handles per-IP rate limit (matches the previous inlined rateLimits.authAction).
+// The per-email secondary rate limit below stays — it guards against one IP
+// enumerating many emails through this endpoint.
+export const POST = withHardening(
+  {
+    requireSession: false,
+    rateLimit: { limit: 5, windowSeconds: 900, prefix: "auth-resend-verification", keyBy: "ip" },
+  },
+  async (request: Request) => {
   try {
-    // Rate limit by IP to prevent abuse
-    const ip = getClientIp(request);
-    const ipRateCheck = await checkIpRateLimit(`resend-verify:${ip}`, rateLimits.authAction);
-    if (!ipRateCheck.success) return ipRateCheck.response;
-
     const session = await getServerSession();
 
     // If no session, user must be unverified and trying to resend
@@ -121,4 +125,5 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+  }
+);

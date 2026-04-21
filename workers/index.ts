@@ -6,55 +6,85 @@ require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') }
 /**
  * Worker Process Manager
  *
- * This script starts all BullMQ workers for background job processing.
+ * This script starts BullMQ workers for background job processing.
  * Run this separately from your Next.js application:
  *
  * Development: pnpm workers:dev
- * Production: pnpm workers:start
+ * Production:  pnpm workers:start
+ *
+ * Profile split (WORKER_PROFILE env var):
+ *   - "realtime"  — latency-sensitive workers (VOIP, email, search, follow-up,
+ *                   commander, analytics, quote-extraction). Do NOT run CPU-
+ *                   heavy ingestion here — Node is single-threaded and a
+ *                   30-second Zod loop would freeze every other worker on the
+ *                   process, including live supplier phone calls.
+ *   - "ingestion" — CPU-heavy workers (ingestion-prepare, the three backend
+ *                   writers, maintenance-pdf). Safe to burn the event loop
+ *                   here because nothing here is user-facing.
+ *   - "all" (default) — everything in one process. Fine in dev; on Render
+ *                   Starter in prod, prefer splitting into two services.
  */
 
 import { workerLogger } from '@/lib/logger';
 
 workerLogger.info({ cwd: process.cwd() }, 'Environment variables loaded');
 
-import { partsSearchWorker } from './parts-search-worker';
-import { emailMonitorWorker } from './email-monitor-worker';
-import { quoteExtractionWorker } from './quote-extraction-worker';
-import { followUpWorker } from './follow-up-worker';
-import { maintenancePdfWorker } from './maintenance-pdf-worker';
-import { partsIngestionWorker } from './parts-ingestion-worker';
-import { analyticsCollectionWorker } from './analytics-collection-worker';
-import { startVoipCallInitiationWorker } from './voip-call-initiation-worker';
-import { startVoipFallbackWorker } from './voip-fallback-worker';
-import { startCommanderWorker } from './commander-worker';
-// Retry worker disabled — retries are now user-controlled from the UI
-// import { startVoipCallRetryWorker } from './voip-call-retry-worker';
+type WorkerProfile = 'all' | 'realtime' | 'ingestion';
+const rawProfile = (process.env.WORKER_PROFILE || 'all').toLowerCase();
+const WORKER_PROFILE: WorkerProfile =
+  rawProfile === 'realtime' || rawProfile === 'ingestion' ? rawProfile : 'all';
 
-workerLogger.info('Starting PartsIQ Workers');
+workerLogger.info({ profile: WORKER_PROFILE }, 'Starting PartsIQ Workers');
 
-// Start VOIP workers
-const voipCallInitiationWorker = startVoipCallInitiationWorker();
-const voipFallbackWorker = startVoipFallbackWorker();
-const commanderWorker = startCommanderWorker();
-// const voipCallRetryWorker = startVoipCallRetryWorker();
+const runRealtime = WORKER_PROFILE === 'all' || WORKER_PROFILE === 'realtime';
+const runIngestion = WORKER_PROFILE === 'all' || WORKER_PROFILE === 'ingestion';
 
-// Email monitoring is handled by Vercel cron (/api/cron/email-monitor) every 15 minutes.
-// No duplicate scheduler needed here — this avoids excessive Redis commands.
+const workers: Array<{ name: string; worker: { close(): Promise<void> } }> = [];
 
-// Track active workers
-const workers = [
-  { name: 'Parts Search', worker: partsSearchWorker },
-  { name: 'Email Monitor', worker: emailMonitorWorker },
-  { name: 'Quote Extraction', worker: quoteExtractionWorker },
-  { name: 'Follow-Up', worker: followUpWorker },
-  { name: 'Maintenance PDF', worker: maintenancePdfWorker },
-  { name: 'Parts Ingestion', worker: partsIngestionWorker },
-  { name: 'Analytics Collection', worker: analyticsCollectionWorker },
-  { name: 'VOIP Call Initiation', worker: voipCallInitiationWorker },
-  { name: 'VOIP Fallback', worker: voipFallbackWorker },
-  { name: 'Commander', worker: commanderWorker },
-  // { name: 'VOIP Call Retry', worker: voipCallRetryWorker },
-];
+// --- Realtime workers ---
+if (runRealtime) {
+  const { partsSearchWorker } = require('./parts-search-worker');
+  const { emailMonitorWorker } = require('./email-monitor-worker');
+  const { quoteExtractionWorker } = require('./quote-extraction-worker');
+  const { followUpWorker } = require('./follow-up-worker');
+  const { analyticsCollectionWorker } = require('./analytics-collection-worker');
+  const { startVoipCallInitiationWorker } = require('./voip-call-initiation-worker');
+  const { startVoipFallbackWorker } = require('./voip-fallback-worker');
+  const { startCommanderWorker } = require('./commander-worker');
+
+  workers.push(
+    { name: 'Parts Search', worker: partsSearchWorker },
+    { name: 'Email Monitor', worker: emailMonitorWorker },
+    { name: 'Quote Extraction', worker: quoteExtractionWorker },
+    { name: 'Follow-Up', worker: followUpWorker },
+    { name: 'Analytics Collection', worker: analyticsCollectionWorker },
+    { name: 'VOIP Call Initiation', worker: startVoipCallInitiationWorker() },
+    { name: 'VOIP Fallback', worker: startVoipFallbackWorker() },
+    { name: 'Commander', worker: startCommanderWorker() },
+  );
+}
+
+// --- Ingestion workers ---
+if (runIngestion) {
+  const { maintenancePdfWorker } = require('./maintenance-pdf-worker');
+  const { partsIngestionWorker } = require('./parts-ingestion-worker');
+  const { ingestionPrepareWorker } = require('./ingestion-prepare-worker');
+  const { ingestionPostgresWorker } = require('./ingestion-postgres-worker');
+  const { ingestionPineconeWorker } = require('./ingestion-pinecone-worker');
+  const { ingestionNeo4jWorker } = require('./ingestion-neo4j-worker');
+
+  workers.push(
+    { name: 'Maintenance PDF', worker: maintenancePdfWorker },
+    // Legacy monolithic ingestion worker — retained until all in-flight jobs
+    // on the old `parts-ingestion` queue drain. New uploads go through the
+    // outbox pipeline (ingestion-prepare → per-backend writers).
+    { name: 'Parts Ingestion (legacy)', worker: partsIngestionWorker },
+    { name: 'Ingestion Prepare', worker: ingestionPrepareWorker },
+    { name: 'Ingestion Postgres', worker: ingestionPostgresWorker },
+    { name: 'Ingestion Pinecone', worker: ingestionPineconeWorker },
+    { name: 'Ingestion Neo4j', worker: ingestionNeo4jWorker },
+  );
+}
 
 // Graceful shutdown handler
 async function shutdown(signal: string) {

@@ -83,6 +83,53 @@ export async function acquireCallLock(callId: string, ttlMs: number = 15000): Pr
 }
 
 /**
+ * Atomically initialize call state only if no state exists yet. Prevents the
+ * race condition where the worker and the `call-started` webhook both see
+ * no state and both write a fresh initial state — the loser of that race
+ * would overwrite any progress recorded between the two writes.
+ *
+ * Uses `SET key value NX EX 3600` so the claim and the TTL happen in a single
+ * round-trip. Mirrors the TTL of `saveCallState` so lifecycle stays consistent.
+ *
+ * Returns `true` if this caller won the race and wrote the initial state,
+ * `false` if state already existed (the caller should load it with
+ * `getCallState` and proceed).
+ */
+export async function initCallStateIfAbsent(
+  callId: string,
+  state: CallState
+): Promise<boolean> {
+  const client = getRedisClient();
+  if (!client) {
+    // In-memory fallback: mimic NX semantics for dev.
+    const key = callStateKey(callId);
+    const existing = inMemoryStore.get(key);
+    if (existing && Date.now() < existing.expires) return false;
+    inMemoryStore.set(key, { state, expires: Date.now() + 3600 * 1000 });
+    return true;
+  }
+
+  const result = await client.set(
+    callStateKey(callId),
+    JSON.stringify(state),
+    'EX',
+    3600,
+    'NX'
+  );
+  const claimed = result === 'OK';
+
+  // Only write the per-quote index if we won the race, so we don't
+  // double-add the callId on a race-loss.
+  if (claimed && state.quoteRequestId) {
+    const indexKey = quoteIndexKey(state.quoteRequestId);
+    await client.sadd(indexKey, callId);
+    await client.expire(indexKey, 3600);
+  }
+
+  return claimed;
+}
+
+/**
  * Release the per-call mutex lock.
  */
 export async function releaseCallLock(callId: string): Promise<void> {

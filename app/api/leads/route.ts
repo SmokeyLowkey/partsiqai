@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server"
 import { sendEmail, getBaseUrl } from "@/lib/email/resend"
 import { escapeHtml } from "@/lib/sanitize"
+import { withHardening } from "@/lib/api/with-hardening"
 
 // Basic email regex — good enough for UX validation (server still trusts Resend to reject truly bad addresses)
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-export async function POST(request: Request) {
+// Public lead-capture form (blog CTAs). IP-keyed rate limit to throttle spam.
+export const POST = withHardening(
+  {
+    requireSession: false,
+    rateLimit: { limit: 10, windowSeconds: 900, prefix: "leads-form", keyBy: "ip" },
+  },
+  async (request: Request) => {
   let body: unknown
   try {
     body = await request.json()
@@ -91,4 +98,5 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ ok: true })
-}
+  }
+);

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
+import { isWebhookTimestampFresh } from '@/lib/api-utils';
+import { claimWebhook } from '@/lib/webhook-dedupe';
 
 export const dynamic = 'force-dynamic';
 
@@ -99,9 +101,20 @@ export async function POST(request: Request) {
     const svixTimestamp = headersList.get('svix-timestamp') || '';
     const svixSignature = headersList.get('svix-signature') || '';
 
+    if (!isWebhookTimestampFresh(svixTimestamp)) {
+      console.error('Resend webhook rejected: timestamp outside 5-minute window');
+      return NextResponse.json({ error: 'Stale webhook' }, { status: 401 });
+    }
+
     if (!verifyWebhookSignature(rawBody, { svixId, svixTimestamp, svixSignature })) {
       console.error('Resend webhook signature verification failed');
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
+    }
+
+    // Svix delivers webhooks at-least-once. svix-id is the stable dedupe key.
+    const fresh = await claimWebhook('resend', svixId);
+    if (!fresh) {
+      return NextResponse.json({ ok: true, deduped: true });
     }
 
     const event = JSON.parse(rawBody);

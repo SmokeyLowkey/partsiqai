@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { requirePermission } from '@/lib/auth/permissions';
+import { withHardening } from '@/lib/api/with-hardening';
+import { auditAdminAction } from '@/lib/audit-admin';
 import { z } from 'zod';
 
 // GET /api/admin/maintenance-schedules/[id] - Get a single schedule with full details
@@ -106,10 +108,11 @@ const UpdateIntervalsSchema = z.object({
 });
 
 // PUT /api/admin/maintenance-schedules/[id] - Update intervals (admin edits before approval)
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const PUT = withHardening(
+  {
+    rateLimit: { limit: 60, windowSeconds: 60, prefix: 'admin-maintenance-update', keyBy: 'userOrg' },
+  },
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
     if (!session?.user) {
@@ -201,6 +204,18 @@ export async function PUT(
       });
     });
 
+    await auditAdminAction({
+      req,
+      session: { user: { id: session.user.id, organizationId: session.user.organizationId } },
+      eventType: 'MAINTENANCE_SCHEDULE_REVIEWED',
+      description: `${session.user.email} edited maintenance schedule ${id} intervals`,
+      metadata: {
+        action: 'edit',
+        scheduleId: id,
+        intervalsCount: updatedSchedule?.intervals?.length ?? 0,
+      },
+    });
+
     return NextResponse.json({
       message: 'Maintenance schedule intervals updated',
       schedule: updatedSchedule,
@@ -215,4 +230,5 @@ export async function PUT(
       { status: 500 }
     );
   }
-}
+  }
+);

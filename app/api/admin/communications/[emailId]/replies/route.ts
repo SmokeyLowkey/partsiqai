@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { sendEmail } from '@/lib/email/resend';
+import { withHardening } from '@/lib/api/with-hardening';
+import { auditAdminAction } from '@/lib/audit-admin';
 import { z } from 'zod';
 
 const SENDER_OPTIONS = [
@@ -45,10 +47,12 @@ export async function GET(
   }
 }
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ emailId: string }> }
-) {
+export const POST = withHardening(
+  {
+    roles: ['MASTER_ADMIN'],
+    rateLimit: { limit: 30, windowSeconds: 3600, prefix: 'admin-comms-reply', keyBy: 'user' },
+  },
+  async (request: Request, { params }: { params: Promise<{ emailId: string }> }) => {
   try {
     const session = await getServerSession();
     if (!session?.user || session.user.role !== 'MASTER_ADMIN') {
@@ -119,6 +123,7 @@ export async function POST(
         html: htmlBody,
         from: fromAddress,
         headers,
+        organizationId: adminEmail.organizationId ?? undefined,
       });
       resendMessageId = result?.id ?? null;
     } catch (err: any) {
@@ -148,6 +153,20 @@ export async function POST(
       },
     });
 
+    await auditAdminAction({
+      req: request,
+      session: { user: { id: session.user.id, organizationId: session.user.organizationId } },
+      eventType: 'ADMIN_EMAIL_SENT',
+      description: `${session.user.email} replied to ${adminEmail.recipientEmail} on admin email ${adminEmail.id}`,
+      metadata: {
+        action: 'reply',
+        originalAdminEmailId: adminEmail.id,
+        senderEmail,
+        recipientEmail: adminEmail.recipientEmail,
+        resendMessageId,
+      },
+    });
+
     return NextResponse.json({ reply });
   } catch (error: any) {
     console.error('Error sending reply:', error);
@@ -156,4 +175,5 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+  }
+);

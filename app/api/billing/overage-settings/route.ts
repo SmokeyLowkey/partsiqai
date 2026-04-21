@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { OVERAGE_PRICING } from '@/lib/billing/overage-billing';
+import { withHardening } from '@/lib/api/with-hardening';
+import { auditAdminAction } from '@/lib/audit-admin';
 
 /**
  * GET /api/billing/overage-settings
@@ -77,7 +79,12 @@ export async function GET(request: Request) {
  * PATCH /api/billing/overage-settings
  * Update overage billing settings (admin only)
  */
-export async function PATCH(request: Request) {
+export const PATCH = withHardening(
+  {
+    roles: ['ADMIN', 'MASTER_ADMIN'],
+    rateLimit: { limit: 30, windowSeconds: 60, prefix: 'billing-overage-settings', keyBy: 'org' },
+  },
+  async (request: Request) => {
   try {
     const session = await getServerSession();
     if (!session?.user?.email) {
@@ -191,6 +198,15 @@ export async function PATCH(request: Request) {
       },
     });
 
+    await auditAdminAction({
+      req: request,
+      session: { user: { id: session.user.id!, organizationId: user.organization.id } },
+      eventType: 'BILLING_ACTION',
+      description: `${session.user.email} updated overage billing settings`,
+      targetOrganizationId: user.organization.id,
+      metadata: { action: 'overage_settings_changed', ...updateData },
+    });
+
     return NextResponse.json({
       success: true,
       overageEnabled: updated.overageEnabled,
@@ -205,4 +221,5 @@ export async function PATCH(request: Request) {
       { status: 500 }
     );
   }
-}
+  }
+);

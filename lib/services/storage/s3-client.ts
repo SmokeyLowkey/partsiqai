@@ -5,6 +5,7 @@ import {
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { Readable } from 'stream';
 
 // Initialize S3 client
 const s3Client = new S3Client({
@@ -248,6 +249,51 @@ export async function downloadFromS3(key: string): Promise<Buffer> {
   }
 
   return Buffer.concat(chunks);
+}
+
+/**
+ * Download an S3 object as a Node Readable stream (no buffering). Used by
+ * the ingestion-prepare worker to pipe multi-hundred-MB files through a
+ * streaming parser without holding the whole thing in memory.
+ */
+export async function openS3Stream(key: string): Promise<Readable> {
+  const command = new GetObjectCommand({
+    Bucket: BUCKET_NAME,
+    Key: key,
+  });
+  const response = await s3Client.send(command);
+  if (!response.Body) throw new Error('No body in S3 response');
+  // AWS SDK v3 returns a Node Readable under Body in Node runtimes.
+  return response.Body as Readable;
+}
+
+/**
+ * Upload an arbitrary buffer to S3 under a specific key. Used by the prepare
+ * worker to write gzipped per-chunk blobs. Small caps (per-chunk target
+ * ~100–500 KB gzipped) mean we don't need multipart.
+ */
+export async function uploadChunkToS3(
+  key: string,
+  body: Buffer,
+  contentType: string,
+  metadata: Record<string, string> = {},
+): Promise<void> {
+  await s3Client.send(
+    new PutObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+      Metadata: metadata,
+    }),
+  );
+}
+
+/**
+ * Delete an arbitrary S3 object (used for chunk cleanup on job deletion).
+ */
+export async function deleteS3Object(key: string): Promise<void> {
+  await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: key }));
 }
 
 /**

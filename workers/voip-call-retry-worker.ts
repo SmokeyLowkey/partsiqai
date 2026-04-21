@@ -6,6 +6,12 @@ import { workerLogger } from '@/lib/logger';
 import { prisma } from '@/lib/prisma';
 import { CallStatus } from '@prisma/client';
 import { CredentialsManager } from '@/lib/services/credentials/credentials-manager';
+import { verifyJobAuthorization } from '@/lib/queue/verify-job-authorization';
+import { assertQuota } from '@/lib/cost-quota';
+
+// Retries still debit the per-org daily Vapi minute quota. Same ~5-min
+// estimate as the initiation worker; see cost-quota.ts for the budget.
+const VAPI_CALL_ESTIMATE_MINUTES = 5;
 
 interface VapiCredentials {
   apiKey: string;
@@ -67,6 +73,14 @@ async function processVoipCallRetry(job: Job<VoipCallRetryJobData>) {
   );
 
   try {
+    // Re-verify tenant + initiating user. Retry is user-triggered and
+    // fires a paid Vapi call — don't retry if the user was deactivated
+    // in the interim.
+    await verifyJobAuthorization({
+      organizationId: metadata.organizationId,
+      initiatedById: metadata.userId,
+    });
+
     // Check if previous call exists and verify it failed
     if (previousCallId) {
       const previousCall = await prisma.supplierCall.findUnique({
@@ -157,6 +171,12 @@ async function processVoipCallRetry(job: Job<VoipCallRetryJobData>) {
     // Format phone number to E.164 format
     const formattedPhone = formatPhoneE164(supplierPhone);
     logger.debug({ original: supplierPhone, formatted: formattedPhone }, 'Formatted phone number for retry');
+
+    await assertQuota({
+      provider: 'vapi',
+      organizationId: metadata.organizationId,
+      cost: VAPI_CALL_ESTIMATE_MINUTES,
+    });
 
     const response = await fetch('https://api.vapi.ai/call/phone', {
       method: 'POST',

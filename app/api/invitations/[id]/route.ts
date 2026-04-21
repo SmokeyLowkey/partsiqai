@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { withHardening } from "@/lib/api/with-hardening";
 
 // DELETE /api/invitations/[id] - Revoke invitation
-export async function DELETE(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const DELETE = withHardening(
+  {
+    roles: ["ADMIN", "MASTER_ADMIN"],
+    rateLimit: { limit: 30, windowSeconds: 60, prefix: "invitation-revoke", keyBy: "user" },
+  },
+  async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id: invitationId } = await params;
     const session = await getServerSession();
@@ -62,4 +65,5 @@ export async function DELETE(
       { status: 500 }
     );
   }
-}
+  }
+);

@@ -10,6 +10,8 @@ import type {
   PostOrderJobData,
   MaintenancePdfJobData,
   PartsIngestionJobData,
+  IngestionPrepareJobData,
+  IngestionBackendWriteJobData,
   AnalyticsCollectionJobData,
   VoipCallInitiationJobData,
   VoipFallbackJobData,
@@ -27,6 +29,10 @@ export const QUEUE_NAMES = {
   QUOTE_EXTRACTION: 'quote-extraction',
   MAINTENANCE_PDF: 'maintenance-pdf',
   PARTS_INGESTION: 'parts-ingestion',
+  INGESTION_PREPARE: 'ingestion-prepare',
+  INGESTION_POSTGRES: 'ingestion-postgres',
+  INGESTION_PINECONE: 'ingestion-pinecone',
+  INGESTION_NEO4J: 'ingestion-neo4j',
   ANALYTICS_COLLECTION: 'analytics-collection',
   VOIP_CALL_INITIATION: 'voip-call-initiation',
   VOIP_FALLBACK: 'voip-fallback',
@@ -120,7 +126,9 @@ export const maintenancePdfQueue = new Queue<MaintenancePdfJobData, any, string>
   }
 );
 
-// Parts Ingestion Queue
+// Parts Ingestion Queue — LEGACY monolithic pipeline. New uploads go through
+// the outbox pipeline (ingestionPrepare → ingestion{Postgres,Pinecone,Neo4j}).
+// Kept so any in-flight jobs at deploy time can drain.
 export const partsIngestionQueue = new Queue<PartsIngestionJobData, any, string>(
   QUEUE_NAMES.PARTS_INGESTION,
   {
@@ -131,6 +139,46 @@ export const partsIngestionQueue = new Queue<PartsIngestionJobData, any, string>
       removeOnFail: { age: 604800, count: 50 },
     },
   }
+);
+
+// Ingestion Prepare Queue — streams uploaded file from S3, validates + dedups,
+// writes chunked blobs to S3, fans out backend-write outbox rows. One job per
+// upload. Concurrency 1 (CPU-bound, event-loop dominating).
+export const ingestionPrepareQueue = new Queue<IngestionPrepareJobData, any, string>(
+  QUEUE_NAMES.INGESTION_PREPARE,
+  {
+    connection: redisConnection,
+    defaultJobOptions: {
+      attempts: 1, // Prepare is idempotent-ish but a failed run should be explicitly retried via UI
+      removeOnComplete: { age: 86400, count: 20 },
+      removeOnFail: { age: 604800, count: 50 },
+    },
+  }
+);
+
+// Per-backend ingestion queues. One job per (job, backend, chunk) outbox row.
+// Backend writers re-verify authorization at process time and are idempotent
+// (upsert-by-natural-key) so failed jobs can be retried without double-write.
+const backendIngestionJobOptions = {
+  attempts: 3,
+  backoff: { type: 'exponential' as const, delay: 5000 },
+  removeOnComplete: { age: 86400, count: 200 },
+  removeOnFail: { age: 604800, count: 200 },
+};
+
+export const ingestionPostgresQueue = new Queue<IngestionBackendWriteJobData, any, string>(
+  QUEUE_NAMES.INGESTION_POSTGRES,
+  { connection: redisConnection, defaultJobOptions: backendIngestionJobOptions }
+);
+
+export const ingestionPineconeQueue = new Queue<IngestionBackendWriteJobData, any, string>(
+  QUEUE_NAMES.INGESTION_PINECONE,
+  { connection: redisConnection, defaultJobOptions: backendIngestionJobOptions }
+);
+
+export const ingestionNeo4jQueue = new Queue<IngestionBackendWriteJobData, any, string>(
+  QUEUE_NAMES.INGESTION_NEO4J,
+  { connection: redisConnection, defaultJobOptions: backendIngestionJobOptions }
 );
 
 // Analytics Collection Queue

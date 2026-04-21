@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { OpenRouterClient } from '@/lib/services/llm/openrouter-client';
 import { getDaysSince } from '@/lib/utils/business-days';
+import { withHardening } from '@/lib/api/with-hardening';
 import { z } from 'zod';
 
 const GenerateFollowUpSchema = z.object({
@@ -10,10 +11,11 @@ const GenerateFollowUpSchema = z.object({
 });
 
 // POST /api/quote-requests/[id]/generate-follow-up - Generate follow-up email content
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 20, windowSeconds: 3600, prefix: 'quote-generate-follow-up', keyBy: 'user' },
+  },
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
 
@@ -244,4 +246,5 @@ ${quoteRequest.createdBy.email}`,
       { status: 500 }
     );
   }
-}
+  }
+);

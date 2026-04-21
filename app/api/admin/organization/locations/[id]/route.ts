@@ -1,24 +1,22 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { withHardening } from "@/lib/api/with-hardening";
+import { auditAdminAction } from "@/lib/audit-admin";
 
 // PUT /api/admin/organization/locations/[id] - Update a location
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const PUT = withHardening(
+  {
+    roles: ["ADMIN", "MASTER_ADMIN"],
+    rateLimit: { limit: 60, windowSeconds: 60, prefix: "admin-location-update", keyBy: "org" },
+  },
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params;
 
     const session = await getServerSession();
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const isAdmin =
-      session.user.role === "ADMIN" || session.user.role === "MASTER_ADMIN";
-    if (!isAdmin) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const organizationId = session.user.organizationId;
@@ -62,6 +60,14 @@ export async function PUT(
       data: updateData,
     });
 
+    await auditAdminAction({
+      req,
+      session: { user: { id: session.user.id, organizationId: session.user.organizationId } },
+      eventType: "LOCATION_MANAGED",
+      description: `${session.user.email} updated location ${location.name}`,
+      metadata: { action: "update", locationId: id, changedFields: Object.keys(updateData) },
+    });
+
     return NextResponse.json({ location });
   } catch (error) {
     console.error("Error updating location:", error);
@@ -70,25 +76,22 @@ export async function PUT(
       { status: 500 }
     );
   }
-}
+  }
+);
 
 // DELETE /api/admin/organization/locations/[id] - Delete a location
-export async function DELETE(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const DELETE = withHardening(
+  {
+    roles: ["ADMIN", "MASTER_ADMIN"],
+    rateLimit: { limit: 30, windowSeconds: 60, prefix: "admin-location-delete", keyBy: "org" },
+  },
+  async (_req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const { id } = await params;
 
     const session = await getServerSession();
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const isAdmin =
-      session.user.role === "ADMIN" || session.user.role === "MASTER_ADMIN";
-    if (!isAdmin) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const organizationId = session.user.organizationId;
@@ -109,6 +112,14 @@ export async function DELETE(
       where: { id },
     });
 
+    await auditAdminAction({
+      req: _req,
+      session: { user: { id: session.user.id, organizationId: session.user.organizationId } },
+      eventType: "LOCATION_MANAGED",
+      description: `${session.user.email} deleted location ${existing.name}`,
+      metadata: { action: "delete", locationId: id, name: existing.name },
+    });
+
     return NextResponse.json({ message: "Location deleted successfully" });
   } catch (error) {
     console.error("Error deleting location:", error);
@@ -117,4 +128,5 @@ export async function DELETE(
       { status: 500 }
     );
   }
-}
+  }
+);

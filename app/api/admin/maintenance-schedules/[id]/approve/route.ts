@@ -1,7 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { requirePermission } from '@/lib/auth/permissions';
+import { withHardening } from '@/lib/api/with-hardening';
+import { auditAdminAction } from '@/lib/audit-admin';
 import { z } from 'zod';
 
 const ApproveSchema = z.object({
@@ -9,10 +11,14 @@ const ApproveSchema = z.object({
 });
 
 // POST /api/admin/maintenance-schedules/[id]/approve - Approve a maintenance schedule
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const POST = withHardening(
+  {
+    // Middleware already gates /api/admin/ to admin roles; the permission
+    // check inside the handler stays (vehicle:configure_search is finer-grained).
+    // Rate limit guards against double-approval races on the state machine.
+    rateLimit: { limit: 30, windowSeconds: 60, prefix: 'maintenance-approve', keyBy: 'userOrg' },
+  },
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
     if (!session?.user) {
@@ -117,6 +123,19 @@ export async function POST(
       },
     });
 
+    await auditAdminAction({
+      req,
+      session: { user: { id: session.user.id, organizationId: session.user.organizationId } },
+      eventType: 'MAINTENANCE_SCHEDULE_REVIEWED',
+      description: `${session.user.email} approved maintenance schedule ${schedule.id} (${schedule.vehicle.make} ${schedule.vehicle.model})`,
+      metadata: {
+        action: 'approve',
+        scheduleId: schedule.id,
+        vehicleId: schedule.vehicleId,
+        intervalsCount: schedule.intervals.length,
+      },
+    });
+
     return NextResponse.json({
       message: 'Maintenance schedule approved successfully',
       schedule,
@@ -131,4 +150,5 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+  }
+);

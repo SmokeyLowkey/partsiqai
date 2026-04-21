@@ -1,12 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { voipCallInitiationQueue } from '@/lib/queue/queues';
+import { withHardening } from '@/lib/api/with-hardening';
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// Tight rate limit — each call enqueues a paid Vapi job. 5 initiations/hr/user
+// prevents both accidental double-clicks and a compromised-account spend burst.
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 5, windowSeconds: 3600, prefix: 'quote-initiate-call', keyBy: 'user' },
+  },
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
 
@@ -204,4 +208,5 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+  }
+);

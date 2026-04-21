@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { withHardening } from '@/lib/api/with-hardening';
 import { z } from 'zod';
 
 const SupplierSchema = z.object({
@@ -99,7 +100,11 @@ export async function GET(req: NextRequest) {
 }
 
 // POST /api/suppliers - Create a new supplier
-export async function POST(req: NextRequest) {
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 30, windowSeconds: 60, prefix: 'supplier-create', keyBy: 'userOrg' },
+  },
+  async (req: Request) => {
   try {
     const session = await getServerSession();
 
@@ -167,4 +172,5 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+  }
+);

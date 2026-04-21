@@ -4,6 +4,7 @@ import Stripe from "stripe"
 import { stripe, getTierForPriceId, mapStripeStatusToAppStatus } from "@/lib/stripe"
 import { prisma } from "@/lib/prisma"
 import { addOverageToInvoice, markOveragePaid, markOverageFailed } from "@/lib/billing/overage-billing"
+import { claimWebhook } from "@/lib/webhook-dedupe"
 
 // Disable body parsing - we need raw body for webhook verification
 export const dynamic = "force-dynamic"
@@ -338,6 +339,7 @@ async function handleTrialEnding(subscription: any) {
         to: admin.email,
         subject: `Your PartsIQ trial ends in ${daysLeft} days`,
         html: getTrialEndingSoonEmailHtml(admin.name || "there", organization.name, daysLeft),
+        organizationId: organization.id,
       })
     }
   } catch (emailErr) {
@@ -373,6 +375,14 @@ export async function POST(request: Request) {
         { error: `Webhook Error: ${message}` },
         { status: 400 }
       )
+    }
+
+    // Replay/duplicate protection: Stripe retries webhooks on non-2xx, so the
+    // same event.id can arrive multiple times. Short-circuit with 200 on the
+    // second+ delivery so Stripe stops retrying without re-running side-effects.
+    const fresh = await claimWebhook("stripe", event.id)
+    if (!fresh) {
+      return NextResponse.json({ ok: true, deduped: true })
     }
 
     // Handle the event

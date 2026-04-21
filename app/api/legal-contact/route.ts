@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { sendEmail, getBaseUrl } from "@/lib/email/resend"
 import { escapeHtml } from "@/lib/sanitize"
+import { withHardening } from "@/lib/api/with-hardening"
 
 /**
  * Inbound submissions from the legal/privacy contact form. Routes the
@@ -21,7 +22,13 @@ const TYPE_LABELS: Record<string, string> = {
   data_request: "Data access / deletion request",
 }
 
-export async function POST(request: Request) {
+// Public legal/privacy contact form — IP rate limit + origin check.
+export const POST = withHardening(
+  {
+    requireSession: false,
+    rateLimit: { limit: 5, windowSeconds: 900, prefix: "legal-contact-form", keyBy: "ip" },
+  },
+  async (request: Request) => {
   let body: unknown
   try {
     body = await request.json()
@@ -140,4 +147,5 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ ok: true })
-}
+  }
+);

@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getEmailClientForUser } from '@/lib/services/email/email-client-factory';
 import { addBusinessDays } from '@/lib/utils/business-days';
+import { withHardening } from '@/lib/api/with-hardening';
 import { z } from 'zod';
 import { escapeHtml } from '@/lib/sanitize';
 
@@ -18,10 +19,11 @@ const SendQuoteRequestSchema = z.object({
 });
 
 // POST /api/quote-requests/[id]/send - Send quote request to suppliers
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 15, windowSeconds: 3600, prefix: 'quote-send', keyBy: 'user' },
+  },
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
 
@@ -256,4 +258,5 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+  }
+);

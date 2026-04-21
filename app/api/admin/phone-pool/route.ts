@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma';
 import { provisionNumber, releaseNumber, syncPoolConfig } from '@/lib/voip/phone-pool/provisioner';
 import { markBlocked } from '@/lib/voip/phone-pool/health';
 import { invalidatePhonePoolConfigCache } from '@/lib/voip/phone-pool/config';
+import { withHardening } from '@/lib/api/with-hardening';
+import { auditAdminAction } from '@/lib/audit-admin';
 
 // GET /api/admin/phone-pool — List all pool numbers with stats
 export async function GET() {
@@ -55,21 +57,38 @@ export async function GET() {
   }
 }
 
-// POST /api/admin/phone-pool — Provision new number or perform pool actions
-export async function POST(request: Request) {
+// POST /api/admin/phone-pool — Provision new number or perform pool actions.
+// Provisioning buys a Twilio number (real $), so cap aggressively.
+export const POST = withHardening(
+  {
+    roles: ['MASTER_ADMIN'],
+    rateLimit: { limit: 10, windowSeconds: 3600, prefix: 'admin-phone-pool', keyBy: 'user' },
+  },
+  async (request: Request) => {
   try {
     const session = await getServerSession();
-    if (!session?.user || session.user.role !== 'MASTER_ADMIN') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const body = await request.json();
     const { action } = body;
 
+    const auditBase = {
+      req: request,
+      session: { user: { id: session.user.id, organizationId: session.user.organizationId } },
+      eventType: 'PHONE_POOL_ACTION' as const,
+    };
+
     switch (action) {
       case 'provision': {
         const { areaCode, label } = body;
         const result = await provisionNumber({ areaCode, label });
+        await auditAdminAction({
+          ...auditBase,
+          description: `${session.user.email} provisioned phone number (${result.e164})`,
+          metadata: { action: 'provision', areaCode, label, phoneNumberId: result.id, e164: result.e164 },
+        });
         return NextResponse.json({ success: true, number: result });
       }
 
@@ -79,6 +98,11 @@ export async function POST(request: Request) {
           return NextResponse.json({ error: 'phoneNumberId required' }, { status: 400 });
         }
         await releaseNumber(phoneNumberId);
+        await auditAdminAction({
+          ...auditBase,
+          description: `${session.user.email} released phone number ${phoneNumberId}`,
+          metadata: { action: 'release', phoneNumberId },
+        });
         return NextResponse.json({ success: true });
       }
 
@@ -88,12 +112,22 @@ export async function POST(request: Request) {
           return NextResponse.json({ error: 'phoneNumberId required' }, { status: 400 });
         }
         await markBlocked(phoneNumberId, reason || 'Manually blocked by admin');
+        await auditAdminAction({
+          ...auditBase,
+          description: `${session.user.email} blocked phone number ${phoneNumberId}`,
+          metadata: { action: 'block', phoneNumberId, reason: reason ?? null },
+        });
         return NextResponse.json({ success: true });
       }
 
       case 'sync': {
         const result = await syncPoolConfig();
         invalidatePhonePoolConfigCache();
+        await auditAdminAction({
+          ...auditBase,
+          description: `${session.user.email} synced phone pool config from Vapi`,
+          metadata: { action: 'sync', ...result },
+        });
         return NextResponse.json({ success: true, ...result });
       }
 
@@ -110,4 +144,5 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
-}
+  }
+);

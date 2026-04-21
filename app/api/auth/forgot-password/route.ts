@@ -1,20 +1,18 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { randomUUID } from "crypto";
 import { sendEmail, getPasswordResetEmailHtml, getBaseUrl } from "@/lib/email/resend";
-import { checkRateLimit as checkIpRateLimit, getClientIp, rateLimits } from "@/lib/rate-limit";
+import { checkRateLimit as checkIpRateLimit, rateLimits } from "@/lib/rate-limit";
+import { withHardening } from "@/lib/api/with-hardening";
 
-// Per-email rate limiting using the shared Redis-backed rate limiter
-// The in-memory Map approach is unreliable in serverless (each invocation gets a fresh Map).
-// We now rely on the IP-based rate limit below + the Redis-backed checkIpRateLimit for email-scoped limiting.
-
-export async function POST(request: NextRequest) {
+// Matches the previous inlined rateLimits.authAction (5 per 15min per IP).
+export const POST = withHardening(
+  {
+    requireSession: false,
+    rateLimit: { limit: 5, windowSeconds: 900, prefix: "auth-forgot-password", keyBy: "ip" },
+  },
+  async (request: Request) => {
   try {
-    // Rate limit by IP to prevent enumeration/abuse
-    const ip = getClientIp(request);
-    const ipRateCheck = await checkIpRateLimit(`forgot-pwd:${ip}`, rateLimits.authAction);
-    if (!ipRateCheck.success) return ipRateCheck.response;
-
     const { email } = await request.json();
 
     if (!email) {
@@ -78,4 +76,5 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+  }
+);

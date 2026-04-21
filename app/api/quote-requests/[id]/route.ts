@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { withHardening } from '@/lib/api/with-hardening';
 import { z } from 'zod';
 
 const UpdateQuoteRequestSchema = z.object({
@@ -244,10 +245,11 @@ export async function GET(
 }
 
 // PATCH /api/quote-requests/[id] - Update a quote request
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const PATCH = withHardening(
+  {
+    rateLimit: { limit: 60, windowSeconds: 60, prefix: 'quote-request-update', keyBy: 'userOrg' },
+  },
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
 
@@ -397,13 +399,17 @@ export async function PATCH(
       { status: 500 }
     );
   }
-}
+  }
+);
 
 // DELETE /api/quote-requests/[id] - Delete a quote request
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const DELETE = withHardening(
+  {
+    // Only managers+ can delete quotes — protects from technician mistakes.
+    roles: ['MANAGER', 'ADMIN', 'MASTER_ADMIN'],
+    rateLimit: { limit: 30, windowSeconds: 60, prefix: 'quote-request-delete', keyBy: 'userOrg' },
+  },
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
 
@@ -459,4 +465,5 @@ export async function DELETE(
       { status: 500 }
     );
   }
-}
+  }
+);

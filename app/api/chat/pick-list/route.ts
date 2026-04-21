@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { withHardening } from '@/lib/api/with-hardening';
 import { z } from 'zod';
 
 const PickListItemSchema = z.object({
@@ -18,7 +19,11 @@ const PickListSchema = z.object({
   vehicleId: z.string().optional(),
 });
 
-export async function POST(req: NextRequest) {
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 60, windowSeconds: 60, prefix: 'chat-pick-list', keyBy: 'user' },
+  },
+  async (req: Request) => {
   try {
     const session = await getServerSession();
 
@@ -94,9 +99,10 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+  }
+);
 
-export async function GET(req: NextRequest) {
+export async function GET(req: Request) {
   try {
     const session = await getServerSession();
 

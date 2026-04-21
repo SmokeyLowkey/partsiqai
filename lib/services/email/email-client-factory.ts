@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { GmailClient } from './gmail-client';
 import { MicrosoftClient } from './microsoft-client';
+import { isOAuthReauthError, markEmailIntegrationNeedsReauth } from '@/lib/email/reauth';
 
 export interface EmailClient {
   sendEmail(
@@ -22,6 +23,38 @@ export interface EmailClient {
 }
 
 /**
+ * Wrap a concrete client so every method catches `invalid_grant`-class
+ * errors, flags the user's integration as needing re-authorization, then
+ * rethrows. Without this, every caller has to know the reauth signals; with
+ * it, the bookkeeping lives in one place and works for ~13 call sites.
+ *
+ * Proxying methods rather than subclassing keeps this interface-only — we
+ * don't care which concrete client (Gmail, Microsoft) is underneath.
+ */
+function withReauthGuard(userId: string, client: EmailClient): EmailClient {
+  const wrap = <F extends (...args: any[]) => Promise<any>>(fn: F): F =>
+    (async (...args: Parameters<F>): Promise<ReturnType<F>> => {
+      try {
+        return await fn(...args);
+      } catch (err) {
+        if (isOAuthReauthError(err)) {
+          await markEmailIntegrationNeedsReauth(
+            userId,
+            err instanceof Error ? err.message : 'OAuth token revoked or expired'
+          );
+        }
+        throw err;
+      }
+    }) as F;
+
+  return {
+    sendEmail: wrap(client.sendEmail.bind(client)),
+    fetchNewEmails: wrap(client.fetchNewEmails.bind(client)),
+    downloadAttachment: wrap(client.downloadAttachment.bind(client)),
+  };
+}
+
+/**
  * Factory function to create the appropriate email client based on user's configured provider
  */
 export async function getEmailClientForUser(userId: string): Promise<EmailClient> {
@@ -35,12 +68,15 @@ export async function getEmailClientForUser(userId: string): Promise<EmailClient
     throw new Error('Email integration not configured for this user. Please ask an admin to set up your email account.');
   }
 
+  let client: EmailClient;
   switch (emailIntegration.providerType) {
     case 'GMAIL_OAUTH':
-      return await GmailClient.fromUser(userId);
+      client = await GmailClient.fromUser(userId);
+      break;
 
     case 'MICROSOFT_OAUTH':
-      return await MicrosoftClient.fromUser(userId);
+      client = await MicrosoftClient.fromUser(userId);
+      break;
 
     case 'SMTP':
       throw new Error('SMTP email sending is not yet implemented.');
@@ -48,6 +84,8 @@ export async function getEmailClientForUser(userId: string): Promise<EmailClient
     default:
       throw new Error(`Unknown email provider type: ${emailIntegration.providerType}`);
   }
+
+  return withReauthGuard(userId, client);
 }
 
 /**

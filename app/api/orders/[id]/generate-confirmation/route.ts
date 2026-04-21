@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { OpenRouterClient } from '@/lib/services/llm/openrouter-client';
+import { withHardening } from '@/lib/api/with-hardening';
 import { z } from 'zod';
 
 const GenerateConfirmationSchema = z.object({
@@ -9,10 +10,11 @@ const GenerateConfirmationSchema = z.object({
 });
 
 // POST /api/orders/[id]/generate-confirmation - Generate order confirmation email content
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 20, windowSeconds: 3600, prefix: 'order-generate-confirmation', keyBy: 'user' },
+  },
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
 
@@ -240,4 +242,5 @@ ${order.createdBy.email}`,
       { status: 500 }
     );
   }
-}
+  }
+);

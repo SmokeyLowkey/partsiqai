@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import {
@@ -7,11 +7,15 @@ import {
   sanitizeFileName,
 } from '@/lib/services/storage/s3-client';
 import { maintenancePdfQueue } from '@/lib/queue/queues';
+import { withHardening } from '@/lib/api/with-hardening';
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// File upload + async worker enqueue. 10/hr protects against accidental
+// repeat uploads that would each spawn an expensive PDF-parsing job.
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 10, windowSeconds: 3600, prefix: 'vehicle-upload-pdf', keyBy: 'user' },
+  },
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
 
@@ -168,4 +172,5 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+  }
+);

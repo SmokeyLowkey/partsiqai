@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
 import { sendEmail, getVerificationEmailHtml, getMasterAdminNotificationHtml, getBaseUrl } from "@/lib/email/resend";
-import { checkRateLimit, getClientIp, rateLimits } from "@/lib/rate-limit";
 import { provisionIndexForOrg } from "@/lib/services/pinecone/index-provisioner";
+import { withHardening } from "@/lib/api/with-hardening";
 
 // Helper to generate organization slug from company name
 function generateSlug(name: string): string {
@@ -81,12 +81,14 @@ async function notifyMasterAdmins(
 }
 
 // POST /api/auth/signup - Self-service organization signup
-export async function POST(request: NextRequest) {
+// Matches the previous inlined rateLimits.signup (3 per 15 minutes per IP).
+export const POST = withHardening(
+  {
+    requireSession: false,
+    rateLimit: { limit: 3, windowSeconds: 900, prefix: "auth-signup", keyBy: "ip" },
+  },
+  async (request: Request) => {
   try {
-    // Rate limit by IP to prevent mass account creation
-    const ip = getClientIp(request);
-    const rateCheck = await checkRateLimit(`signup:${ip}`, rateLimits.signup);
-    if (!rateCheck.success) return rateCheck.response;
 
     const body = await request.json();
 
@@ -320,4 +322,5 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+  }
+);

@@ -4,9 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { randomUUID, randomBytes } from "crypto";
 import { sendEmail, getBaseUrl } from "@/lib/email/resend";
 import bcrypt from "bcryptjs";
-import { checkOrigin } from "@/lib/csrf";
-import { checkRateLimit, rateLimits } from "@/lib/rate-limit";
 import { escapeHtml } from "@/lib/sanitize";
+import { withHardening } from "@/lib/api/with-hardening";
 
 // Generate a random temporary password
 function generateTemporaryPassword(): string {
@@ -31,7 +30,8 @@ async function sendInvitationEmail(
   role: string,
   token: string,
   temporaryPassword: string,
-  message?: string
+  message?: string,
+  organizationId?: string,
 ) {
   const invitationUrl = `${getBaseUrl()}/invite/accept?token=${token}`;
 
@@ -99,31 +99,24 @@ async function sendInvitationEmail(
     to: email,
     subject: `${inviterName} invited you to join ${organizationName} on PartsIQ`,
     html,
+    organizationId,
   });
 }
 
 // POST /api/invitations - Create team invitation
-export async function POST(request: NextRequest) {
+export const POST = withHardening(
+  {
+    roles: ["ADMIN", "MASTER_ADMIN"],
+    // Matches the previous inlined rateLimits.invitation (10 per hour per user).
+    rateLimit: { limit: 10, windowSeconds: 3600, prefix: "invitation-create", keyBy: "user" },
+  },
+  async (request: Request) => {
   try {
-    const originError = checkOrigin(request);
-    if (originError) return originError;
-
     const session = await getServerSession();
 
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    // Only ADMIN can invite users
-    if (session.user.role !== "ADMIN" && session.user.role !== "MASTER_ADMIN") {
-      return NextResponse.json(
-        { error: "Only admins can invite team members" },
-        { status: 403 }
-      );
-    }
-
-    const rateCheck = await checkRateLimit(`invitation:${session.user.id}`, rateLimits.invitation);
-    if (!rateCheck.success) return rateCheck.response;
 
     const body = await request.json();
     const { email, role, message } = body;
@@ -209,7 +202,8 @@ export async function POST(request: NextRequest) {
       role,
       token,
       temporaryPassword, // Send plain password in email
-      message
+      message,
+      invitation.organizationId,
     );
 
     return NextResponse.json({
@@ -228,7 +222,8 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+  }
+);
 
 // GET /api/invitations - List organization's invitations
 export async function GET(request: Request) {

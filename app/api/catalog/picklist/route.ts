@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { withHardening } from '@/lib/api/with-hardening';
 import { z } from 'zod';
 import { generateQuoteNumber } from '@/lib/utils/quote-number';
 
@@ -82,7 +83,11 @@ export async function GET(req: NextRequest) {
 }
 
 // POST /api/catalog/picklist - Create a quote request from catalog parts
-export async function POST(req: NextRequest) {
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 30, windowSeconds: 60, prefix: 'catalog-picklist-create', keyBy: 'userOrg' },
+  },
+  async (req: Request) => {
   try {
     const session = await getServerSession();
 
@@ -257,4 +262,5 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+  }
+);

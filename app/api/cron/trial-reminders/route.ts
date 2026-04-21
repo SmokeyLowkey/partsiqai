@@ -8,6 +8,7 @@ import {
   getTrialLastDayEmailHtml,
   getTrialExpiredEmailHtml,
 } from '@/lib/email/resend';
+import { verifyCronAuth } from '@/lib/api-utils';
 
 /**
  * Cron Job: Trial Reminder Emails
@@ -65,10 +66,8 @@ const REMINDER_SCHEDULE: ReminderConfig[] = [
 
 export async function GET(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('authorization');
-    const cronSecret = process.env.CRON_SECRET;
-
-    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    // Verify cron secret for security (timing-safe)
+    if (!verifyCronAuth(req.headers.get('authorization'))) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -129,6 +128,7 @@ export async function GET(req: NextRequest) {
             to: admin.email,
             subject: reminder.subject,
             html,
+            organizationId: org.id,
           });
 
           await prisma.activityLog.create({

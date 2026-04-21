@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { OpenRouterClient } from '@/lib/services/llm/openrouter-client';
 import { getEmailClientForUser } from '@/lib/services/email/email-client-factory';
 import { parsePdfFromS3, extractPdfText, isValidPdf, extractBasicQuoteInfo } from '@/lib/services/document/pdf-parser';
 import { downloadFromS3 } from '@/lib/services/storage/s3-client';
+import { withHardening } from '@/lib/api/with-hardening';
 import { z } from 'zod';
 
 // Schema for extracted quote data
@@ -34,10 +35,11 @@ const ExtractedQuoteSchema = z.object({
 type ExtractedQuoteData = z.infer<typeof ExtractedQuoteSchema>;
 
 // POST /api/quote-requests/[id]/extract-prices - Manually extract prices from emails
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 20, windowSeconds: 3600, prefix: 'quote-extract-prices', keyBy: 'user' },
+  },
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
 
@@ -467,4 +469,5 @@ IMPORTANT: Numbers should be numbers, not strings.`;
       { status: 500 }
     );
   }
-}
+  }
+);

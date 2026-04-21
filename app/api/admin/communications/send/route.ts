@@ -9,6 +9,8 @@ import {
   getSetupHelpEmailHtml,
   getCustomAdminEmailHtml,
 } from '@/lib/email/resend';
+import { withHardening } from '@/lib/api/with-hardening';
+import { auditAdminAction } from '@/lib/audit-admin';
 import { z } from 'zod';
 
 const SENDER_OPTIONS = [
@@ -32,10 +34,17 @@ const SendEmailSchema = z.object({
   { message: 'Subject and body are required for custom emails' }
 );
 
-export async function POST(request: Request) {
+// Mass-email surface — MASTER_ADMIN only, tight per-user cap to prevent a
+// compromised admin account from blasting every user on the platform.
+export const POST = withHardening(
+  {
+    roles: ['MASTER_ADMIN'],
+    rateLimit: { limit: 5, windowSeconds: 3600, prefix: 'admin-comms-send', keyBy: 'user' },
+  },
+  async (request: Request) => {
   try {
     const session = await getServerSession();
-    if (!session?.user || session.user.role !== 'MASTER_ADMIN') {
+    if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
@@ -130,6 +139,7 @@ export async function POST(request: Request) {
           headers: {
             'X-PartsIQ-Admin-Email-Id': adminEmail.id,
           },
+          organizationId,
         });
         resendMessageId = result?.id ?? null;
         status = 'sent';
@@ -151,9 +161,25 @@ export async function POST(request: Request) {
       results.emails.push({ ...adminEmail, resendMessageId, status, errorMessage });
     }
 
+    await auditAdminAction({
+      req: request,
+      session: { user: { id: session.user.id, organizationId: session.user.organizationId } },
+      eventType: 'ADMIN_EMAIL_SENT',
+      description: `${session.user.email} sent ${templateType} to ${results.sent}/${recipientUserIds.length} recipients in org ${organizationId}`,
+      targetOrganizationId: organizationId,
+      metadata: {
+        templateType,
+        senderEmail,
+        recipientCount: recipientUserIds.length,
+        sent: results.sent,
+        failed: results.failed,
+      },
+    });
+
     return NextResponse.json(results);
   } catch (error: any) {
     console.error('Send admin email error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+  }
+);

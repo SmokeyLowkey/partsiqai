@@ -9,6 +9,7 @@ import { OpenRouterClient } from '@/lib/services/llm/openrouter-client';
 import { prisma } from '@/lib/prisma';
 import { addBusinessDays, getDaysSince } from '@/lib/utils/business-days';
 import { workerLogger } from '@/lib/logger';
+import { verifyJobAuthorization } from '@/lib/queue/verify-job-authorization';
 
 const QUEUE_NAME = 'follow-up';
 
@@ -32,6 +33,9 @@ export const followUpWorker = new Worker<FollowUpJobData>(
     } = job.data;
 
     try {
+      // Re-verify tenant exists before running LLM + sending email.
+      await verifyJobAuthorization({ organizationId });
+
       // Validate supplier has email
       if (!supplierEmail) {
         throw new Error(`Supplier ${supplierName} does not have an email address`);

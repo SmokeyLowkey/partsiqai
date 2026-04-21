@@ -9,9 +9,8 @@ import { OpenRouterClient } from '@/lib/services/llm/openrouter-client';
 import { PROMPTS } from '@/lib/services/llm/prompt-templates';
 import { z } from 'zod';
 import { createRequestLogger } from '@/lib/logger';
-import { checkOrigin } from '@/lib/csrf';
-import { checkRateLimit, rateLimits } from '@/lib/rate-limit';
 import { getTierLimits } from '@/lib/subscription-limits';
+import { withHardening } from '@/lib/api/with-hardening';
 
 const ChatMessageSchema = z.object({
   conversationId: z.string().nullable().optional(),
@@ -28,20 +27,19 @@ const ChatMessageSchema = z.object({
     .optional(),
 });
 
-export async function POST(req: NextRequest) {
+export const POST = withHardening(
+  {
+    // Matches the previous inlined rateLimits.chat (20 messages per minute per user).
+    rateLimit: { limit: 20, windowSeconds: 60, prefix: 'chat-message', keyBy: 'user' },
+  },
+  async (req: NextRequest) => {
   const log = createRequestLogger('chat');
   try {
-    const originError = checkOrigin(req);
-    if (originError) return originError;
-
     const session = await getServerSession();
 
     if (!session?.user) {
       return apiError('Unauthorized', 401, { code: 'UNAUTHORIZED' });
     }
-
-    const rateCheck = await checkRateLimit(`chat:${session.user.id}`, rateLimits.chat);
-    if (!rateCheck.success) return rateCheck.response;
 
     // Check daily message limit for trial/tier-limited orgs
     const org = await prisma.organization.findUnique({
@@ -417,7 +415,8 @@ export async function POST(req: NextRequest) {
 
     return apiError('Failed to process message', 500, { code: 'INTERNAL_ERROR' });
   }
-}
+  }
+);
 
 /**
  * Extract suggested part names from a technical assistant response.

@@ -2,6 +2,15 @@ import OpenAI from 'openai';
 import { credentialsManager } from '../credentials/credentials-manager';
 import { withRetry } from '@/lib/utils/retry';
 import { withTimeout } from '@/lib/utils/timeout';
+import { assertQuota } from '@/lib/cost-quota';
+
+// Rough char→token ratio for English. OpenAI's own tokenizer averages
+// ~4 chars/token across mixed text. Overestimating here is fine — the
+// quota is for runaway-spend defense, not per-request accounting.
+const CHARS_PER_TOKEN = 4;
+function estimateTokens(inputChars: number, maxOutputTokens = 2000): number {
+  return Math.ceil(inputChars / CHARS_PER_TOKEN) + maxOutputTokens;
+}
 
 export interface CompletionOptions {
   temperature?: number;
@@ -17,8 +26,19 @@ export class OpenRouterClient {
   private defaultModel: string;
   private voiceModel: string;
   private overseerModel: string;
+  // Optional: set when constructed via `fromOrganization`. When present,
+  // every paid call debits the org's daily token quota (lib/cost-quota).
+  // Kept optional so direct callers (tests, scripts) don't have to plumb
+  // an org through just to use the client.
+  private organizationId?: string;
 
-  private constructor(apiKey: string, defaultModel?: string, voiceModel?: string, overseerModel?: string) {
+  private constructor(
+    apiKey: string,
+    defaultModel?: string,
+    voiceModel?: string,
+    overseerModel?: string,
+    organizationId?: string,
+  ) {
     this.client = new OpenAI({
       baseURL: 'https://openrouter.ai/api/v1',
       apiKey,
@@ -30,6 +50,7 @@ export class OpenRouterClient {
     this.defaultModel = defaultModel || 'anthropic/claude-3.5-sonnet';
     this.voiceModel = voiceModel || 'openai/gpt-4o';
     this.overseerModel = overseerModel || this.defaultModel;
+    this.organizationId = organizationId;
   }
 
   /**
@@ -63,13 +84,39 @@ export class OpenRouterClient {
       throw new Error('OpenRouter credentials not configured for this organization');
     }
 
-    return new OpenRouterClient(credentials.apiKey, credentials.defaultModel, credentials.voiceModel, credentials.overseerModel);
+    return new OpenRouterClient(
+      credentials.apiKey,
+      credentials.defaultModel,
+      credentials.voiceModel,
+      credentials.overseerModel,
+      organizationId,
+    );
+  }
+
+  /**
+   * Debit the org's daily OpenRouter quota by the estimated token cost.
+   * No-op when this client was constructed without an organizationId.
+   * Throws `QuotaExhaustedError` when the budget is exhausted — propagates
+   * to the caller, which should surface a friendly "try again tomorrow"
+   * instead of charging an LLM call that we can't bill internally.
+   */
+  private async debitQuota(inputChars: number, maxOutputTokens?: number): Promise<void> {
+    if (!this.organizationId) return;
+    await assertQuota({
+      provider: 'openrouter',
+      organizationId: this.organizationId,
+      cost: estimateTokens(inputChars, maxOutputTokens ?? 2000),
+    });
   }
 
   async generateCompletion(
     prompt: string,
     options?: CompletionOptions & { model?: string }
   ): Promise<string> {
+    // Debit BEFORE the call so overshoot blocks the upstream request, not
+    // just accounts it. withRetry can re-invoke the inner fn, so we only
+    // debit once outside the retry loop.
+    await this.debitQuota(prompt.length, options?.maxTokens);
     return withRetry(
       () => withTimeout(async () => {
         const response = await this.client.chat.completions.create({
@@ -94,6 +141,7 @@ export class OpenRouterClient {
     schema: any,
     options?: CompletionOptions & { model?: string }
   ): Promise<T> {
+    await this.debitQuota(prompt.length, options?.maxTokens ?? 4000);
     return withRetry(
       () => withTimeout(async () => {
         const response = await this.client.chat.completions.create({
@@ -137,6 +185,8 @@ export class OpenRouterClient {
     messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
     options?: CompletionOptions & { model?: string }
   ): Promise<string> {
+    const totalChars = messages.reduce((n, m) => n + (m.content?.length ?? 0), 0);
+    await this.debitQuota(totalChars, options?.maxTokens);
     return withRetry(
       () => withTimeout(async () => {
         const response = await this.client.chat.completions.create({

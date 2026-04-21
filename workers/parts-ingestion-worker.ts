@@ -7,6 +7,7 @@ import { PartsIngestionJobData } from '@/lib/queue/types';
 import { runIngestion } from '@/lib/services/ingestion/pipeline';
 import { prisma } from '@/lib/prisma';
 import { workerLogger } from '@/lib/logger';
+import { verifyJobAuthorization, JobAuthorizationError } from '@/lib/queue/verify-job-authorization';
 
 const QUEUE_NAME = 'parts-ingestion';
 
@@ -20,6 +21,15 @@ async function processIngestionJob(job: Job<PartsIngestionJobData>): Promise<voi
   logger.info('Starting parts ingestion job');
 
   try {
+    // Re-verify authorization at process time (H9). pipeline.ts also has a
+    // defensive role check for Postgres-catalog writes specifically; this is
+    // the outer gate that stops the whole job from running if the org or
+    // initiating admin has been removed/deactivated since enqueue.
+    await verifyJobAuthorization({
+      organizationId: job.data.organizationId,
+      initiatedById: job.data.userId,
+    });
+
     // Mark as started
     await prisma.ingestionJob.update({
       where: { id: job.data.ingestionJobId },

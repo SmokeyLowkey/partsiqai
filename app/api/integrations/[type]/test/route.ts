@@ -1,14 +1,18 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { CredentialsManager } from '@/lib/services/credentials/credentials-manager';
+import { withHardening } from '@/lib/api/with-hardening';
 
 const credentialsManager = new CredentialsManager();
 
-// POST /api/integrations/[type]/test - Test integration credentials
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ type: string }> }
-) {
+// POST /api/integrations/[type]/test - Test integration credentials.
+// Issues real API calls to external services — tight rate limit.
+export const POST = withHardening(
+  {
+    roles: ['ADMIN', 'MASTER_ADMIN'],
+    rateLimit: { limit: 20, windowSeconds: 60, prefix: 'integrations-test', keyBy: 'org' },
+  },
+  async (req: Request, { params }: { params: Promise<{ type: string }> }) => {
   try {
     const session = await getServerSession();
 
@@ -41,4 +45,5 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+  }
+);

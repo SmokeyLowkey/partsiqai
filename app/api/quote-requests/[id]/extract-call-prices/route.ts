@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { OpenRouterClient } from '@/lib/services/llm/openrouter-client';
+import { withHardening } from '@/lib/api/with-hardening';
 import { z } from 'zod';
 
 // Same schema as email extraction for consistency
@@ -120,11 +121,12 @@ function extractFromCallState(
     }));
 }
 
-// POST /api/quote-requests/[id]/extract-call-prices
-export async function POST(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// POST /api/quote-requests/[id]/extract-call-prices — LLM-backed, rate-limit it.
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 20, windowSeconds: 3600, prefix: 'quote-extract-call-prices', keyBy: 'user' },
+  },
+  async (_req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
 
@@ -498,4 +500,5 @@ IMPORTANT: Numbers should be numbers, not strings.`;
       { status: 500 }
     );
   }
-}
+  }
+);

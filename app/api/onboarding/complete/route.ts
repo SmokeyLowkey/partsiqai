@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
 import { getServerSession, refreshSessionCookie } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { withHardening } from "@/lib/api/with-hardening";
 
 // POST /api/onboarding/complete - Mark onboarding as complete
-export async function POST(request: Request) {
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 10, windowSeconds: 60, prefix: "onboarding-complete", keyBy: "user" },
+  },
+  async (request: Request) => {
   try {
     const session = await getServerSession();
 
@@ -53,4 +58,5 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
-}
+  }
+);

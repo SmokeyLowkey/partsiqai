@@ -5,6 +5,7 @@ import { mergeRecords } from './record-merger';
 import { ingestToPostgres } from './postgres-ingester';
 import { ingestToPinecone } from './pinecone-ingester';
 import { ingestToNeo4j } from './neo4j-ingester';
+import { prisma } from '@/lib/prisma';
 import type { PartsIngestionJobData } from '@/lib/queue/types';
 import type { IngestionProgress, PartIngestionRecord, IngestionFileMetadata } from './types';
 import type { Logger } from 'pino';
@@ -21,7 +22,30 @@ export async function runIngestion(
   onProgress: ProgressCallback,
   logger: Logger
 ): Promise<void> {
-  const { organizationId, s3Key, fileType, options } = jobData;
+  const { organizationId, s3Key, fileType, options, userId } = jobData;
+
+  // Phase 0: Defense-in-depth authorization re-check.
+  // Only MASTER_ADMIN may write to the shared Postgres parts catalog. The upload
+  // handler already enforces this by setting `options.skipPostgres = true` for
+  // non-MASTER callers, but we re-check here so any future enqueue path — or a
+  // role downgrade between enqueue and process — cannot bypass the boundary.
+  const initiator = userId
+    ? await prisma.user.findUnique({ where: { id: userId }, select: { role: true, isActive: true } })
+    : null;
+
+  if (!initiator || !initiator.isActive) {
+    throw new Error(
+      `Ingestion job ${jobData.ingestionJobId} rejected: initiating user ${userId} not found or inactive`
+    );
+  }
+
+  if (initiator.role !== 'MASTER_ADMIN' && !options.skipPostgres) {
+    logger.warn(
+      { userId, role: initiator.role, ingestionJobId: jobData.ingestionJobId },
+      'Forcing skipPostgres=true at pipeline entry: initiating user is not MASTER_ADMIN'
+    );
+    options.skipPostgres = true;
+  }
 
   // Phase 1: Download and parse
   logger.info({ s3Key, fileType }, 'Downloading file from S3');

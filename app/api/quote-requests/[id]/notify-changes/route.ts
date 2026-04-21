@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getEmailClientForUser } from '@/lib/services/email/email-client-factory';
 import { OpenRouterClient } from '@/lib/services/llm/openrouter-client';
+import { withHardening } from '@/lib/api/with-hardening';
 import { z } from 'zod';
 
 const ChangeNotificationSchema = z.object({
@@ -10,10 +11,12 @@ const ChangeNotificationSchema = z.object({
   body: z.string(),
 });
 
-export async function POST(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> }
-) {
+// Sends an email + calls LLM to tailor the message — two outbound-cost surfaces.
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 30, windowSeconds: 3600, prefix: 'quote-notify-changes', keyBy: 'user' },
+  },
+  async (request: Request, context: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
     if (!session?.user?.id) {
@@ -208,7 +211,8 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+  }
+);
 
 async function generateChangeNotification(
   quoteRequest: any,

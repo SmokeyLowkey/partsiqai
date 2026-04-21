@@ -1,20 +1,19 @@
 import { NextResponse } from "next/server"
-import { getServerSession, isAdminRole } from "@/lib/auth"
+import { getServerSession } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { stripe } from "@/lib/stripe"
+import { withHardening } from "@/lib/api/with-hardening"
 
 // POST /api/billing/customer-portal - Create Stripe Customer Portal session
-export async function POST(request: Request) {
+export const POST = withHardening(
+  {
+    roles: ["ADMIN", "MASTER_ADMIN"],
+    rateLimit: { limit: 20, windowSeconds: 60, prefix: "billing-portal", keyBy: "user" },
+  },
+  async (request: Request) => {
   try {
     const session = await getServerSession()
-    const currentUser = session?.user
-
-    if (!currentUser || !isAdminRole(currentUser.role)) {
-      return NextResponse.json(
-        { error: "Unauthorized - Admin access required" },
-        { status: 403 }
-      )
-    }
+    const currentUser = session!.user
 
     const body = await request.json().catch(() => ({}))
     const { returnUrl } = body
@@ -56,4 +55,5 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
-}
+  }
+);

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { partsSearchQueue } from '@/lib/queue/queues';
 import { prisma } from '@/lib/prisma';
+import { withHardening } from '@/lib/api/with-hardening';
 
 export async function GET(
   req: NextRequest,
@@ -111,10 +112,11 @@ export async function GET(
   }
 }
 
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: Promise<{ jobId: string }> }
-) {
+export const DELETE = withHardening(
+  {
+    rateLimit: { limit: 30, windowSeconds: 60, prefix: 'parts-search-cancel', keyBy: 'user' },
+  },
+  async (req: Request, { params }: { params: Promise<{ jobId: string }> }) => {
   try {
     const session = await getServerSession();
 
@@ -164,4 +166,5 @@ export async function DELETE(
       { status: 500 }
     );
   }
-}
+  }
+);

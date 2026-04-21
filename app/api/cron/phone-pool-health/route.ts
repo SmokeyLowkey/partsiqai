@@ -4,6 +4,7 @@ import { cronLogger } from '@/lib/logger';
 import { evaluateAllNumberHealth, syncVapiStatuses } from '@/lib/voip/phone-pool/health';
 import { getPhonePoolConfig } from '@/lib/voip/phone-pool/config';
 import { CredentialsManager } from '@/lib/services/credentials/credentials-manager';
+import { verifyCronAuth } from '@/lib/api-utils';
 
 /**
  * Cron Job: Phone Pool Health Check
@@ -27,11 +28,8 @@ import { CredentialsManager } from '@/lib/services/credentials/credentials-manag
  */
 export async function GET(req: NextRequest) {
   try {
-    // Verify cron secret for security
-    const authHeader = req.headers.get('authorization');
-    const cronSecret = process.env.CRON_SECRET;
-
-    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    // Verify cron secret for security (timing-safe)
+    if (!verifyCronAuth(req.headers.get('authorization'))) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

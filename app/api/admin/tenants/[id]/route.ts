@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { withHardening } from "@/lib/api/with-hardening";
+import { auditAdminAction } from "@/lib/audit-admin";
 import { SubscriptionTier, SubscriptionStatus } from "@prisma/client";
 import { deleteTenantIndex } from "@/lib/services/pinecone/index-provisioner";
 
@@ -67,20 +69,15 @@ export async function GET(
 }
 
 // PATCH /api/admin/tenants/[id] - Update organization
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const PATCH = withHardening(
+  {
+    roles: ["MASTER_ADMIN"],
+    rateLimit: { limit: 30, windowSeconds: 60, prefix: "admin-tenant-update", keyBy: "user" },
+  },
+  async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
-    const currentUser = session?.user;
-    
-    if (!currentUser || currentUser.role !== "MASTER_ADMIN") {
-      return NextResponse.json(
-        { error: "Unauthorized - Master Admin access required" },
-        { status: 403 }
-      );
-    }
+    const currentUser = session!.user;
 
     const { id: organizationId } = await params;
     const body = await request.json();
@@ -137,6 +134,19 @@ export async function PATCH(
       },
     });
 
+    await auditAdminAction({
+      req: request,
+      session: { user: { id: currentUser.id, organizationId: currentUser.organizationId } },
+      eventType: "TENANT_MANAGED",
+      description: `${currentUser.email} updated tenant ${updatedOrganization.name}`,
+      targetOrganizationId: updatedOrganization.id,
+      metadata: {
+        action: "update",
+        tenantId: updatedOrganization.id,
+        changedFields: Object.keys(body),
+      },
+    });
+
     return NextResponse.json(updatedOrganization);
   } catch (error) {
     console.error("Error updating organization:", error);
@@ -145,23 +155,22 @@ export async function PATCH(
       { status: 500 }
     );
   }
-}
+  }
+);
 
 // DELETE /api/admin/tenants/[id] - Delete organization
 // Default: soft delete (suspend). Use ?hard=true for permanent deletion.
-export async function DELETE(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// Hard delete removes Pinecone index too, so keep the cap tight.
+export const DELETE = withHardening(
+  {
+    roles: ["MASTER_ADMIN"],
+    rateLimit: { limit: 10, windowSeconds: 60, prefix: "admin-tenant-delete", keyBy: "user" },
+  },
+  async (request: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
-    const currentUser = session?.user;
-
-    if (!currentUser || currentUser.role !== "MASTER_ADMIN") {
-      return NextResponse.json(
-        { error: "Unauthorized - Master Admin access required" },
-        { status: 403 }
-      );
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { id: organizationId } = await params;
@@ -189,6 +198,22 @@ export async function DELETE(
         });
       }
 
+      // Audit BEFORE the delete so the row still exists and FK is valid.
+      await auditAdminAction({
+        req: request,
+        session: { user: { id: session.user.id, organizationId: session.user.organizationId } },
+        eventType: "TENANT_MANAGED",
+        description: `${session.user.email} hard-deleted tenant ${organization.name} (${organization.slug})`,
+        // The target org row is about to be deleted — file the audit under
+        // the actor's own org so the row survives the cascade.
+        metadata: {
+          action: "hard_delete",
+          deletedTenantId: organization.id,
+          deletedTenantSlug: organization.slug,
+          deletedTenantName: organization.name,
+        },
+      });
+
       // Hard delete the organization (cascades to related records via Prisma schema)
       await prisma.organization.delete({
         where: { id: organizationId },
@@ -208,6 +233,15 @@ export async function DELETE(
       },
     });
 
+    await auditAdminAction({
+      req: request,
+      session: { user: { id: session.user.id, organizationId: session.user.organizationId } },
+      eventType: "TENANT_MANAGED",
+      description: `${session.user.email} suspended tenant ${organization.name}`,
+      targetOrganizationId: organizationId,
+      metadata: { action: "suspend", tenantId: organizationId },
+    });
+
     return NextResponse.json({
       message: "Organization suspended successfully",
       organizationId: updatedOrganization.id
@@ -219,4 +253,5 @@ export async function DELETE(
       { status: 500 }
     );
   }
-}
+  }
+);

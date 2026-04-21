@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { generateQuoteNumber } from '@/lib/utils/quote-number';
+import { withHardening } from '@/lib/api/with-hardening';
 import { z } from 'zod';
 
 const CreateMaintenanceQuoteSchema = z.object({
@@ -17,10 +18,11 @@ const CreateMaintenanceQuoteSchema = z.object({
 });
 
 // POST /api/vehicles/[id]/create-maintenance-quote - Create a quote request from maintenance parts
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 30, windowSeconds: 60, prefix: 'vehicle-create-maintenance-quote', keyBy: 'userOrg' },
+  },
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
 
@@ -187,4 +189,5 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+  }
+);

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { SubscriptionTier, SubscriptionStatus } from "@prisma/client";
+import { withHardening } from "@/lib/api/with-hardening";
+import { auditAdminAction } from "@/lib/audit-admin";
 
 // GET /api/admin/tenants - List organizations/tenants
 export async function GET(request: Request) {
@@ -82,17 +84,15 @@ export async function GET(request: Request) {
 }
 
 // POST /api/admin/tenants - Create new organization/tenant
-export async function POST(request: Request) {
+export const POST = withHardening(
+  {
+    roles: ["MASTER_ADMIN"],
+    rateLimit: { limit: 10, windowSeconds: 3600, prefix: "admin-tenants-create", keyBy: "user" },
+  },
+  async (request: Request) => {
   try {
     const session = await getServerSession();
-    const currentUser = session?.user;
-    
-    if (!currentUser || currentUser.role !== "MASTER_ADMIN") {
-      return NextResponse.json(
-        { error: "Unauthorized - Master Admin access required" },
-        { status: 403 }
-      );
-    }
+    const currentUser = session!.user;
 
     const body = await request.json();
     const {
@@ -155,6 +155,20 @@ export async function POST(request: Request) {
       },
     });
 
+    await auditAdminAction({
+      req: request,
+      session: { user: { id: currentUser.id, organizationId: currentUser.organizationId } },
+      eventType: "TENANT_MANAGED",
+      description: `${currentUser.email} created tenant ${newOrganization.name} (${newOrganization.slug})`,
+      targetOrganizationId: newOrganization.id,
+      metadata: {
+        action: "create",
+        tenantId: newOrganization.id,
+        tenantSlug: newOrganization.slug,
+        subscriptionTier: newOrganization.subscriptionTier,
+      },
+    });
+
     return NextResponse.json(newOrganization, { status: 201 });
   } catch (error) {
     console.error("Error creating organization:", error);
@@ -163,4 +177,5 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
-}
+  }
+);

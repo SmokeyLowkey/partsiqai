@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCallState, saveCallState, deleteCallState } from '@/lib/voip/state-manager';
+import { getCallState, saveCallState, deleteCallState, initCallStateIfAbsent } from '@/lib/voip/state-manager';
 import { initializeCallState } from '@/lib/voip/call-graph';
 import { getLastAIMessage, determineOutcome, addMessage } from '@/lib/voip/helpers';
 import { workerLogger } from '@/lib/logger';
 import { notifyQuoteReceived } from '@/lib/notifications/quote-received';
 import { recordCallOutcome } from '@/lib/voip/phone-pool/health';
+import { timingSafeStringEqual, isWebhookTimestampFresh } from '@/lib/api-utils';
+import { claimWebhook } from '@/lib/webhook-dedupe';
 
 const logger = workerLogger.child({ module: 'voip-webhooks' });
 
@@ -23,7 +25,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Webhook secret not configured' }, { status: 500 });
     }
     const vapiSecret = req.headers.get('x-vapi-secret');
-    if (vapiSecret !== webhookSecret) {
+    if (!timingSafeStringEqual(vapiSecret, webhookSecret)) {
       logger.warn('Webhook request with invalid or missing secret');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -54,6 +56,37 @@ export async function POST(req: NextRequest) {
 
     // Handle both top-level event.type and event.message.type (for end-of-call-report)
     const eventType = event.type || event.message?.type;
+
+    // Replay protection: reject events whose timestamp is outside a ±5min
+    // window. Vapi events carry `timestamp` (Unix ms) at the top level or on
+    // `message`. If the timestamp is absent we skip the check — we still get
+    // defense-in-depth from the dedupe below and the signature above.
+    const tsMs =
+      typeof event.timestamp === 'number'
+        ? event.timestamp
+        : typeof event.message?.timestamp === 'number'
+        ? event.message.timestamp
+        : null;
+    if (tsMs !== null && !isWebhookTimestampFresh(Math.floor(tsMs / 1000))) {
+      logger.warn({ tsMs, eventType, callId }, 'Vapi webhook rejected: stale timestamp');
+      return NextResponse.json({ error: 'Stale webhook' }, { status: 401 });
+    }
+
+    // Deduplicate. Transcript events are intentionally not processed here
+    // (see the switch below), so we only need to dedupe terminal/state-change
+    // events. Use event.id when present; fall back to a composite key so two
+    // events of the same type on the same call can't both process if Vapi
+    // somehow omits an id.
+    const eventId = event.message?.id ?? event.id ?? null;
+    const dedupeKey = eventId
+      ? `${callId}:${eventId}`
+      : `${callId}:${eventType}:${tsMs ?? Date.now()}`;
+    const fresh = await claimWebhook('vapi', dedupeKey);
+    if (!fresh) {
+      logger.info({ dedupeKey, eventType, callId }, 'Vapi webhook dedupe hit, returning 200');
+      return NextResponse.json({ ok: true, deduped: true });
+    }
+
     console.log(`[VOIP Webhook] ${eventType} for call ${callId}`);
 
     switch (eventType) {
@@ -121,36 +154,9 @@ async function handleCallStarted(callId: string, vapiCallId: string | undefined,
     'Handling call started webhook'
   );
 
-  // Check if state already exists (initialized by worker before VAPI call)
-  const existingState = await getCallState(call.id);
-  if (existingState) {
-    logger.info(
-      { callId, currentNode: existingState.currentNode },
-      'Call state already initialized by worker, skipping re-initialization'
-    );
-    
-    // Update database status and ensure VAPI call ID is saved (handles race condition)
-    const updateData: any = {
-      status: 'ANSWERED',
-      answeredAt: new Date(),
-    };
-    
-    // Only update vapiCallId if we have it and DB doesn't
-    if (vapiCallId && !call.vapiCallId) {
-      updateData.vapiCallId = vapiCallId;
-      logger.info({ callId, vapiCallId }, 'Saved VAPI call ID from webhook (race condition handled)');
-    }
-    
-    await prisma.supplierCall.update({
-      where: { id: callId },
-      data: updateData,
-    });
-    return;
-  }
-
-  logger.info({ callId }, 'Initializing call state from webhook (fallback)');
-
-  // Extract parts information from quote request
+  // Build what the initial state would look like if we end up being the one
+  // to seed it. We do this before the race-check so both the fast path
+  // (state already exists) and the slow path (we claim it) share one shape.
   const parts = call.quoteRequest?.items.map(item => ({
     partNumber: item.partNumber,
     description: item.description || '',
@@ -158,13 +164,10 @@ async function handleCallStarted(callId: string, vapiCallId: string | undefined,
     budgetMax: undefined,
     source: item.source as 'CATALOG' | 'WEB_SEARCH' | 'MANUAL',
   })) || [];
-
-  // Extract custom context from conversationLog if available
   const conversationLog = call.conversationLog as any;
   const customContext = conversationLog?.context?.customContext;
   const customInstructions = conversationLog?.context?.customInstructions;
 
-  // Initialize LangGraph state
   const initialState = initializeCallState({
     callId: call.id,
     quoteRequestId: call.quoteRequestId || '',
@@ -177,13 +180,36 @@ async function handleCallStarted(callId: string, vapiCallId: string | undefined,
     customContext: customContext,
     customInstructions: customInstructions,
   });
-
-  // Seed the first message into state so greetingNode knows it was already said
   const firstMessage = `Hi, good morning! Could I speak to someone in your parts department?`;
   const stateWithGreeting = addMessage(initialState, 'ai', firstMessage);
 
-  // Save initial state to Redis
-  await saveCallState(call.id, stateWithGreeting);
+  // Atomic init: the worker that kicked off the call and this webhook can
+  // both reach this path simultaneously. `initCallStateIfAbsent` uses SET NX
+  // so only one side writes; the loser loads the winner's state and moves on.
+  const claimed = await initCallStateIfAbsent(call.id, stateWithGreeting);
+  if (!claimed) {
+    const existingState = await getCallState(call.id);
+    logger.info(
+      { callId, currentNode: existingState?.currentNode },
+      'Call state already initialized (race won by another writer)'
+    );
+
+    const updateData: any = {
+      status: 'ANSWERED',
+      answeredAt: new Date(),
+    };
+    if (vapiCallId && !call.vapiCallId) {
+      updateData.vapiCallId = vapiCallId;
+      logger.info({ callId, vapiCallId }, 'Saved VAPI call ID from webhook (race condition handled)');
+    }
+    await prisma.supplierCall.update({
+      where: { id: callId },
+      data: updateData,
+    });
+    return;
+  }
+
+  logger.info({ callId }, 'Initialized call state from webhook (this writer won the race)');
 
   logger.info(
     { 

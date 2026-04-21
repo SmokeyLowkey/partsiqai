@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { maintenancePdfQueue } from '@/lib/queue/queues';
+import { withHardening } from '@/lib/api/with-hardening';
 
 // GET /api/vehicles/[id]/maintenance-schedule - Get maintenance schedule for a vehicle
 export async function GET(
@@ -70,10 +71,13 @@ export async function GET(
 }
 
 // POST /api/vehicles/[id]/maintenance-schedule - Trigger PDF parsing (manual re-parse)
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// Re-parse enqueues an LLM-heavy worker — cap tight so a double-click loop
+// doesn't burn OpenRouter credits.
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 10, windowSeconds: 3600, prefix: 'vehicle-maintenance-reparse', keyBy: 'user' },
+  },
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
 
@@ -172,4 +176,5 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+  }
+);

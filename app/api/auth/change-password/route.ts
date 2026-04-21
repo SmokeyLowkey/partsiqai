@@ -2,9 +2,16 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { withHardening } from "@/lib/api/with-hardening";
+import { auditAdminAction } from "@/lib/audit-admin";
 
-// POST /api/auth/change-password - Change temporary password
-export async function POST(request: Request) {
+// POST /api/auth/change-password - Change temporary password.
+// Rate limit prevents brute-force of `currentPassword`.
+export const POST = withHardening(
+  {
+    rateLimit: { limit: 10, windowSeconds: 900, prefix: "auth-change-password", keyBy: "user" },
+  },
+  async (request: Request) => {
   try {
     const session = await getServerSession();
 
@@ -73,6 +80,14 @@ export async function POST(request: Request) {
       },
     });
 
+    await auditAdminAction({
+      req: request,
+      session: { user: { id: user.id, organizationId: user.organizationId } },
+      eventType: "PASSWORD_CHANGE",
+      description: `${user.email} changed their password`,
+      metadata: { wasMustChangePassword: user.mustChangePassword },
+    });
+
     return NextResponse.json({
       success: true,
       message: "Password changed successfully",
@@ -84,4 +99,5 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
-}
+  }
+);

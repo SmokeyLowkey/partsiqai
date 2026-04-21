@@ -3,6 +3,8 @@ import { getServerSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { CredentialsManager, SYSTEM_ORG_ID } from "@/lib/services/credentials/credentials-manager";
 import { IntegrationType } from "@prisma/client";
+import { withHardening } from "@/lib/api/with-hardening";
+import { auditAdminAction } from "@/lib/audit-admin";
 
 const credentialsManager = new CredentialsManager();
 
@@ -51,15 +53,16 @@ export async function GET() {
 /**
  * POST /api/admin/platform-credentials - Save platform credentials (master admin only)
  */
-export async function POST(request: Request) {
+export const POST = withHardening(
+  {
+    roles: ["MASTER_ADMIN"],
+    rateLimit: { limit: 20, windowSeconds: 60, prefix: "admin-platform-creds-write", keyBy: "user" },
+  },
+  async (request: Request) => {
   try {
     const session = await getServerSession();
-    
-    if (!session?.user || session.user.role !== "MASTER_ADMIN") {
-      return NextResponse.json(
-        { error: "Unauthorized - Master Admin access required" },
-        { status: 403 }
-      );
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = await request.json();
@@ -94,6 +97,15 @@ export async function POST(request: Request) {
       {}
     );
 
+    await auditAdminAction({
+      req: request,
+      session: { user: { id: session.user.id, organizationId: session.user.organizationId } },
+      eventType: "PLATFORM_CREDENTIAL_CHANGED",
+      description: `${session.user.email} saved platform ${type} credentials`,
+      targetOrganizationId: SYSTEM_ORG_ID,
+      metadata: { action: "save", type },
+    });
+
     return NextResponse.json({
       success: true,
       message: `Platform ${type} credentials saved successfully`,
@@ -105,20 +117,22 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
-}
+  }
+);
 
 /**
  * DELETE /api/admin/platform-credentials - Delete platform credentials
  */
-export async function DELETE(request: Request) {
+export const DELETE = withHardening(
+  {
+    roles: ["MASTER_ADMIN"],
+    rateLimit: { limit: 10, windowSeconds: 60, prefix: "admin-platform-creds-delete", keyBy: "user" },
+  },
+  async (request: Request) => {
   try {
     const session = await getServerSession();
-    
-    if (!session?.user || session.user.role !== "MASTER_ADMIN") {
-      return NextResponse.json(
-        { error: "Unauthorized - Master Admin access required" },
-        { status: 403 }
-      );
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -133,6 +147,15 @@ export async function DELETE(request: Request) {
 
     await credentialsManager.deleteCredentials(SYSTEM_ORG_ID, type as IntegrationType);
 
+    await auditAdminAction({
+      req: request,
+      session: { user: { id: session.user.id, organizationId: session.user.organizationId } },
+      eventType: "PLATFORM_CREDENTIAL_CHANGED",
+      description: `${session.user.email} deleted platform ${type} credentials`,
+      targetOrganizationId: SYSTEM_ORG_ID,
+      metadata: { action: "delete", type },
+    });
+
     return NextResponse.json({
       success: true,
       message: `Platform ${type} credentials deleted successfully`,
@@ -144,7 +167,8 @@ export async function DELETE(request: Request) {
       { status: 500 }
     );
   }
-}
+  }
+);
 
 /**
  * Ensure SYSTEM organization exists for platform credentials

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { sendEmail, getBaseUrl } from "@/lib/email/resend"
 import { escapeHtml } from "@/lib/sanitize"
+import { withHardening } from "@/lib/api/with-hardening"
 
 /**
  * General contact form submissions from /contact.
@@ -25,7 +26,14 @@ const SUBJECT_LABELS: Record<string, string> = {
   other: "General Inquiry",
 }
 
-export async function POST(request: Request) {
+// Public contact form — IP rate limit to prevent spam, origin check
+// catches cross-site form submissions. No session required.
+export const POST = withHardening(
+  {
+    requireSession: false,
+    rateLimit: { limit: 5, windowSeconds: 900, prefix: "contact-form", keyBy: "ip" },
+  },
+  async (request: Request) => {
   let body: unknown
   try {
     body = await request.json()
@@ -140,4 +148,5 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ ok: true })
-}
+  }
+);

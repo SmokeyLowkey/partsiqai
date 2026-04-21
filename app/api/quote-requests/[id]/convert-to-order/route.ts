@@ -1,28 +1,24 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession, canConvertToOrder } from '@/lib/auth';
+import { NextResponse } from 'next/server';
+import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { OpenRouterClient } from '@/lib/services/llm/openrouter-client';
 import { generateOrderNumber } from '@/lib/utils/order-number';
 import { getEmailClientForUser } from '@/lib/services/email/email-client-factory';
+import { withHardening } from '@/lib/api/with-hardening';
 
 // POST /api/quote-requests/[id]/convert-to-order - Generate email preview for order conversion
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// (The actual order creation is /confirm-order, which has idempotency-key protection.)
+export const POST = withHardening(
+  {
+    roles: ['MANAGER', 'ADMIN', 'MASTER_ADMIN'],
+    rateLimit: { limit: 20, windowSeconds: 60, prefix: 'quote-convert-preview', keyBy: 'userOrg' },
+  },
+  async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
   try {
     const session = await getServerSession();
 
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    // Check if user has permission to convert to order
-    if (!canConvertToOrder(session.user.role)) {
-      return NextResponse.json(
-        { error: 'You do not have permission to convert quotes to orders. Please request approval from a manager.' },
-        { status: 403 }
-      );
     }
 
     const { id } = await params;
@@ -430,4 +426,5 @@ Output your response as JSON with the following structure:
       { status: 500 }
     );
   }
-}
+  }
+);

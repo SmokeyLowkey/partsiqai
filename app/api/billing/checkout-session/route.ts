@@ -1,20 +1,20 @@
 import { NextResponse } from "next/server"
-import { getServerSession, isAdminRole } from "@/lib/auth"
+import { getServerSession } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { stripe, getPriceIdForTier } from "@/lib/stripe"
+import { withHardening } from "@/lib/api/with-hardening"
+import { auditAdminAction } from "@/lib/audit-admin"
 
 // POST /api/billing/checkout-session - Create Stripe Checkout session
-export async function POST(request: Request) {
+export const POST = withHardening(
+  {
+    roles: ["ADMIN", "MASTER_ADMIN"],
+    rateLimit: { limit: 20, windowSeconds: 60, prefix: "billing-checkout", keyBy: "user" },
+  },
+  async (request: Request) => {
   try {
     const session = await getServerSession()
-    const currentUser = session?.user
-
-    if (!currentUser || !isAdminRole(currentUser.role)) {
-      return NextResponse.json(
-        { error: "Unauthorized - Admin access required" },
-        { status: 403 }
-      )
-    }
+    const currentUser = session!.user
 
     const body = await request.json()
     const { tier, successUrl, cancelUrl } = body
@@ -120,6 +120,18 @@ export async function POST(request: Request) {
       },
     })
 
+    await auditAdminAction({
+      req: request,
+      session: { user: { id: currentUser.id, organizationId: currentUser.organizationId } },
+      eventType: "BILLING_ACTION",
+      description: `${currentUser.email} created Stripe checkout session for tier=${tier}`,
+      metadata: {
+        action: "checkout_session_created",
+        tier,
+        stripeSessionId: checkoutSession.id,
+      },
+    })
+
     return NextResponse.json({
       sessionId: checkoutSession.id,
       url: checkoutSession.url,
@@ -131,4 +143,5 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
-}
+  }
+);

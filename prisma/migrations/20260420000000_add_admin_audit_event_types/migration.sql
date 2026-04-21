@@ -1,0 +1,22 @@
+-- Tier 1.2 of the hardening plan: extend SecurityEventType so createAuditLog
+-- can write a security-audit trail for admin mutations (H1 of the audit).
+--
+-- Each ALTER TYPE ... ADD VALUE is additive and non-destructive. Postgres
+-- requires one statement per value and cannot be run inside a transaction,
+-- so this file uses no explicit BEGIN/COMMIT.
+
+ALTER TYPE "SecurityEventType" ADD VALUE IF NOT EXISTS 'USER_CREATED';
+ALTER TYPE "SecurityEventType" ADD VALUE IF NOT EXISTS 'USER_UPDATED';
+ALTER TYPE "SecurityEventType" ADD VALUE IF NOT EXISTS 'USER_DEACTIVATED';
+ALTER TYPE "SecurityEventType" ADD VALUE IF NOT EXISTS 'USER_REACTIVATED';
+ALTER TYPE "SecurityEventType" ADD VALUE IF NOT EXISTS 'USER_EMAIL_INTEGRATION_CONFIGURED';
+ALTER TYPE "SecurityEventType" ADD VALUE IF NOT EXISTS 'USER_EMAIL_INTEGRATION_REMOVED';
+ALTER TYPE "SecurityEventType" ADD VALUE IF NOT EXISTS 'ORGANIZATION_SETTINGS_CHANGED';
+ALTER TYPE "SecurityEventType" ADD VALUE IF NOT EXISTS 'TENANT_MANAGED';
+ALTER TYPE "SecurityEventType" ADD VALUE IF NOT EXISTS 'PLATFORM_CREDENTIAL_CHANGED';
+ALTER TYPE "SecurityEventType" ADD VALUE IF NOT EXISTS 'INGESTION_TRIGGERED';
+ALTER TYPE "SecurityEventType" ADD VALUE IF NOT EXISTS 'MAINTENANCE_SCHEDULE_REVIEWED';
+ALTER TYPE "SecurityEventType" ADD VALUE IF NOT EXISTS 'BILLING_ACTION';
+ALTER TYPE "SecurityEventType" ADD VALUE IF NOT EXISTS 'PHONE_POOL_ACTION';
+ALTER TYPE "SecurityEventType" ADD VALUE IF NOT EXISTS 'ADMIN_EMAIL_SENT';
+ALTER TYPE "SecurityEventType" ADD VALUE IF NOT EXISTS 'LOCATION_MANAGED';

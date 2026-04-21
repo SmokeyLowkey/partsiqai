@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { emailMonitorQueue } from '@/lib/queue/queues';
 import { cronLogger } from '@/lib/logger';
+import { verifyCronAuth } from '@/lib/api-utils';
 
 /**
  * Cron Job: Email Monitor
@@ -17,11 +18,8 @@ import { cronLogger } from '@/lib/logger';
  */
 export async function GET(req: NextRequest) {
   try {
-    // Verify cron secret for security
-    const authHeader = req.headers.get('authorization');
-    const cronSecret = process.env.CRON_SECRET;
-
-    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    // Verify cron secret for security (timing-safe)
+    if (!verifyCronAuth(req.headers.get('authorization'))) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
