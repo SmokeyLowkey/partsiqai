@@ -7,12 +7,19 @@ import { z } from 'zod';
 import { parse as csvParseStream } from 'csv-parse';
 // stream-json has no type exports for the composition helpers we use; the
 // surface is small so we type the pieces ad hoc.
+//
+// NOTE on imports: stream-json v2 uses a wildcard exports map
+// (`"./*": "./src/*"`), which means Node's CJS resolver does NOT
+// auto-append `.js`. Subpath imports must include the extension.
+// Also note the v2 rename to kebab-case lowercase: `filters/pick.js`,
+// `streamers/stream-array.js` (not `Pick`, `StreamArray`). The wrong form
+// builds fine under tsc but throws MODULE_NOT_FOUND at runtime in Docker.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { parser: jsonParser } = require('stream-json');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { pick } = require('stream-json/filters/Pick');
+const { pick } = require('stream-json/filters/pick.js');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { streamArray } = require('stream-json/streamers/StreamArray');
+const { streamArray } = require('stream-json/streamers/stream-array.js');
 
 import { createWorkerConnection } from '@/lib/queue/connection';
 import {
