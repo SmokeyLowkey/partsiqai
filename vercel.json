@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/phone-pool-health",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/freeze-expired-trials",
+      "schedule": "0 3 * * *"
     }
   ]
 }

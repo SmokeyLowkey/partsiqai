@@ -37,17 +37,37 @@ export const TIER_LIMITS = {
 export type TierKey = keyof typeof TIER_LIMITS
 
 /**
- * Resolve effective subscription status. If TRIAL and trialEndsAt is in the past,
- * treat as CANCELLED (expired).
+ * Resolve effective subscription status. Two ways an org can be EXPIRED:
+ *   1. DB already stores `EXPIRED` (set by the Tier 5 data-freeze cron after
+ *      trial + 3-day grace). Data has been wiped.
+ *   2. DB stores `TRIAL` but `trialEndsAt` is in the past (expired but not
+ *      yet wiped — we're inside the 3-day grace window).
+ * Both collapse to `'EXPIRED'` here so downstream gates can treat them the
+ * same. Callers that need to distinguish "wiped" from "grace" should check
+ * `organization.dataFrozenAt` directly.
  */
 export function resolveSubscriptionStatus(
   status: string,
   trialEndsAt: Date | null
 ): string {
+  if (status === 'EXPIRED') return 'EXPIRED'
   if (status === 'TRIAL' && trialEndsAt && new Date() > trialEndsAt) {
     return 'EXPIRED'
   }
   return status
+}
+
+/**
+ * Features that cost real money (external API calls, Pinecone reads,
+ * LLM turns). Gated for EXPIRED orgs even if their data hasn't been wiped
+ * yet — prevents a lapsed trial from continuing to burn Pinecone / OpenRouter
+ * during the 3-day grace window.
+ */
+export function canUseExpensiveFeatures(
+  status: string,
+  trialEndsAt: Date | null,
+): boolean {
+  return resolveSubscriptionStatus(status, trialEndsAt) !== 'EXPIRED'
 }
 
 /**

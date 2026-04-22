@@ -75,7 +75,7 @@ export class Neo4jSearchAgent {
 
   async graphSearch(
     query: string,
-    _organizationId: string,
+    organizationId: string,
     vehicleContext?: VehicleContext
   ): Promise<PartResult[]> {
     const session = this.driver.session({ database: this.database });
@@ -106,9 +106,13 @@ export class Neo4jSearchAgent {
       // Build a cleaned query from keywords (for phrase-level matching in Cypher)
       const cleanedQuery = searchTerms.join(' ');
 
-      // Build Cypher query
+      // Build Cypher query. Every query starts from `(org:Organization {id: $organizationId})`
+      // and traverses via [:OWNS] into the tenant's subgraph. This is the single
+      // tenant-isolation checkpoint — forgetting to add it would leak another
+      // tenant's data into this org's search results.
       let cypher = '';
       const params: any = {
+        organizationId,
         query: cleanedQuery,
         searchTerms: searchTerms,
       };
@@ -120,9 +124,12 @@ export class Neo4jSearchAgent {
         //   TechnicalDomain -[:HAS_DOMAIN]-> Model
 
         cypher = `
-          // Find parts compatible with the specified manufacturer/model
-          // Use direction-agnostic match for CONTAINS_PART to handle both directions
-          MATCH (p:Part)-[:CONTAINS_PART]-(domain:TechnicalDomain)-[:HAS_DOMAIN]->(model:Model)
+          // Tenant-scoped: start from the org hub. Because we only create
+          // [:OWNS] edges to nodes we ingest for this org, and only create
+          // intra-org relationships (CONTAINS_PART, HAS_DOMAIN, MANUFACTURES,
+          // etc.), traversals from p stay within this tenants subgraph.
+          MATCH (org:Organization {id: $organizationId})
+          MATCH (org)-[:OWNS]->(p:Part)-[:CONTAINS_PART]-(domain:TechnicalDomain)-[:HAS_DOMAIN]->(model:Model)
           MATCH (model)<-[:MANUFACTURES]-(mfg:Manufacturer)
           WHERE (toLower(mfg.name) CONTAINS toLower($manufacturer) OR toLower(mfg.name) = toLower($manufacturer))
             AND (toLower(model.name) CONTAINS toLower($modelName) OR toLower(model.name) = toLower($modelName))
@@ -140,7 +147,8 @@ export class Neo4jSearchAgent {
           OPTIONAL MATCH (p)-[:BELONGS_TO_CATEGORY]->(cat:Category)
           OPTIONAL MATCH (p)-[:VALID_FOR_RANGE]->(snr:SerialNumberRange)
 
-          // Find related parts
+          // Find related parts (already org-scoped: p belongs to this org
+          // and REQUIRES_PART is only created intra-org by the ingester).
           OPTIONAL MATCH (p)-[rel:REQUIRES_PART|CONTAINS_PART]-(related:Part)
 
           // Aggregate results
@@ -194,10 +202,11 @@ export class Neo4jSearchAgent {
           params.namespace = mapping.neo4jNamespace.trim();
         }
       } else {
-        // Basic query without vehicle filters
+        // Basic query without vehicle filters — still tenant-scoped via org hub.
         cypher = `
-          // Search for parts matching the query
-          MATCH (p:Part)
+          // Search for parts matching the query within this tenant's subgraph.
+          MATCH (org:Organization {id: $organizationId})
+          MATCH (org)-[:OWNS]->(p:Part)
           WHERE (
             toLower(p.part_number) CONTAINS $query
             OR toLower(p.part_title) CONTAINS $query
@@ -280,7 +289,12 @@ export class Neo4jSearchAgent {
         log.info('Fallback 1: Trying reverse relationship directions');
         try {
           const reverseCypher = `
-            MATCH (domain:TechnicalDomain)-[:CONTAINS_PART]->(p:Part)
+            // Tenant-scoped reverse-direction fallback. Anchor the domain
+            // under this org's hub; the chain to part via CONTAINS_PART /
+            // HAS_DOMAIN / MANUFACTURES stays within this org because we
+            // never create cross-tenant edges.
+            MATCH (org:Organization {id: $organizationId})
+            MATCH (org)-[:OWNS]->(domain:TechnicalDomain)-[:CONTAINS_PART]->(p:Part)
             MATCH (domain)-[:HAS_DOMAIN]->(model:Model)
             MATCH (model)<-[:MANUFACTURES]-(mfg:Manufacturer)
             WHERE (toLower(mfg.name) CONTAINS toLower($manufacturer) OR toLower(mfg.name) = toLower($manufacturer))
@@ -337,7 +351,8 @@ export class Neo4jSearchAgent {
           log.info('Fallback 2: Namespace + keyword search');
           try {
             const namespaceCypher = `
-              MATCH (p:Part)
+              MATCH (org:Organization {id: $organizationId})
+              MATCH (org)-[:OWNS]->(p:Part)
               WHERE p.namespace = $namespace
                 AND ALL(term IN $searchTerms WHERE toLower(p.part_title) CONTAINS term)
 
@@ -389,7 +404,8 @@ export class Neo4jSearchAgent {
 
             // Fallback 2b: Namespace + ANY keyword (less strict)
             const namespaceAnyCypher = `
-              MATCH (p:Part)
+              MATCH (org:Organization {id: $organizationId})
+              MATCH (org)-[:OWNS]->(p:Part)
               WHERE p.namespace = $namespace
                 AND ANY(term IN $searchTerms WHERE toLower(p.part_title) CONTAINS term)
 
@@ -441,7 +457,10 @@ export class Neo4jSearchAgent {
         log.info('Fallback 3: Broad keyword search (last resort)');
         try {
           const broadCypher = `
-            MATCH (p:Part)
+            // Still tenant-scoped even in the "last resort" fallback — this
+            // is the safety net we absolutely cannot let leak across tenants.
+            MATCH (org:Organization {id: $organizationId})
+            MATCH (org)-[:OWNS]->(p:Part)
             WHERE ALL(term IN $searchTerms WHERE toLower(p.part_title) CONTAINS term)
 
             OPTIONAL MATCH (p)-[:CONTAINS_PART]->(domain:TechnicalDomain)-[:HAS_DOMAIN]->(model:Model)
@@ -560,3 +579,75 @@ export class Neo4jSearchAgent {
     await this.driver.close();
   }
 }
+
+/**
+ * Wipe all Neo4j data owned by a tenant. Used by the trial data-freeze cron
+ * and by the admin tenant hard-delete path.
+ *
+ * Implementation note: we detach-delete every node reachable from the
+ * organization hub via [:OWNS], then the hub itself. Because the ingester
+ * only creates intra-org relationships, this is guaranteed to leave other
+ * tenants' subgraphs untouched.
+ *
+ * Uses CALL ... IN TRANSACTIONS so large subgraphs don't blow the tx size.
+ */
+export async function deleteNeo4jByOrg(organizationId: string): Promise<{ nodesDeleted: number }> {
+  const credentials = await credentialsManager.getCredentialsWithFallback<{
+    uri: string;
+    username: string;
+    password: string;
+    database?: string;
+  }>(organizationId, 'NEO4J');
+
+  if (!credentials) {
+    // No Neo4j configured for this org → nothing to delete.
+    return { nodesDeleted: 0 };
+  }
+
+  const driver = neo4j.driver(credentials.uri, neo4j.auth.basic(credentials.username, credentials.password));
+  const database = credentials.database || 'neo4j';
+  const session = driver.session({ database });
+
+  try {
+    // Count the blast radius first for logging.
+    const countResult = await session.run(
+      `MATCH (org:Organization {id: $orgId})-[:OWNS]->(n) RETURN count(n) AS total`,
+      { orgId: organizationId },
+    );
+    const total = countResult.records[0]?.get('total')?.toNumber() ?? 0;
+
+    if (total === 0) {
+      // Hub may exist on its own (from a zero-ingestion trial). Remove it too.
+      await session.run(
+        `MATCH (org:Organization {id: $orgId}) DETACH DELETE org`,
+        { orgId: organizationId },
+      );
+      return { nodesDeleted: 0 };
+    }
+
+    // Detach-delete every owned node in batches. Neo4j 5+ syntax.
+    await session.run(
+      `
+      MATCH (org:Organization {id: $orgId})-[:OWNS]->(n)
+      CALL {
+        WITH n
+        DETACH DELETE n
+      } IN TRANSACTIONS OF 5000 ROWS
+      `,
+      { orgId: organizationId },
+    );
+
+    // Remove the hub itself.
+    await session.run(
+      `MATCH (org:Organization {id: $orgId}) DETACH DELETE org`,
+      { orgId: organizationId },
+    );
+
+    return { nodesDeleted: total };
+  } finally {
+    await session.close();
+    await driver.close();
+  }
+}
+
+

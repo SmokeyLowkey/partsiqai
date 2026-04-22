@@ -2,7 +2,9 @@ import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Readable } from 'stream';
@@ -294,6 +296,54 @@ export async function uploadChunkToS3(
  */
 export async function deleteS3Object(key: string): Promise<void> {
   await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: key }));
+}
+
+/**
+ * Delete every object under a given S3 prefix. Used by the trial data-freeze
+ * cron to wipe an org's ingestion uploads + chunked blobs in one sweep.
+ *
+ * S3's `DeleteObjects` accepts up to 1000 keys per call; we page through
+ * `ListObjectsV2` (also 1000 keys per page) and issue one delete per page.
+ * Returns the total number of objects deleted for logging.
+ *
+ * Safety: this is a recursive-by-prefix delete. The caller MUST pass a
+ * tenant-scoped prefix (e.g. `${orgId}/ingestion/`). Never pass `""`.
+ */
+export async function deleteS3ByPrefix(prefix: string): Promise<number> {
+  if (!prefix || prefix === '/' || prefix.trim() === '') {
+    throw new Error('deleteS3ByPrefix requires a non-empty prefix — refusing to wipe the bucket');
+  }
+
+  let deleted = 0;
+  let continuationToken: string | undefined;
+
+  do {
+    const list = await s3Client.send(
+      new ListObjectsV2Command({
+        Bucket: BUCKET_NAME,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      }),
+    );
+
+    const keys = (list.Contents ?? [])
+      .map((o) => o.Key)
+      .filter((k): k is string => !!k);
+
+    if (keys.length > 0) {
+      await s3Client.send(
+        new DeleteObjectsCommand({
+          Bucket: BUCKET_NAME,
+          Delete: { Objects: keys.map((Key) => ({ Key })), Quiet: true },
+        }),
+      );
+      deleted += keys.length;
+    }
+
+    continuationToken = list.IsTruncated ? list.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  return deleted;
 }
 
 /**

@@ -905,19 +905,51 @@ export function getTrialLastDayEmailHtml(name: string, companyName: string): str
   `);
 }
 
-// Day 15: Post-expiry win-back
+// Day 15: Expired + 3-day-until-wipe warning. Replaces the old "data is safe"
+// email because, under the Tier 5 data-freeze cron, the parts catalog +
+// Pinecone index will be deleted on day 17 if the user hasn't subscribed.
+// Keeps a strong CTA and an explicit deadline.
 export function getTrialExpiredEmailHtml(name: string, companyName: string): string {
   const baseUrl = getBaseUrl();
-  return trialEmailShell("Your trial has expired", `
-    <div class="header"><h1>Your trial has expired</h1></div>
+  return trialEmailShell("Your trial has expired — parts data will be deleted in 3 days", `
+    <div style="background: #dc2626; padding: 30px; text-align: center;"><h1 style="color: white; margin: 0; font-size: 24px;">Trial expired — 3 days until data deletion</h1></div>
     <div class="content">
       <p>Hi ${escapeHtml(name)},</p>
-      <p>The free trial for <strong>${escapeHtml(companyName)}</strong> has ended. Your team no longer has access to PartsIQ.</p>
-      <p><strong>But your data is safe.</strong> We'll keep everything &mdash; vehicles, suppliers, parts data, and settings &mdash; for 30 days. Subscribe anytime to pick up right where you left off.</p>
+      <p>The free trial for <strong>${escapeHtml(companyName)}</strong> has ended. Your access to PartsIQ is paused.</p>
+      <p><strong>Important:</strong> if you don't subscribe within the next 3 days, we'll automatically delete the parts catalog you uploaded, along with the AI search index we built for it. This is to free up resources for new trial users.</p>
+      <p>What happens to your data:</p>
+      <ul style="color: #475569;">
+        <li><strong>Deleted after 3 days:</strong> parts catalog, AI search index, uploaded files</li>
+        <li><strong>Kept:</strong> your account, vehicles, suppliers, quotes, and orders &mdash; so you can pick up your business history if you come back</li>
+      </ul>
       <div style="text-align: center; margin: 25px 0;">
-        <a href="${baseUrl}/admin/billing" class="button">Reactivate My Account</a>
+        <a href="${baseUrl}/admin/billing" class="button" style="background: #dc2626;">Subscribe now &mdash; keep my data</a>
       </div>
-      <p style="font-size: 14px; color: #64748b;">If you have any feedback about why PartsIQ wasn't the right fit, we'd love to hear it. Just reply to this email.</p>
+      <p style="font-size: 14px; color: #64748b;">If you have feedback about why PartsIQ wasn't the right fit, just reply to this email &mdash; we read every response.</p>
+    </div>
+  `);
+}
+
+// Day 17: post-wipe notification. Sent by the freeze cron alongside (or
+// shortly after) the TRIAL_DATA_FROZEN audit entry. Acknowledges the wipe
+// and makes it easy to come back: re-subscribe and re-upload.
+export function getTrialDataDeletedEmailHtml(name: string, companyName: string): string {
+  const baseUrl = getBaseUrl();
+  return trialEmailShell("We've cleared your trial parts data", `
+    <div class="header"><h1>Your trial data has been cleared</h1></div>
+    <div class="content">
+      <p>Hi ${escapeHtml(name)},</p>
+      <p>As noted in our previous email, we've now cleared the parts catalog and AI search index from your trial of <strong>${escapeHtml(companyName)}</strong>.</p>
+      <p>Your account is still here. If you come back:</p>
+      <ul style="color: #475569;">
+        <li>Subscribe to any paid plan</li>
+        <li>Re-upload your parts catalog (we'll provision a fresh AI index automatically)</li>
+        <li>Your vehicles, suppliers, quotes, and orders are still where you left them</li>
+      </ul>
+      <div style="text-align: center; margin: 25px 0;">
+        <a href="${baseUrl}/admin/billing" class="button">Subscribe and restart</a>
+      </div>
+      <p style="font-size: 14px; color: #64748b;">Hit reply if anything is unclear or you'd like help getting back up and running.</p>
     </div>
   `);
 }

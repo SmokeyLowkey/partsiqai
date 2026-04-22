@@ -27,6 +27,8 @@ export async function GET() {
             id: true,
             name: true,
             subscriptionTier: true,
+            subscriptionStatus: true,
+            dataFrozenAt: true,
           },
         },
         emailIntegration: {
@@ -48,16 +50,27 @@ export async function GET() {
       );
     }
 
-    // Banner surface for H16 (OAuth token revoked / expired). The worker
-    // layer flips `isActive=false` + `testStatus=FAILED` + a `Reauth required:`
-    // prefix on errorMessage when it detects `invalid_grant` or equivalent.
-    // Clients render a banner if `integrationAlerts` is non-empty.
-    const integrationAlerts: Array<{
-      kind: 'email_reauth';
-      providerType: string;
-      emailAddress: string | null;
-      message: string;
-    }> = [];
+    // Banner surface. Two alert kinds today:
+    //   - 'email_reauth' (Tier 3.3): OAuth token revoked/expired. Worker
+    //     flips isActive=false + a 'Reauth required:' prefix on errorMessage.
+    //   - 'data_frozen' (Tier 5): trial expired + 3-day grace elapsed. The
+    //     freeze cron wiped the Pinecone index + parts catalog and set
+    //     Organization.dataFrozenAt. User must re-subscribe to keep using
+    //     the product.
+    // Clients render a banner if integrationAlerts is non-empty.
+    const integrationAlerts: Array<
+      | {
+          kind: 'email_reauth';
+          providerType: string;
+          emailAddress: string | null;
+          message: string;
+        }
+      | {
+          kind: 'data_frozen';
+          frozenAt: string;
+          subscriptionStatus: string;
+        }
+    > = [];
     const ei = user.emailIntegration;
     if (
       ei &&
@@ -70,6 +83,13 @@ export async function GET() {
         providerType: ei.providerType,
         emailAddress: ei.emailAddress,
         message: ei.errorMessage.replace(/^Reauth required:\s*/, ''),
+      });
+    }
+    if (user.organization?.dataFrozenAt) {
+      integrationAlerts.push({
+        kind: 'data_frozen',
+        frozenAt: user.organization.dataFrozenAt.toISOString(),
+        subscriptionStatus: user.organization.subscriptionStatus,
       });
     }
 

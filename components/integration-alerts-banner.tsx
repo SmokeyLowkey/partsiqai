@@ -4,12 +4,18 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { AlertTriangle, X } from "lucide-react"
 
-type IntegrationAlert = {
-  kind: "email_reauth"
-  providerType: string
-  emailAddress: string | null
-  message: string
-}
+type IntegrationAlert =
+  | {
+      kind: "email_reauth"
+      providerType: string
+      emailAddress: string | null
+      message: string
+    }
+  | {
+      kind: "data_frozen"
+      frozenAt: string
+      subscriptionStatus: string
+    }
 
 /**
  * Dashboard banner for integration-level alerts returned by /api/auth/me.
@@ -66,19 +72,39 @@ export function IntegrationAlertsBanner() {
         <div key={alertKey(a)} className="flex items-start gap-3">
           <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" aria-hidden />
           <div className="flex-1 text-sm">
-            <p className="font-medium text-amber-900">
-              Email integration needs re-authorization
-            </p>
-            <p className="text-amber-800">
-              {providerLabel(a.providerType)} ({a.emailAddress ?? "account"}) is no longer connected.
-              Outgoing quote emails and inbox sync are paused until you reconnect.{" "}
-              <Link
-                href="/customer/settings"
-                className="font-medium underline underline-offset-2 hover:text-amber-900"
-              >
-                Reconnect now
-              </Link>
-            </p>
+            {a.kind === "email_reauth" ? (
+              <>
+                <p className="font-medium text-amber-900">
+                  Email integration needs re-authorization
+                </p>
+                <p className="text-amber-800">
+                  {providerLabel(a.providerType)} ({a.emailAddress ?? "account"}) is no longer connected.
+                  Outgoing quote emails and inbox sync are paused until you reconnect.{" "}
+                  <Link
+                    href="/customer/settings"
+                    className="font-medium underline underline-offset-2 hover:text-amber-900"
+                  >
+                    Reconnect now
+                  </Link>
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="font-medium text-amber-900">
+                  Your trial parts data has been cleared
+                </p>
+                <p className="text-amber-800">
+                  Your trial ended and the parts catalog + AI search index were deleted.
+                  Your account, vehicles, suppliers, and quotes are still here.{" "}
+                  <Link
+                    href="/admin/billing"
+                    className="font-medium underline underline-offset-2 hover:text-amber-900"
+                  >
+                    Subscribe to re-upload
+                  </Link>
+                </p>
+              </>
+            )}
           </div>
           <button
             type="button"
@@ -95,7 +121,10 @@ export function IntegrationAlertsBanner() {
 }
 
 function alertKey(a: IntegrationAlert): string {
-  return `${a.kind}:${a.providerType}:${a.emailAddress ?? "none"}`
+  if (a.kind === "email_reauth") {
+    return `${a.kind}:${a.providerType}:${a.emailAddress ?? "none"}`
+  }
+  return `${a.kind}:${a.frozenAt}`
 }
 
 function providerLabel(p: string): string {

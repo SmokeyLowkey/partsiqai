@@ -57,9 +57,13 @@ const REMINDER_SCHEDULE: ReminderConfig[] = [
     getHtml: (name, company) => getTrialLastDayEmailHtml(name, company),
   },
   {
+    // Day 15 is the last conversion nudge before the Tier 5 data-freeze cron
+    // wipes the parts catalog on day 17. Subject + body both make the
+    // 3-day deadline explicit so the email reads as a real warning, not a
+    // reassurance.
     daysSinceStart: 15,
     tag: 'TRIAL_DAY15',
-    subject: 'Your PartsIQ trial has expired — your data is safe',
+    subject: 'Your PartsIQ trial expired — parts data will be deleted in 3 days',
     getHtml: (name, company) => getTrialExpiredEmailHtml(name, company),
   },
 ];

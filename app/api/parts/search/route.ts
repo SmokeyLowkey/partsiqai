@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { partsSearchQueue } from '@/lib/queue/queues';
 import { PartsSearchJobSchema } from '@/lib/queue/types';
 import { withHardening } from '@/lib/api/with-hardening';
+import { canUseExpensiveFeatures } from '@/lib/subscription-limits';
 import { z } from 'zod';
 
 const SearchRequestSchema = z.object({
@@ -48,6 +49,25 @@ export const POST = withHardening(
     }
 
     const { query, conversationId, vehicleContext } = validationResult.data;
+
+    // Block expired-trial orgs from burning Pinecone + OpenRouter. Applies
+    // to both the grace window (data still present, user hasn't converted)
+    // and post-wipe state (vector index already deleted, search would
+    // return nothing anyway). 402 Payment Required lets the UI render a
+    // "subscribe to search again" prompt.
+    const org = await prisma.organization.findUnique({
+      where: { id: session.user.organizationId },
+      select: { subscriptionStatus: true, trialEndsAt: true },
+    });
+    if (org && !canUseExpensiveFeatures(org.subscriptionStatus, org.trialEndsAt)) {
+      return NextResponse.json(
+        {
+          error: 'Subscription required',
+          message: 'Your trial has ended. Subscribe to search parts again.',
+        },
+        { status: 402 },
+      );
+    }
 
     // Create job data
     const jobData = {

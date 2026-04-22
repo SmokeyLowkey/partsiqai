@@ -51,6 +51,11 @@ model Organization {
   subscriptionEndDate    DateTime?
   subscriptionStartDate  DateTime?
   trialEndsAt            DateTime?
+  // Set by freeze-expired-trials when ingestion data is wiped. Doubles as the
+  // cron's idempotency guard (candidate query filters `dataFrozenAt IS NULL`)
+  // and the signal that powers the "your data was deleted, please re-upload"
+  // banner. Cleared on re-subscribe.
+  dataFrozenAt           DateTime?
   activityLogs           ActivityLog[]
   apiKeys                ApiKey[]
   chatConversations      ChatConversation[]
@@ -1527,6 +1532,12 @@ enum SubscriptionStatus {
   SUSPENDED
   CANCELLED
   TRIAL
+  // Trial ended without conversion + 3-day grace elapsed. Ingestion data has
+  // been wiped (Pinecone/Neo4j/S3/Part). Set by freeze-expired-trials cron.
+  // Contact data (User, billingEmail, UserEmailIntegration) is preserved so
+  // win-back emails stay deliverable. Flipped back to ACTIVE by the Stripe
+  // webhook on re-subscribe.
+  EXPIRED
 }
 
 enum UserRole {
@@ -1742,6 +1753,9 @@ enum SecurityEventType {
   PHONE_POOL_ACTION
   ADMIN_EMAIL_SENT
   LOCATION_MANAGED
+  // Tier 5 — trial data-freeze cron writes this when it wipes ingestion data
+  // on an unconverted expired trial. Written as actorId="system".
+  TRIAL_DATA_FROZEN
 }
 
 enum FulfillmentMethod {

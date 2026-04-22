@@ -5,7 +5,7 @@ import { uploadIngestionFile } from '@/lib/services/storage/s3-client';
 import { ingestionPrepareQueue } from '@/lib/queue/queues';
 import type { IngestionPrepareJobData } from '@/lib/queue/types';
 import { IngestionBackend, UserRole } from '@prisma/client';
-import { getTierLimits } from '@/lib/subscription-limits';
+import { getTierLimits, canUseExpensiveFeatures } from '@/lib/subscription-limits';
 import { withHardening } from '@/lib/api/with-hardening';
 import { auditAdminAction } from '@/lib/audit-admin';
 
@@ -115,11 +115,26 @@ export const POST = withHardening(
     // Fetch org subscription info for tier-based limits
     const org = await prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { subscriptionStatus: true, subscriptionTier: true },
+      select: { subscriptionStatus: true, subscriptionTier: true, trialEndsAt: true },
     });
 
     if (!org) {
       return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+    }
+
+    // Block uploads from EXPIRED orgs (trial ended without conversion, or
+    // data was already wiped by the freeze cron). 402 Payment Required is
+    // the correct HTTP status here — distinguishes from 403 "not allowed"
+    // so the UI can render a "subscribe to re-upload" prompt vs a generic
+    // auth error. Applies even to MASTER_ADMIN targeting an EXPIRED org.
+    if (!canUseExpensiveFeatures(org.subscriptionStatus, org.trialEndsAt)) {
+      return NextResponse.json(
+        {
+          error: 'Subscription required',
+          message: 'This organization\'s trial has ended. Subscribe to re-upload a parts catalog.',
+        },
+        { status: 402 },
+      );
     }
 
     const tierLimits = getTierLimits(org.subscriptionTier, org.subscriptionStatus);

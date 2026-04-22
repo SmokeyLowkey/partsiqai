@@ -5,6 +5,7 @@ import { stripe, getTierForPriceId, mapStripeStatusToAppStatus } from "@/lib/str
 import { prisma } from "@/lib/prisma"
 import { addOverageToInvoice, markOveragePaid, markOverageFailed } from "@/lib/billing/overage-billing"
 import { claimWebhook } from "@/lib/webhook-dedupe"
+import { provisionIndexForOrg } from "@/lib/services/pinecone/index-provisioner"
 
 // Disable body parsing - we need raw body for webhook verification
 export const dynamic = "force-dynamic"
@@ -48,6 +49,14 @@ async function handleSubscriptionChange(subscription: any) {
     ? new Date(subscription.current_period_end * 1000)
     : null
 
+  // Tier 5: detect EXPIRED → ACTIVE/TRIALING transition. If the org's data
+  // was wiped by the freeze cron (dataFrozenAt set, pineconeHost cleared),
+  // the re-subscription needs a fresh Pinecone index before the user can
+  // re-upload. We clear dataFrozenAt here and re-provision async below.
+  const wasFrozen =
+    organization.subscriptionStatus === 'EXPIRED' &&
+    (appStatus === 'ACTIVE' || appStatus === 'TRIAL')
+
   await prisma.organization.update({
     where: { id: organization.id },
     data: {
@@ -64,6 +73,9 @@ async function handleSubscriptionChange(subscription: any) {
       maxUsers: limits.maxUsers,
       maxVehicles: limits.maxVehicles,
       maxAICalls: limits.maxAICalls,
+      // Clear the freeze marker when coming back from EXPIRED so the
+      // banner disappears and the API gate re-opens.
+      ...(wasFrozen && { dataFrozenAt: null }),
       // Reset AI calls on subscription change if tier changed
       ...(tier && tier !== organization.subscriptionTier && {
         aiCallsUsedThisMonth: 0,
@@ -71,6 +83,21 @@ async function handleSubscriptionChange(subscription: any) {
       }),
     },
   })
+
+  // Kick off a fresh Pinecone index provision when coming back from EXPIRED.
+  // Fire-and-forget — index creation can take 30-60s and the webhook must
+  // respond to Stripe inside 10s. provisionIndexForOrg is idempotent
+  // (checks pineconeHost before creating) so retries are safe. Errors are
+  // logged but don't fail the webhook; the admin can retry via an "index
+  // provisioning failed" admin action if needed.
+  if (wasFrozen) {
+    provisionIndexForOrg(organization.id, organization.slug).catch((err) => {
+      console.error(
+        `[stripe-webhook] Pinecone re-provision failed for ${organization.slug}:`,
+        err,
+      )
+    })
+  }
 
   // Log activity
   const eventType =
