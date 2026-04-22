@@ -18,6 +18,19 @@ function phaseField(backend: IngestionBackend): BackendPhaseField {
   }
 }
 
+type BackendCounterFields = {
+  success: 'postgresSuccessRecords' | 'pineconeSuccessRecords' | 'neo4jSuccessRecords';
+  failed:  'postgresFailedRecords'  | 'pineconeFailedRecords'  | 'neo4jFailedRecords';
+};
+
+function counterFields(backend: IngestionBackend): BackendCounterFields {
+  switch (backend) {
+    case 'POSTGRES': return { success: 'postgresSuccessRecords', failed: 'postgresFailedRecords' };
+    case 'PINECONE': return { success: 'pineconeSuccessRecords', failed: 'pineconeFailedRecords' };
+    case 'NEO4J':    return { success: 'neo4jSuccessRecords',    failed: 'neo4jFailedRecords' };
+  }
+}
+
 export interface BackendProcessorArgs {
   records: PartIngestionRecord[];
   organizationId: string;
@@ -142,16 +155,22 @@ export function makeBackendProcessor(opts: {
           lastError: null,
         },
       });
+      // Only bump the per-backend counters. The global successRecords /
+      // failedRecords pair is set once by the prepare worker and reflects
+      // the unique-valid vs Zod-invalid split from the file (not per-backend
+      // write outcomes). `processedRecords` intentionally stays as the sum
+      // across backends so the UI can still show "work happening" progress.
+      const fields = counterFields(opts.backend);
       await prisma.ingestionJob.update({
         where: { id: row.ingestionJobId },
         data: {
           processedRecords: { increment: result.success + result.failed },
-          successRecords: { increment: result.success },
-          failedRecords: { increment: result.failed },
+          [fields.success]: { increment: result.success },
+          [fields.failed]:  { increment: result.failed  },
         },
       });
       await recomputeJobStatus(row.ingestionJobId, opts.backend);
-      log.info({ outboxId, success: result.success, failed: result.failed }, 'Chunk OK');
+      log.info({ outboxId, backend: opts.backend, success: result.success, failed: result.failed }, 'Chunk OK');
     } catch (err: any) {
       log.error({ err, outboxId }, 'Chunk failed');
       await prisma.ingestionOutbox.update({

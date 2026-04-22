@@ -18,6 +18,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const orgId = searchParams.get('organizationId');
+    const vehicleId = searchParams.get('vehicleId');
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '20');
 
@@ -31,6 +32,14 @@ export async function GET(request: Request) {
     }
 
     if (status) where.status = status;
+
+    // vehicleId lives inside the IngestionJob.options JSON column (carried
+    // there at enqueue time by the upload handler). Prisma can filter on a
+    // JSON key path with `path: [...]`; same shape the upload handler uses
+    // when enforcing per-vehicle trial limits.
+    if (vehicleId) {
+      where.options = { path: ['vehicleId'], equals: vehicleId };
+    }
 
     const [jobs, total] = await Promise.all([
       prisma.ingestionJob.findMany({

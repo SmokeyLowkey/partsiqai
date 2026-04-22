@@ -103,6 +103,29 @@ interface Neo4jSchemaData {
   nodeLabels: string[];
 }
 
+// One row in the "Apply from ingestion" dropdown. We only need enough
+// to identify the run to the user (filename, when, status, chunk result
+// per backend) and the options payload that drives the pre-fill.
+interface VehicleIngestionSummary {
+  id: string;
+  fileName: string;
+  status: string;
+  createdAt: string;
+  totalRecords: number;
+  successRecords: number;
+  pineconeStatus: string;
+  neo4jStatus: string;
+  postgresStatus: string;
+  options: {
+    vehicleId?: string;
+    defaultManufacturer?: string;
+    defaultMachineModel?: string;
+    defaultNamespace?: string;
+    defaultTechnicalDomain?: string;
+    defaultSerialNumberRange?: string;
+  } | null;
+}
+
 const STATUS_CONFIG = {
   PENDING_ADMIN_REVIEW: {
     label: 'Pending Review',
@@ -149,6 +172,17 @@ export default function VehicleManagementPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [neo4jSchema, setNeo4jSchema] = useState<Neo4jSchemaData | null>(null);
   const [loadingSchema, setLoadingSchema] = useState(false);
+
+  // Past ingestions for the selected vehicle. Drives the "Apply from
+  // ingestion" dropdown: when the user picks one, we pre-fill the Pinecone /
+  // Neo4j / Postgres fields from that ingestion's options so the mapping
+  // matches what was actually indexed. This is the authoritative source —
+  // the Vehicle.make/model fields can drift, whereas an ingestion's
+  // `options.defaultX` values are what we actually wrote into Pinecone +
+  // Neo4j at ingest time.
+  const [vehicleIngestions, setVehicleIngestions] = useState<VehicleIngestionSummary[]>([]);
+  const [loadingIngestions, setLoadingIngestions] = useState(false);
+  const [selectedIngestionId, setSelectedIngestionId] = useState<string>('');
 
   // Add Vehicle dialog state
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -354,6 +388,9 @@ export default function VehicleManagementPage() {
     setError(null);
     setSuccess(null);
     setTestResults(null);
+    // Reset the "apply from ingestion" selector and re-fetch for this vehicle.
+    setSelectedIngestionId('');
+    loadVehicleIngestions(vehicle.id);
 
     if (vehicle.searchMapping) {
       setMapping(vehicle.searchMapping);
@@ -371,6 +408,76 @@ export default function VehicleManagementPage() {
         postgresModel: vehicle.model,
       });
     }
+  };
+
+  /**
+   * Load past ingestions for a vehicle. Powers the "Apply from ingestion"
+   * dropdown on the configuration panel. Only successful (COMPLETED or
+   * COMPLETED_WITH_ERRORS) runs are shown — an admin doesn't want to paste
+   * the config of a failed or pending ingestion into their live mapping.
+   */
+  const loadVehicleIngestions = async (vehicleDbId: string) => {
+    try {
+      setLoadingIngestions(true);
+      const res = await fetch(`/api/admin/ingestion?vehicleId=${vehicleDbId}&limit=50`);
+      if (!res.ok) throw new Error('Failed to fetch ingestions');
+      const data = await res.json();
+      const finished = (data.jobs as VehicleIngestionSummary[]).filter((j) =>
+        j.status === 'COMPLETED' || j.status === 'COMPLETED_WITH_ERRORS',
+      );
+      setVehicleIngestions(finished);
+    } catch {
+      // Non-blocking — the rest of the config page still works without this list.
+      setVehicleIngestions([]);
+    } finally {
+      setLoadingIngestions(false);
+    }
+  };
+
+  /**
+   * Copy the selected ingestion's options into the search-mapping form.
+   * Overwrites what the user had — this is an explicit "apply" action so
+   * the stomp is intentional. Only maps fields the ingestion actually
+   * carries a value for; empty fields are left untouched.
+   */
+  const applyIngestionToMapping = (ingestionId: string) => {
+    setSelectedIngestionId(ingestionId);
+    if (!ingestionId) return;
+    const ing = vehicleIngestions.find((j) => j.id === ingestionId);
+    if (!ing?.options) return;
+
+    const {
+      defaultManufacturer,
+      defaultMachineModel,
+      defaultNamespace,
+      defaultTechnicalDomain,
+      defaultSerialNumberRange,
+    } = ing.options;
+
+    setMapping((prev) => ({
+      ...prev,
+      // Pinecone — namespace is the single most important field; search
+      // queries filter vectors by it. Mismatched namespace = zero results.
+      ...(defaultNamespace && { pineconeNamespace: defaultNamespace }),
+      ...(defaultMachineModel && { pineconeMachineModel: defaultMachineModel }),
+      ...(defaultManufacturer && { pineconeManufacturer: defaultManufacturer }),
+      // Neo4j — same fields, plus the ingestion-specific ones.
+      ...(defaultMachineModel && { neo4jModelName: defaultMachineModel }),
+      ...(defaultManufacturer && { neo4jManufacturer: defaultManufacturer }),
+      ...(defaultNamespace && { neo4jNamespace: defaultNamespace }),
+      ...(defaultSerialNumberRange && { neo4jSerialRange: defaultSerialNumberRange }),
+      ...(defaultTechnicalDomain && {
+        neo4jTechnicalDomains: [defaultTechnicalDomain],
+      }),
+      // Postgres — only relevant when MASTER_ADMIN actually wrote to it.
+      ...(defaultManufacturer && { postgresMake: defaultManufacturer }),
+      ...(defaultMachineModel && { postgresModel: defaultMachineModel }),
+    }));
+
+    toast({
+      title: 'Applied ingestion',
+      description: `Filled mapping from ${ing.fileName}`,
+    });
   };
 
   const handleSaveMapping = async () => {
@@ -920,8 +1027,64 @@ export default function VehicleManagementPage() {
                   </Select>
                 </div>
 
-                {/* Empty state: no ingested data */}
-                {neo4jSchema && neo4jSchema.manufacturers?.length === 0 && !loadingSchema && (
+                {/* Apply from past ingestion. Rendered whenever we have at
+                    least one completed ingestion for this vehicle — it's the
+                    authoritative source of truth for namespace / manufacturer
+                    / model because those strings are what we actually wrote
+                    to Pinecone + Neo4j at ingest time. */}
+                {vehicleIngestions.length > 0 && (
+                  <div className="space-y-2 p-4 border rounded-lg bg-muted/30">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-medium">Apply from ingestion</p>
+                        <p className="text-xs text-muted-foreground">
+                          Pre-fill the mapping from an actual upload so it exactly matches what was indexed.
+                        </p>
+                      </div>
+                    </div>
+                    <Select value={selectedIngestionId} onValueChange={applyIngestionToMapping}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder={loadingIngestions ? 'Loading…' : `Select from ${vehicleIngestions.length} ingestion${vehicleIngestions.length === 1 ? '' : 's'}…`} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {vehicleIngestions.map((ing) => {
+                          const when = new Date(ing.createdAt).toLocaleDateString();
+                          const badge =
+                            ing.status === 'COMPLETED' ? '✓' :
+                            ing.status === 'COMPLETED_WITH_ERRORS' ? '!' : '·';
+                          const backends = [
+                            ing.pineconeStatus === 'COMPLETED' ? 'Pinecone' : null,
+                            ing.neo4jStatus === 'COMPLETED' ? 'Neo4j' : null,
+                            ing.postgresStatus === 'COMPLETED' ? 'Postgres' : null,
+                          ].filter(Boolean).join(' + ') || 'no backends';
+                          return (
+                            <SelectItem key={ing.id} value={ing.id}>
+                              <span className="font-mono text-xs mr-2">{badge}</span>
+                              <span className="mr-2">{ing.fileName}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {when} • {ing.successRecords.toLocaleString()} recs • {backends}
+                              </span>
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                    {selectedIngestionId && (
+                      <p className="text-xs text-muted-foreground">
+                        Fields below were filled from this ingestion. You can still edit them before saving.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Empty state: no ingested data. Only show when BOTH the
+                    global Neo4j schema is empty AND we have zero completed
+                    ingestions for this vehicle. Previously the banner fired
+                    whenever Neo4j was empty — misleading for org ADMIN
+                    uploads that skip Postgres or for datasets that don't
+                    include technicalDomain. */}
+                {vehicleIngestions.length === 0 && !loadingIngestions &&
+                 neo4jSchema && neo4jSchema.manufacturers?.length === 0 && !loadingSchema && (
                   <div className="flex items-start gap-3 p-4 border border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20 rounded-lg">
                     <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
                     <div className="space-y-1">

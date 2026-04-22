@@ -71,8 +71,19 @@ type IngestionJob = {
   completedAt: string | null;
   totalRecords: number;
   processedRecords: number;
+  // Prepare-phase outcome for the whole file:
+  //   successRecords = unique valid records that entered the outbox pipeline
+  //   failedRecords  = records rejected by Zod validation in prepare
+  // Per-backend ingestion success/failure lives in the *SuccessRecords /
+  // *FailedRecords columns below.
   successRecords: number;
   failedRecords: number;
+  postgresSuccessRecords?: number;
+  postgresFailedRecords?: number;
+  pineconeSuccessRecords?: number;
+  pineconeFailedRecords?: number;
+  neo4jSuccessRecords?: number;
+  neo4jFailedRecords?: number;
   totalChunks?: number;
   preparedChunks?: number;
   postgresStatus: string;
@@ -244,20 +255,160 @@ export default function DataIngestionPage() {
     return () => clearInterval(interval);
   }, [fetchJobs, jobs]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const ext = file.name.toLowerCase();
-      if (!ext.endsWith(".csv") && !ext.endsWith(".json")) {
-        toast({ title: "Invalid file type", description: "Only CSV and JSON files are supported", variant: "destructive" });
-        return;
+  /**
+   * Pull the model + serial-range out of common scraper filename patterns
+   * like `enriched_160GLC Excavator (PIN_ 1FF160GX_ _F055671-058866).csv`.
+   * Only returns strings that look reasonable; the user can overwrite.
+   */
+  const parseFilenameHints = (fileName: string): { machineModel?: string; serialNumberRange?: string } => {
+    let base = fileName.replace(/\.(csv|json)$/i, "");
+    // Common scraper prefixes
+    base = base.replace(/^(enriched|scraped|parts|catalog)[_-]/i, "");
+
+    // Serial range lives inside a (PIN_ ...) / (PIN: ...) / (S/N ...) block
+    const pinMatch = base.match(/\((?:PIN|S\/N|SN)[_:\s-]+([^)]+)\)/i);
+    const serialNumberRange = pinMatch ? pinMatch[1].trim().replace(/\s+/g, " ") : undefined;
+
+    // Everything before the PIN block (if any) is the model.
+    const modelPart = base.replace(/\s*\((?:PIN|S\/N|SN)[^)]*\)\s*/i, "").trim();
+    const machineModel = modelPart || undefined;
+
+    return { machineModel, serialNumberRange };
+  };
+
+  /**
+   * Read just enough of a JSON file to recover the top-level `metadata`
+   * object, so we can pre-fill form fields without slurping the whole file
+   * (which can be 100s of MB). Walks braces respecting string escapes.
+   */
+  const extractJsonMetadata = async (file: File): Promise<Record<string, unknown> | null> => {
+    try {
+      const slice = await file.slice(0, 64 * 1024).text();
+      const keyIdx = slice.search(/"metadata"\s*:\s*\{/);
+      if (keyIdx === -1) return null;
+      const braceStart = slice.indexOf("{", keyIdx + "\"metadata\"".length);
+      if (braceStart === -1) return null;
+      let depth = 1;
+      let i = braceStart + 1;
+      let inString = false;
+      let escaped = false;
+      while (i < slice.length && depth > 0) {
+        const ch = slice[i];
+        if (escaped) {
+          escaped = false;
+        } else if (ch === "\\") {
+          escaped = true;
+        } else if (ch === "\"") {
+          inString = !inString;
+        } else if (!inString) {
+          if (ch === "{") depth++;
+          else if (ch === "}") depth--;
+        }
+        i++;
       }
-      setSelectedFile(file);
+      if (depth !== 0) return null;
+      return JSON.parse(slice.slice(braceStart, i));
+    } catch {
+      return null;
     }
   };
 
+  const slugifyNamespace = (...parts: Array<string | undefined>): string => {
+    return parts
+      .filter(Boolean)
+      .join("-")
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const ext = file.name.toLowerCase();
+    if (!ext.endsWith(".csv") && !ext.endsWith(".json")) {
+      toast({ title: "Invalid file type", description: "Only CSV and JSON files are supported", variant: "destructive" });
+      return;
+    }
+
+    setSelectedFile(file);
+
+    // Auto-fill order: vehicle-sourced defaults already in state win; only
+    // backfill empty fields. File-derived hints lose to whatever the user
+    // or vehicle selection already chose.
+    const filenameHints = parseFilenameHints(file.name);
+    const metadataHints = ext.endsWith(".json") ? await extractJsonMetadata(file) : null;
+
+    setOptions((prev) => {
+      const next = { ...prev };
+
+      const mergeField = (key: keyof typeof next, candidate?: unknown) => {
+        if (typeof candidate === "string" && candidate.trim() && !next[key]) {
+          (next[key] as string) = candidate.trim();
+        }
+      };
+
+      // JSON metadata is authoritative for JSON uploads — parses explicit values
+      if (metadataHints) {
+        mergeField("defaultManufacturer", metadataHints.manufacturer);
+        mergeField("defaultMachineModel", metadataHints.machineModel);
+        mergeField("defaultNamespace", metadataHints.namespace);
+        mergeField("defaultTechnicalDomain", metadataHints.technicalDomain);
+        mergeField("defaultSerialNumberRange", metadataHints.serialNumberRange);
+      }
+
+      // Filename hints are best-effort — only fill fields still empty
+      mergeField("defaultMachineModel", filenameHints.machineModel);
+      mergeField("defaultSerialNumberRange", filenameHints.serialNumberRange);
+
+      // If namespace is still empty but we have manufacturer + model, derive one
+      if (!next.defaultNamespace && next.defaultManufacturer && next.defaultMachineModel) {
+        next.defaultNamespace = slugifyNamespace(next.defaultManufacturer, next.defaultMachineModel);
+      }
+
+      return next;
+    });
+  };
+
+  /**
+   * Required-field gate for the upload button. Returns the list of labels
+   * still to fill so we can show them in a toast + inline under the button.
+   * technicalDomain stays optional — not every catalog has one.
+   */
+  const getMissingFields = (): string[] => {
+    const missing: string[] = [];
+    if (!selectedFile) missing.push("File");
+    if (!isMasterAdmin && !selectedVehicleId) missing.push("Vehicle");
+    if (!options.defaultManufacturer.trim()) missing.push("Default Manufacturer");
+    if (!options.defaultMachineModel.trim()) missing.push("Default Machine Model");
+    if (!options.defaultNamespace.trim()) missing.push("Default Namespace");
+    if (!options.defaultSerialNumberRange.trim()) missing.push("Default Serial Number Range");
+    // Can't skip both backends — nothing would be ingested
+    if (options.skipPinecone && options.skipNeo4j && (!isMasterAdmin || options.skipPostgres)) {
+      missing.push("At least one storage backend (Pinecone/Neo4j/Postgres)");
+    }
+    return missing;
+  };
+
+  const missingFields = getMissingFields();
+
   const handleUpload = async () => {
     if (!selectedFile) return;
+
+    // Defense-in-depth: the button should already be disabled, but if a
+    // keyboard-navigation edge case lets a click through, surface the list
+    // of missing fields as a toast instead of sending a half-filled request.
+    const missing = getMissingFields();
+    if (missing.length > 0) {
+      toast({
+        title: "Missing required fields",
+        description: missing.join(", "),
+        variant: "destructive",
+      });
+      return;
+    }
 
     setUploading(true);
     try {
@@ -479,34 +630,48 @@ export default function DataIngestionPage() {
             </div>
           )}
 
-          {/* Default Values for CSV */}
+          {/* Default Values for CSV. Empty required fields get a red border
+              after a file is selected so the user can spot what still needs
+              attention without reading the summary below. */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="manufacturer">Default Manufacturer</Label>
+              <Label htmlFor="manufacturer">
+                Default Manufacturer <span className="text-destructive">*</span>
+              </Label>
               <Input
                 id="manufacturer"
                 placeholder="e.g., John Deere"
                 value={options.defaultManufacturer}
                 onChange={(e) => setOptions({ ...options, defaultManufacturer: e.target.value })}
+                className={selectedFile && !options.defaultManufacturer.trim() ? "border-destructive" : undefined}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="machineModel">Default Machine Model</Label>
+              <Label htmlFor="machineModel">
+                Default Machine Model <span className="text-destructive">*</span>
+              </Label>
               <Input
                 id="machineModel"
                 placeholder="e.g., 160GLC Excavator"
                 value={options.defaultMachineModel}
                 onChange={(e) => setOptions({ ...options, defaultMachineModel: e.target.value })}
+                className={selectedFile && !options.defaultMachineModel.trim() ? "border-destructive" : undefined}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="namespace">Default Namespace</Label>
+              <Label htmlFor="namespace">
+                Default Namespace <span className="text-destructive">*</span>
+              </Label>
               <Input
                 id="namespace"
                 placeholder="e.g., john-deere-160glc"
                 value={options.defaultNamespace}
                 onChange={(e) => setOptions({ ...options, defaultNamespace: e.target.value })}
+                className={selectedFile && !options.defaultNamespace.trim() ? "border-destructive" : undefined}
               />
+              <p className="text-xs text-muted-foreground">
+                Used as the Pinecone namespace for vehicle-scoped search. Kebab-case recommended.
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="technicalDomain">Default Technical Domain</Label>
@@ -516,14 +681,18 @@ export default function DataIngestionPage() {
                 value={options.defaultTechnicalDomain}
                 onChange={(e) => setOptions({ ...options, defaultTechnicalDomain: e.target.value })}
               />
+              <p className="text-xs text-muted-foreground">Optional.</p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="serialRange">Default Serial Number Range</Label>
+              <Label htmlFor="serialRange">
+                Default Serial Number Range <span className="text-destructive">*</span>
+              </Label>
               <Input
                 id="serialRange"
                 placeholder="e.g., 1FF160GX..."
                 value={options.defaultSerialNumberRange}
                 onChange={(e) => setOptions({ ...options, defaultSerialNumberRange: e.target.value })}
+                className={selectedFile && !options.defaultSerialNumberRange.trim() ? "border-destructive" : undefined}
               />
             </div>
           </div>
@@ -566,10 +735,27 @@ export default function DataIngestionPage() {
             </div>
           </div>
 
+          {/* Missing-fields summary. Rendered only after a file is selected
+              so the user sees what's blocking them without being nagged
+              before they've started. Matches the Upload button disabled logic. */}
+          {selectedFile && missingFields.length > 0 && (
+            <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <div>
+                <p className="font-medium">Fill the following before uploading:</p>
+                <ul className="list-inside list-disc">
+                  {missingFields.map((f) => (
+                    <li key={f}>{f}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
           {/* Upload Button */}
           <Button
             onClick={handleUpload}
-            disabled={!selectedFile || uploading || (!isMasterAdmin && !selectedVehicleId)}
+            disabled={uploading || missingFields.length > 0}
             className="w-full sm:w-auto"
           >
             {uploading ? (
@@ -709,13 +895,21 @@ export default function DataIngestionPage() {
                 </div>
                 <div>
                   <span className="text-muted-foreground">Total Records:</span> {selectedJob.totalRecords}
+                  {typeof selectedJob.successRecords === 'number' && selectedJob.successRecords !== selectedJob.totalRecords ? (
+                    <span className="text-muted-foreground text-xs ml-1">
+                      ({selectedJob.successRecords} unique after dedup)
+                    </span>
+                  ) : null}
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Success:</span>{" "}
-                  <span className="text-green-500">{selectedJob.successRecords}</span>
-                  {" / "}
-                  <span className="text-muted-foreground">Failed:</span>{" "}
-                  <span className="text-red-500">{selectedJob.failedRecords}</span>
+                  <span className="text-muted-foreground">Validation:</span>{" "}
+                  <span className="text-green-500">{selectedJob.successRecords} valid</span>
+                  {selectedJob.failedRecords > 0 ? (
+                    <>
+                      {" / "}
+                      <span className="text-red-500">{selectedJob.failedRecords} invalid</span>
+                    </>
+                  ) : null}
                 </div>
                 <div>
                   <span className="text-muted-foreground">Started:</span> {formatDate(selectedJob.startedAt)}
@@ -743,17 +937,31 @@ export default function DataIngestionPage() {
                       : selectedJob.neo4jStatus;
                     const counts = selectedJob.backendBreakdown?.[backend];
                     const total = counts ? counts.PENDING + counts.IN_PROGRESS + counts.OK + counts.FAILED + counts.REJECTED : 0;
+                    const recordsOk = backend === "POSTGRES" ? selectedJob.postgresSuccessRecords
+                      : backend === "PINECONE" ? selectedJob.pineconeSuccessRecords
+                      : selectedJob.neo4jSuccessRecords;
+                    const recordsFailed = backend === "POSTGRES" ? selectedJob.postgresFailedRecords
+                      : backend === "PINECONE" ? selectedJob.pineconeFailedRecords
+                      : selectedJob.neo4jFailedRecords;
                     return (
                       <div key={backend} className="border rounded-lg p-3 text-center">
                         <div className="text-sm font-medium">{label}</div>
                         <div className={`text-xs mt-1 ${PHASE_CONFIG[phase]?.color}`}>{phase}</div>
                         {counts && total > 0 ? (
                           <div className="text-[11px] mt-2 space-y-0.5 text-left">
-                            {counts.OK > 0 && <div className="text-green-500">OK: {counts.OK} / {total}</div>}
+                            {counts.OK > 0 && <div className="text-green-500">Chunks OK: {counts.OK} / {total}</div>}
                             {counts.IN_PROGRESS > 0 && <div className="text-blue-500">Running: {counts.IN_PROGRESS}</div>}
                             {counts.PENDING > 0 && <div className="text-muted-foreground">Pending: {counts.PENDING}</div>}
                             {counts.FAILED > 0 && <div className="text-red-500">Failed: {counts.FAILED}</div>}
                             {counts.REJECTED > 0 && <div className="text-orange-500">Rejected: {counts.REJECTED}</div>}
+                          </div>
+                        ) : null}
+                        {(typeof recordsOk === 'number' && recordsOk > 0) || (typeof recordsFailed === 'number' && recordsFailed > 0) ? (
+                          <div className="text-[11px] mt-2 pt-2 border-t text-left">
+                            <div className="text-green-500">Records written: {recordsOk ?? 0}</div>
+                            {typeof recordsFailed === 'number' && recordsFailed > 0 ? (
+                              <div className="text-red-500">Records failed: {recordsFailed}</div>
+                            ) : null}
                           </div>
                         ) : null}
                       </div>

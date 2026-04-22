@@ -1410,8 +1410,24 @@ model IngestionJob {
   completedAt        DateTime?
   totalRecords       Int                  @default(0)
   processedRecords   Int                  @default(0)
+  // Prepare-phase counters. `successRecords` is the number of unique valid
+  // records that passed Zod + dedup and entered the outbox pipeline. So for
+  // a file with 11k rows, 6.2k unique-valid, 4.9k duplicates, 0 Zod failures:
+  // successRecords=6215, failedRecords=0, totalRecords=11163 (duplicates are
+  // logged as warnings, not failures). Per-backend counters below track how
+  // many of those made it into each backend.
   successRecords     Int                  @default(0)
   failedRecords      Int                  @default(0)
+  // Per-backend record counters. Each is the sum of `result.success` /
+  // `result.failed` reported by the respective backend ingester across all
+  // chunks. Lets the UI show "Pinecone: 6215/6215, Neo4j: 6210/6215" instead
+  // of a single double-counted total. SKIPPED backends stay at 0.
+  postgresSuccessRecords Int              @default(0)
+  postgresFailedRecords  Int              @default(0)
+  pineconeSuccessRecords Int              @default(0)
+  pineconeFailedRecords  Int              @default(0)
+  neo4jSuccessRecords    Int              @default(0)
+  neo4jFailedRecords     Int              @default(0)
   // Chunked outbox pipeline bookkeeping. totalChunks is set by the prepare
   // worker once the stream finishes; preparedChunks increments as each chunk
   // is written to S3 + outbox rows created.

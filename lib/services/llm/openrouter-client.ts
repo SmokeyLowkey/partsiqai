@@ -12,6 +12,35 @@ function estimateTokens(inputChars: number, maxOutputTokens = 2000): number {
   return Math.ceil(inputChars / CHARS_PER_TOKEN) + maxOutputTokens;
 }
 
+/**
+ * Strip Markdown code fences from an LLM response before JSON.parse.
+ *
+ * Why this exists: even with `response_format: { type: 'json_object' }`,
+ * some models routed through OpenRouter (especially smaller / fine-tuned
+ * variants) wrap JSON in ```json ... ``` anyway. The raw string then
+ * starts with a backtick and JSON.parse blows up on "Unexpected token `".
+ *
+ * We handle the common shapes:
+ *   ```json\n{...}\n```
+ *   ```\n{...}\n```
+ *   plain {...}
+ *
+ * Anything in between the outer braces is left untouched — we only trim
+ * the envelope. If the content isn't fenced at all, this is a no-op.
+ */
+function stripJsonFences(content: string): string {
+  const trimmed = content.trim();
+  if (!trimmed.startsWith('```')) return trimmed;
+
+  // Strip opening fence (optionally with "json" tag).
+  const afterOpen = trimmed.replace(/^```(?:json)?\s*\n?/i, '');
+
+  // Strip trailing fence if present.
+  const afterClose = afterOpen.replace(/\n?```\s*$/i, '');
+
+  return afterClose.trim();
+}
+
 export interface CompletionOptions {
   temperature?: number;
   maxTokens?: number;
@@ -164,7 +193,7 @@ export class OpenRouterClient {
         const content = response.choices[0].message.content || '{}';
         console.log('LLM response length:', content.length);
 
-        const parsed = JSON.parse(content);
+        const parsed = JSON.parse(stripJsonFences(content));
 
         if (schema && typeof schema.safeParse === 'function') {
           const result = schema.safeParse(parsed);

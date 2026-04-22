@@ -49,3 +49,5 @@ scripts/create-master-admin.ts
 /dashboard_image_reference/
 /docs/
 /n8n_workflows_to_convert_to_in_app_workflow/
+skills-lock.json
+/test-results/*

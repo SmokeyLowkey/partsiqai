@@ -261,7 +261,10 @@ async function processPrepare(job: Job<IngestionPrepareJobData>) {
       data: {
         status: IngestionJobStatus.READY,
         totalRecords,
-        successRecords: 0, // incremented by backend writers
+        // successRecords = unique valid records that entered the outbox
+        // pipeline. Stable once prepare finishes; backend writers no longer
+        // touch this field (they bump per-backend counters instead).
+        successRecords: validRecords,
         failedRecords: invalidRecords,
         totalChunks: writtenChunks.length,
         preparedChunks: writtenChunks.length,

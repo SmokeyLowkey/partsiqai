@@ -375,12 +375,14 @@ export class MultiAgentOrchestrator {
     } catch (error: any) {
       log.error({ err: error }, 'Search error');
       throw new Error(`Search failed: ${error.message}`);
-    } finally {
-      // Clean up Neo4j connection
-      if (this.neo4jAgent) {
-        await this.neo4jAgent.close();
-      }
     }
+    // DO NOT close the Neo4j driver here. On Vercel's serverless runtime the
+    // orchestrator instance can be reused across warm invocations; closing the
+    // driver pool in this finally poisoned later searches with
+    // "Pool is closed, it is no more able to serve requests" errors. The
+    // driver cleans up on process exit; between warm invocations we want
+    // its connection pool to stay warm for latency. Each `graphSearch` call
+    // opens + closes its own session, which is the right level of cleanup.
   }
 
   // ============================================================
