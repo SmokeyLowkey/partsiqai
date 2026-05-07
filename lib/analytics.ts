@@ -21,6 +21,18 @@ export const AnalyticsEvents = {
   INGESTION_COMPLETED: 'ingestion_completed',
   QUOTE_REQUEST_SENT: 'quote_request_sent',
   ORDER_CREATED: 'order_created',
+  // Onboarding tour funnel — fires from ProductTourModal so we can see
+  // whether the tour delivers value or gets skipped, and where users drop
+  // off mid-tour (which frame loses them?).
+  PRODUCT_TOUR_VIEWED: 'product_tour_viewed',
+  PRODUCT_TOUR_FRAME_VIEWED: 'product_tour_frame_viewed',
+  PRODUCT_TOUR_COMPLETED: 'product_tour_completed',
+  PRODUCT_TOUR_SKIPPED: 'product_tour_skipped',
+  // AI chat first-engagement funnel — measures whether the suggestion chips
+  // we added to the empty state actually drive conversation versus the
+  // user typing their own first message (or bouncing).
+  AI_CHAT_OPENED: 'ai_chat_opened',
+  AI_CHAT_SUGGESTION_CLICKED: 'ai_chat_suggestion_clicked',
   // Marketing funnel
   CTA_CLICKED: 'cta_clicked',
   PRICING_PLAN_SELECTED: 'pricing_plan_selected',

@@ -1,7 +1,9 @@
 "use client"
 
 import { signOut, useSession } from "next-auth/react"
+import { useState } from "react"
 import { ThemeLogo } from "@/components/theme-logo"
+import { ProductTourModal } from "@/components/onboarding/product-tour-modal"
 import {
   Sidebar,
   SidebarContent,
@@ -33,6 +35,9 @@ import {
   PiggyBank,
   Upload,
   Mail,
+  Bot,
+  FileText,
+  Sparkles,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -62,6 +67,36 @@ const menuItems: MenuItem[] = [
     url: "/admin/cost-savings",
     icon: PiggyBank,
     masterAdminOnly: true, // App-wide cost savings - MASTER_ADMIN only
+  },
+]
+
+// Daily-use product features. These live under /customer/* in the URL space
+// but admins are full product users (admin role is a superset of customer
+// capabilities — see middleware.ts), so we surface the same daily workflow
+// links here. Without this section an admin lands on the dashboard and has
+// no UI path to the AI Chat / RFQ creation / catalog browsing — the product's
+// actual point — and bounces. Match the icons used in CustomerSidebar so the
+// experience reads consistently when they cross over to /customer/*.
+const workspaceItems: MenuItem[] = [
+  {
+    title: "AI Assistant",
+    url: "/customer/ai-chat",
+    icon: Bot,
+  },
+  {
+    title: "Quote Requests",
+    url: "/customer/quote-requests",
+    icon: FileText,
+  },
+  {
+    title: "Parts Catalog",
+    url: "/customer/catalog",
+    icon: Package,
+  },
+  {
+    title: "Suppliers",
+    url: "/customer/suppliers",
+    icon: Building2,
   },
 ]
 
@@ -121,6 +156,7 @@ const systemItems: MenuItem[] = [
 export function AdminSidebar() {
   const pathname = usePathname()
   const { data: session } = useSession()
+  const [tourReplayOpen, setTourReplayOpen] = useState(false)
 
   const isMasterAdmin = session?.user?.role === "MASTER_ADMIN"
 
@@ -139,6 +175,7 @@ export function AdminSidebar() {
     items.filter((item) => !item.masterAdminOnly || isMasterAdmin)
 
   const visibleMenuItems = filterByRole(menuItems)
+  const visibleWorkspaceItems = filterByRole(workspaceItems)
   const visibleManagementItems = filterByRole(managementItems)
   const visibleSystemItems = filterByRole(systemItems)
 
@@ -164,6 +201,26 @@ export function AdminSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {visibleMenuItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild isActive={pathname === item.url || pathname.startsWith(item.url + "/")}>
+                    <Link href={item.url}>
+                      <item.icon />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarSeparator />
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {visibleWorkspaceItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild isActive={pathname === item.url || pathname.startsWith(item.url + "/")}>
                     <Link href={item.url}>
@@ -243,6 +300,12 @@ export function AdminSidebar() {
         )}
         <SidebarMenu>
           <SidebarMenuItem>
+            <SidebarMenuButton onClick={() => setTourReplayOpen(true)}>
+              <Sparkles />
+              <span>Replay product tour</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
             <ThemeToggle />
           </SidebarMenuItem>
           <SidebarMenuItem>
@@ -253,6 +316,12 @@ export function AdminSidebar() {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
+      {/* Replay-tour mount: separate instance from the auto-open one in
+          admin/layout.tsx so the footer button can force-open it without
+          fighting the localStorage gate. */}
+      {tourReplayOpen && (
+        <ProductTourModal forceOpen onClose={() => setTourReplayOpen(false)} />
+      )}
     </Sidebar>
   )
 }

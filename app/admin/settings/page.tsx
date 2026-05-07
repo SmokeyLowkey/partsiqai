@@ -92,6 +92,7 @@ type OrganizationSettings = {
   maxVehicles: number;
   subscriptionTier: string;
   subscriptionStatus: string;
+  requireApprovalForAllQuotes?: boolean;
 };
 
 type Integration = {
@@ -122,6 +123,7 @@ export default function SettingsPage() {
     sessionTimeoutMinutes: 60,
     requireTwoFactor: false,
     allowedEmailDomains: "",
+    requireApprovalForAllQuotes: false,
   });
   const [usePlatformKeys, setUsePlatformKeys] = useState(true);
 
@@ -264,6 +266,7 @@ export default function SettingsPage() {
           sessionTimeoutMinutes: data.organization.sessionTimeoutMinutes || 60,
           requireTwoFactor: data.organization.requireTwoFactor || false,
           allowedEmailDomains: (data.organization.allowedEmailDomains || []).join(", "),
+          requireApprovalForAllQuotes: data.organization.requireApprovalForAllQuotes || false,
         });
         setUsePlatformKeys(data.organization.usePlatformKeys ?? true);
       }
@@ -538,6 +541,7 @@ export default function SettingsPage() {
             .map((d) => d.trim())
             .filter(Boolean),
           usePlatformKeys: usePlatformKeys,
+          requireApprovalForAllQuotes: orgFormData.requireApprovalForAllQuotes,
         }),
       });
 
@@ -1226,6 +1230,24 @@ export default function SettingsPage() {
               checked={orgFormData.requireTwoFactor}
               onCheckedChange={(checked) =>
                 setOrgFormData({ ...orgFormData, requireTwoFactor: checked })
+              }
+            />
+          </div>
+
+          <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30">
+            <div className="space-y-0.5">
+              <Label>Require Manager Approval on Every Quote</Label>
+              <p className="text-sm text-muted-foreground max-w-xl">
+                When enabled, every quote-to-order conversion requires a separate manager to approve first &mdash; including quotes created by admins. Use this when your procurement workflow needs segregation of duties between the person creating quotes and the person authorizing spend.
+                <span className="block mt-1 text-amber-700 dark:text-amber-400">
+                  ⚠ Requires at least two manager-or-higher users in your org. Single-user orgs cannot self-approve.
+                </span>
+              </p>
+            </div>
+            <Switch
+              checked={orgFormData.requireApprovalForAllQuotes}
+              onCheckedChange={(checked) =>
+                setOrgFormData({ ...orgFormData, requireApprovalForAllQuotes: checked })
               }
             />
           </div>

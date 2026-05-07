@@ -162,8 +162,26 @@ export const POST = withHardening(
       return NextResponse.json({ error: 'Quote request not found' }, { status: 404 });
     }
 
+    // Governance gate (mirror of /convert-to-order): when the org has
+    // requireApprovalForAllQuotes turned on, every quote — even admin-created —
+    // must pass through APPROVED status before order creation. Defense in
+    // depth so a client can't bypass /convert-to-order and POST straight here.
+    const orgGovernance = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { requireApprovalForAllQuotes: true },
+    });
+    if (orgGovernance?.requireApprovalForAllQuotes && quoteRequest.status !== 'APPROVED') {
+      return NextResponse.json({
+        error: 'Your organization requires manager approval on every quote before conversion. Have a different manager approve this quote first.',
+        currentStatus: quoteRequest.status,
+        requiresApproval: true,
+        reason: 'org-policy',
+      }, { status: 400 });
+    }
+
     // Validation: Check approval requirement for technicians
-    // Managers/admins can convert regardless of approval status (they ARE the approvers)
+    // Managers/admins can convert regardless of approval status (they ARE the approvers),
+    // unless the org-level governance gate above just blocked them.
     const isManagerOrAdmin = ['ADMIN', 'MASTER_ADMIN', 'MANAGER'].includes(session.user.role);
     if (quoteRequest.requiresApproval && quoteRequest.status !== 'APPROVED' && !isManagerOrAdmin) {
       return NextResponse.json({

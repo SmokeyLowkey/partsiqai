@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { LayoutDashboard, Bot, ShoppingCart, MessageSquare, Package, LogOut, Sparkles, Building2, Truck, FileText, User, CreditCard, PiggyBank } from "lucide-react"
+import { LayoutDashboard, Bot, ShoppingCart, MessageSquare, Package, LogOut, Sparkles, Building2, Truck, FileText, User, CreditCard, PiggyBank, Shield } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { LucideIcon } from "lucide-react"
@@ -93,6 +93,7 @@ export function CustomerSidebar() {
 
   const userRole = session?.user?.role
   const canApprove = userRole === 'MANAGER' || userRole === 'ADMIN' || userRole === 'MASTER_ADMIN'
+  const isAdmin = userRole === 'ADMIN' || userRole === 'MASTER_ADMIN'
 
   const getUserInitials = (name?: string | null) => {
     if (!name) return "U"
@@ -209,6 +210,20 @@ export function CustomerSidebar() {
                   </span>
                 </div>
               </div>
+            </SidebarMenuItem>
+          )}
+          {/* Admin/MASTER_ADMIN are full product users (per middleware fix
+              that lets them through /customer/*). Surface a way back to the
+              admin portal so they don't have to manually edit the URL when
+              they need to manage settings, billing, or users. */}
+          {isAdmin && (
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild>
+                <Link href="/admin/dashboard">
+                  <Shield />
+                  <span>Admin Portal</span>
+                </Link>
+              </SidebarMenuButton>
             </SidebarMenuItem>
           )}
           <SidebarMenuItem>

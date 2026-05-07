@@ -144,8 +144,28 @@ export const POST = withHardening(
       }, { status: 400 });
     }
 
+    // Governance check: org-level "require manager approval on every quote"
+    // toggle. Default is false (SMB owner-operator workflow); orgs that turn
+    // it on want segregation of duties — every conversion needs a separate
+    // MANAGER+ approval, regardless of who created the quote. Combined with
+    // the self-approval block in /approve, this means an admin-created quote
+    // requires a different MANAGER+ user to approve before convert.
+    const orgGovernance = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { requireApprovalForAllQuotes: true },
+    });
+    if (orgGovernance?.requireApprovalForAllQuotes && quoteRequest.status !== 'APPROVED') {
+      return NextResponse.json({
+        error: 'Your organization requires manager approval on every quote before conversion. Have a different manager approve this quote first.',
+        currentStatus: quoteRequest.status,
+        requiresApproval: true,
+        reason: 'org-policy',
+      }, { status: 400 });
+    }
+
     // Validation 0: Check approval requirement for technicians
-    // Managers/admins can convert regardless of approval status (they ARE the approvers)
+    // Managers/admins can convert regardless of approval status (they ARE the approvers),
+    // unless the org-level governance gate above just blocked them.
     const isManagerOrAdmin = ['ADMIN', 'MASTER_ADMIN', 'MANAGER'].includes(session.user.role);
     if (quoteRequest.requiresApproval && quoteRequest.status !== 'APPROVED' && !isManagerOrAdmin) {
       return NextResponse.json({

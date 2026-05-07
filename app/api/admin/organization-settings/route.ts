@@ -39,6 +39,7 @@ export async function GET() {
         pineconeHost: true,
         vapiPhoneNumberId: true,
         vapiAssistantId: true,
+        requireApprovalForAllQuotes: true,
       },
     });
 
@@ -83,6 +84,7 @@ export const PUT = withHardening(
       usePlatformKeys,
       vapiPhoneNumberId,
       vapiAssistantId,
+      requireApprovalForAllQuotes,
     } = body;
 
     // Build update data - only include fields that were provided
@@ -101,6 +103,9 @@ export const PUT = withHardening(
     if (usePlatformKeys !== undefined) updateData.usePlatformKeys = usePlatformKeys;
     if (vapiPhoneNumberId !== undefined) updateData.vapiPhoneNumberId = vapiPhoneNumberId || null;
     if (vapiAssistantId !== undefined) updateData.vapiAssistantId = vapiAssistantId || null;
+    if (requireApprovalForAllQuotes !== undefined) {
+      updateData.requireApprovalForAllQuotes = !!requireApprovalForAllQuotes;
+    }
 
     const organization = await prisma.organization.update({
       where: { id: currentUser.organizationId },
@@ -121,6 +126,7 @@ export const PUT = withHardening(
         pineconeHost: true,
         vapiPhoneNumberId: true,
         vapiAssistantId: true,
+        requireApprovalForAllQuotes: true,
       },
     });
 

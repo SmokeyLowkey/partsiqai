@@ -116,8 +116,10 @@ export function buildSetupSteps(counts: {
     {
       id: "vehicle",
       title: "Add your first vehicle",
-      description: "Register your equipment to enable parts search",
-      href: "/admin/vehicles",
+      // Vehicles are added on the customer side (CRUD list). The /admin/vehicles
+      // page is the search-mapping config screen, not where you add a vehicle.
+      description: "Register your equipment so parts search can scope to it",
+      href: "/customer/vehicles",
       completed: counts.vehicles > 0,
       icon: <Truck className="h-4 w-4" />,
     },
@@ -132,8 +134,11 @@ export function buildSetupSteps(counts: {
     {
       id: "supplier",
       title: "Add a supplier",
+      // /admin/suppliers does not exist — suppliers are managed from the
+      // customer-side route. After the role unification an admin can reach
+      // either side, but this link should point where the route actually is.
       description: "Connect suppliers to start requesting quotes",
-      href: "/admin/suppliers",
+      href: "/customer/suppliers",
       completed: counts.suppliers > 0,
       icon: <Package className="h-4 w-4" />,
     },
@@ -147,8 +152,8 @@ export function buildSetupSteps(counts: {
     },
     {
       id: "search",
-      title: "Try your first search",
-      description: "Use AI chat to find parts for your equipment",
+      title: "Try the AI assistant",
+      description: "Ask about parts (works best after you've uploaded a catalog)",
       href: "/customer/ai-chat",
       completed: counts.conversations > 0,
       icon: <MessageSquare className="h-4 w-4" />,

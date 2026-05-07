@@ -182,9 +182,16 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Customer route protection
+  // Customer route protection. ADMIN / MASTER_ADMIN are also product users —
+  // admin roles are a superset of customer-tier capabilities, not a partition.
+  // The TIER-1 admin-only features (user mgmt, ingestion, settings, billing)
+  // still live under /admin/* and are still gated to ADMIN_ROLES above. This
+  // gate only blocks roles that have no business reaching customer-tier
+  // pages at all (none today; left structured so future restricted roles
+  // can be added).
   if (pathname.startsWith("/customer")) {
-    if (!CUSTOMER_ROLES.includes(session.user.role)) {
+    const allowedRoles = [...CUSTOMER_ROLES, ...ADMIN_ROLES]
+    if (!allowedRoles.includes(session.user.role)) {
       return NextResponse.redirect(new URL("/admin/dashboard", request.url))
     }
   }

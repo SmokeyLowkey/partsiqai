@@ -45,6 +45,14 @@ model Organization {
   onboardingCompletedAt  DateTime?
   primaryContactPhone    String?
   primaryUseCase         String?
+  // Procurement governance toggle: when true, every quote → order conversion
+  // requires MANAGER+ approval first, regardless of the creator's role.
+  // Default false matches the SMB owner-operator workflow (one person = both
+  // admin and approver). Larger orgs with separate procurement managers
+  // turn this on to enforce segregation of duties — combined with the
+  // existing self-approval block, an admin cannot approve their own spend
+  // when this flag is set.
+  requireApprovalForAllQuotes Boolean             @default(false)
   stripeCustomerId       String?                 @unique
   stripePriceId          String?
   stripeSubscriptionId   String?                 @unique

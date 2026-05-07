@@ -7,6 +7,7 @@ import { Separator } from "@/components/ui/separator"
 import { SubscriptionGuard } from "@/components/subscription-guard"
 import { TrialBanner } from "@/components/billing/trial-banner"
 import { IntegrationAlertsBanner } from "@/components/integration-alerts-banner"
+import { ProductTourModal } from "@/components/onboarding/product-tour-modal"
 import { usePathname } from "next/navigation"
 
 export default function AdminLayout({
@@ -38,6 +39,9 @@ export default function AdminLayout({
           </header>
           <div className="flex flex-1 flex-col gap-4 p-4">{children}</div>
         </SidebarInset>
+        {/* First-time product tour. Auto-opens once per browser via
+            localStorage. Replay trigger lives in the admin sidebar footer. */}
+        <ProductTourModal />
       </SidebarProvider>
     </SubscriptionGuard>
   )

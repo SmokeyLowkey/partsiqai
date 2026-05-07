@@ -348,6 +348,11 @@ export default function AIChatPage() {
   // Load initial data
   useEffect(() => {
     console.log("[AI Chat] Component mounted, loading initial data...");
+    // First-engagement funnel: opened event fires once per page mount,
+    // before we know whether the user will type, click a chip, or bounce.
+    // Pairs with ai_chat_suggestion_clicked + ai_chat_message_sent to
+    // measure conversion through the empty state.
+    trackEvent(AnalyticsEvents.AI_CHAT_OPENED);
     loadConversations();
     loadVehicles();
     checkIntegrations();
@@ -1683,6 +1688,48 @@ export default function AIChatPage() {
                       </div>
                     </div>
                   </div>
+
+                  {/* First-message suggestion chips. Removes the "blank
+                      canvas" friction trial users hit on a fresh AI chat —
+                      they get four clickable prompts that demonstrate what
+                      the assistant can actually do. Vehicle-aware: when a
+                      vehicle is selected, prompts reference that machine
+                      directly so the chat returns specific results
+                      immediately. Click → fires handleSendMessage with the
+                      prompt text, same path as typing it manually. */}
+                  <div className="flex flex-wrap gap-2 justify-start ml-10 max-w-[80%]">
+                    {(selectedVehicle
+                      ? [
+                          `Find an oil filter for the ${selectedVehicle.year} ${selectedVehicle.make} ${selectedVehicle.model}`,
+                          `What hydraulic parts does the ${selectedVehicle.model} use?`,
+                          `Show me common wear parts for this machine`,
+                          `Find aftermarket alternatives for OEM parts on this ${selectedVehicle.make}`,
+                        ]
+                      : [
+                          `Find an oil filter for a Caterpillar 320 excavator`,
+                          `What is part number 1R-0762?`,
+                          `Show me cross-references for CAT 1R-0762`,
+                          `What aftermarket alternatives exist for a Komatsu fuel filter?`,
+                        ]
+                    ).map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        onClick={() => {
+                          trackEvent(AnalyticsEvents.AI_CHAT_SUGGESTION_CLICKED, {
+                            suggestion,
+                            hasVehicle: !!selectedVehicle,
+                          })
+                          handleSendMessage(suggestion)
+                        }}
+                        disabled={isLoading}
+                        className="rounded-full border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+
                   {selectedVehicle && (
                     <div className="flex justify-center">
                       <div className="bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 rounded-lg px-4 py-2 text-center">
