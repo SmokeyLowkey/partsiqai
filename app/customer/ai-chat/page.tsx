@@ -703,6 +703,15 @@ export default function AIChatPage() {
 
       const quoteRequestData = await quoteRequestResponse.json();
 
+      // Activation funnel: quote request creation is the moment a trial
+      // user produces meaningful output. Tracked alongside vehicle_added
+      // and ingestion_uploaded so the funnel covers signup → activation.
+      trackEvent(AnalyticsEvents.QUOTE_REQUEST_SENT, {
+        quoteRequestId: quoteRequestData.quoteRequest.id,
+        vehicleId: selectedVehicle?.id ?? null,
+        itemCount: pickListData.pickList?.items?.length ?? null,
+      });
+
       // Clear the pick list and redirect to quote request page
       setPickList([]);
       setShowMobilePickList(false);

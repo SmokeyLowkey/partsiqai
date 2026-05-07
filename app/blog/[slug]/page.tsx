@@ -70,9 +70,29 @@ export default async function BlogPostPage({ params }: Props) {
     keywords: post.meta.keywords.join(", "),
   }
 
+  // FAQPage JSON-LD only emitted when frontmatter actually has a faq array.
+  // Posts without explicit FAQs skip this — no empty Question entries.
+  // Per Google's structured-data policy the FAQ answer text must match the
+  // post's visible FAQ section, so MDX must render the same Q/A inline.
+  const faqJsonLd = post.meta.faq && post.meta.faq.length > 0
+    ? {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: post.meta.faq.map((entry) => ({
+          "@type": "Question",
+          name: entry.question,
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: entry.answer,
+          },
+        })),
+      }
+    : null
+
   return (
     <>
       <JsonLd data={articleJsonLd} />
+      {faqJsonLd && <JsonLd data={faqJsonLd} />}
       <BreadcrumbJsonLd
         items={[
           { name: "Home", url: "/" },

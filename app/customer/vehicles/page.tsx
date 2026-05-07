@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { trackEvent, AnalyticsEvents } from '@/lib/analytics';
 import {
   Plus,
   Truck,
@@ -198,6 +199,16 @@ export default function VehiclesPage() {
 
       const data = await response.json();
       const newVehicle = data.vehicle;
+
+      // Activation funnel: vehicle add is the first material step after
+      // signup. Tracking it lets us measure trial-to-activation drop-off.
+      trackEvent(AnalyticsEvents.VEHICLE_ADDED, {
+        vehicleId: newVehicle.id,
+        make: newVehicle.make,
+        model: newVehicle.model,
+        year: newVehicle.year,
+        hasPdf: !!pdfFile,
+      });
 
       // Step 2: Upload PDF if provided
       if (pdfFile) {

@@ -37,6 +37,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { trackEvent, AnalyticsEvents } from "@/lib/analytics";
 import {
   Upload,
   FileUp,
@@ -438,6 +439,16 @@ export default function DataIngestionPage() {
       const data = await res.json();
 
       if (!res.ok) throw new Error(data.error);
+
+      // Activation funnel: ingestion upload is step 2 of the trial activation
+      // path (signup → vehicle → ingestion → search → quote). Track here so
+      // we can measure where trial users drop off.
+      trackEvent(AnalyticsEvents.INGESTION_UPLOADED, {
+        ingestionJobId: data.ingestionJobId,
+        fileType: selectedFile.name.toLowerCase().endsWith(".csv") ? "csv" : "json",
+        fileSizeBytes: selectedFile.size,
+        vehicleId: selectedVehicleId || null,
+      });
 
       toast({ title: "Upload successful", description: `Job ${data.ingestionJobId} created` });
       setSelectedFile(null);

@@ -21,27 +21,32 @@ import { BreadcrumbJsonLd } from "@/components/seo/breadcrumb-jsonld"
 import { PublicFooter } from "@/components/layout/public-footer"
 import { RelatedSolutions } from "@/components/solutions/related-solutions"
 
+// Tuned for the GSC primary query "supplier management software" (799 imp /
+// pos 61). Pattern matches the parts-inventory page: keyword-leading title
+// under 60 chars, AI differentiator front-loaded in the description, and
+// the heavy-equipment qualifier so we counter-position vs generic
+// vendor-management software (Coupa, Ariba etc.) targeting the same query.
 export const metadata: Metadata = {
-  title: "Supplier Management Software",
+  title: "Supplier Management Software for Heavy Equipment Parts",
   description:
-    "AI voice agent calls suppliers, auto-emails quotes, compares prices side-by-side. Purpose-built for heavy equipment dealers. Get quotes 2x faster.",
+    "Supplier management software for heavy equipment parts procurement. AI voice agent calls suppliers, auto-emails quote requests, and compares responses on a 7-factor scoring framework.",
   keywords: [
     "supplier management software",
-    "parts procurement software",
     "supplier quote management",
-    "supplier price comparison",
+    "parts supplier management",
     "vendor management system",
+    "supplier price comparison",
     "procurement automation",
-    "supplier relationship management",
+    "heavy equipment supplier management",
     "industrial parts procurement",
   ],
   alternates: {
     canonical: "/solutions/supplier-management-software",
   },
   openGraph: {
-    title: "Supplier Management Software for Industrial Parts Procurement",
+    title: "Supplier Management Software for Heavy Equipment Parts | PartsIQ",
     description:
-      "AI voice agent calls suppliers, auto-emails quotes, compares prices side-by-side. Purpose-built for heavy equipment dealers.",
+      "AI voice agent calls suppliers, auto-emails quote requests, and compares responses side-by-side. Purpose-built for heavy & compact equipment parts procurement.",
     url: "/solutions/supplier-management-software",
   },
 }

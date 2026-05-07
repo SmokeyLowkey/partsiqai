@@ -1,13 +1,26 @@
 ---
-title: "Automate Parts Reorder Points: The Formula That Stops 60% of Stockouts"
-description: "60% of stockouts come from late reorders, not unpredictable demand. Calculate reorder points (avg daily usage × lead time + safety stock), automate PO triggers, eliminate the gap."
+title: "Reorder Point Formula: Stop 60% of Stockouts (Auto Triggers)"
+description: "60% of stockouts come from late human reorders, not unpredictable demand. The reorder-point formula (avg daily usage × lead time + safety stock), automated PO triggers, and how to set thresholds for auto-approval."
 date: "2026-02-28"
 author: "PartsIQ Team"
 slug: "automate-parts-reorder-never-run-out"
-keywords: ["parts reorder automation", "automated parts inventory", "automatic reorder point", "parts replenishment automation", "automated stock replenishment", "reorder point calculation"]
+keywords: ["automated parts reordering", "reorder point formula", "parts reorder automation", "automatic reorder point", "parts replenishment automation", "reorder point calculation"]
 category: "Guides"
 readTime: "9 min read"
 draft: false
+faq:
+  - question: "What is the reorder point formula for parts inventory?"
+    answer: "Reorder point = (average daily usage × lead time in days) + safety stock. For a hydraulic return filter used 8 times per month with a 14-day lead time and 2 units of safety stock, the reorder point is (0.27 × 14) + 2 = ~6 units. When stock drops to 6, the system triggers a reorder."
+  - question: "Why do most parts stockouts happen?"
+    answer: "60% of stockouts are caused by late reorder decisions, not unpredictable demand or supplier failures. The demand was foreseeable — someone just didn't order in time. Common failure modes: 'I'll order it Monday' becomes 'we're out Wednesday', no consistent reorder trigger across people, duplicate orders from two people noticing the same shortage, and slow-moving parts that nobody monitors."
+  - question: "How do you calculate safety stock for parts?"
+    answer: "Safety stock should reflect both demand variability and lead-time variability. A common approach: take 1.65 × standard deviation of usage during lead time (this gives ~95% service level). For critical parts where stockouts cause major downtime, increase to 2.33 × standard deviation (~99% service level). For low-criticality parts, 1× standard deviation is enough."
+  - question: "What's the difference between automated and manual reordering?"
+    answer: "Automated reordering: the system continuously monitors stock levels against calculated reorder points and generates a draft purchase order the moment stock hits the trigger — with the right supplier, right quantity, and right delivery date pre-filled. Manual reordering: depends on a person noticing low stock, remembering to order, picking the supplier, and entering the PO. Manual systems fail predictably; automated ones don't forget."
+  - question: "Should auto-generated purchase orders require human approval?"
+    answer: "Use a threshold-based approach. Below a small dollar limit ($500 is common), auto-approve and auto-send to the preferred supplier. Above that limit, route to a human reviewer with the recommendation pre-filled. The reorder trigger itself is automated either way — the human is just approving the PO, not noticing the low stock."
+  - question: "Which parts should NOT be on automatic reorder?"
+    answer: "Parts with very erratic demand (used once every 2+ years), parts being phased out as equipment retires, parts where the supplier or part number is changing soon, and parts with regulatory or safety requirements that need manual sign-off (some emissions components). Everything else benefits from automation."
 ---
 
 ## Why Manual Reordering Fails
@@ -212,5 +225,33 @@ The **technicians** notice first — repairs happen without the "we'll have to o
 <KeyTakeaway title="Start Small, Scale Fast">
 Start with your top 100 parts, build confidence with alert-based automation, then expand to semi-automated and fully automated reordering. The transition from manual reordering to automated replenishment is one of the **highest-ROI changes** an operation can make.
 </KeyTakeaway>
+
+---
+
+## Frequently Asked Questions
+
+### What is the reorder point formula for parts inventory?
+
+**Reorder point = (average daily usage × lead time in days) + safety stock.** For a hydraulic return filter used 8 times per month with a 14-day lead time and 2 units of safety stock, the reorder point is (0.27 × 14) + 2 = ~6 units. When stock drops to 6, the system triggers a reorder.
+
+### Why do most parts stockouts happen?
+
+**60% of stockouts are caused by late reorder decisions**, not unpredictable demand or supplier failures. The demand was foreseeable — someone just didn't order in time. Common failure modes: "I'll order it Monday" becomes "we're out Wednesday", no consistent reorder trigger across people, duplicate orders from two people noticing the same shortage, and slow-moving parts that nobody monitors.
+
+### How do you calculate safety stock for parts?
+
+Safety stock should reflect both demand variability and lead-time variability. A common approach: **1.65 × standard deviation** of usage during lead time (≈95% service level). For critical parts where stockouts cause major downtime, increase to **2.33 × standard deviation** (≈99% service level). For low-criticality parts, 1× standard deviation is enough.
+
+### What's the difference between automated and manual reordering?
+
+**Automated:** the system continuously monitors stock levels against calculated reorder points and generates a draft PO the moment stock hits the trigger — with the right supplier, quantity, and delivery date pre-filled. **Manual:** depends on a person noticing low stock, remembering to order, picking the supplier, and entering the PO. Manual systems fail predictably; automated ones don't forget.
+
+### Should auto-generated purchase orders require human approval?
+
+Use a **threshold-based approach**. Below a small dollar limit ($500 is common), auto-approve and auto-send to the preferred supplier. Above that limit, route to a human reviewer with the recommendation pre-filled. The reorder trigger itself is automated either way — the human is just approving the PO, not noticing the low stock.
+
+### Which parts should NOT be on automatic reorder?
+
+Parts with **very erratic demand** (used once every 2+ years), parts being **phased out** as equipment retires, parts where the **supplier or part number is changing soon**, and parts with **regulatory or safety requirements** that need manual sign-off (some emissions components). Everything else benefits from automation.
 
 [Automate reordering with PartsIQ →](/features)

@@ -12,6 +12,15 @@ export const AnalyticsEvents = {
   AI_CHAT_SESSION_STARTED: 'ai_chat_session_started',
   AI_CHAT_MESSAGE_SENT: 'ai_chat_message_sent',
   SETTINGS_UPDATED: 'settings_updated',
+  // Product activation funnel — the events that tell us whether trial users
+  // are actually getting value (added 2026-05). Map to: signup → vehicle →
+  // ingestion → first AI chat → first quote. These are the milestones a
+  // funnel should track to find drop-off in the trial experience.
+  VEHICLE_ADDED: 'vehicle_added',
+  INGESTION_UPLOADED: 'ingestion_uploaded',
+  INGESTION_COMPLETED: 'ingestion_completed',
+  QUOTE_REQUEST_SENT: 'quote_request_sent',
+  ORDER_CREATED: 'order_created',
   // Marketing funnel
   CTA_CLICKED: 'cta_clicked',
   PRICING_PLAN_SELECTED: 'pricing_plan_selected',
@@ -25,6 +34,39 @@ export const AnalyticsEvents = {
   // Homepage hero funnel
   HERO_SCROLLED_PAST: 'hero_scrolled_past',
 } as const
+
+const INTERNAL_USER_LS_KEY = 'partsiq_internal_user'
+
+/**
+ * Mark this browser as belonging to an internal user (PartsIQ team / dev).
+ * Once flagged, the PostHog provider opts out of capturing for this browser
+ * across all subsequent visits — even before login. Triggered automatically
+ * when a MASTER_ADMIN signs in (see PostHogIdentify) or via the dev-only
+ * URL flag `?ph_internal=1`. Clear with `?ph_internal=0`.
+ */
+export function isInternalUser(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    return window.localStorage.getItem(INTERNAL_USER_LS_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+export function setInternalUser(flag: boolean): void {
+  if (typeof window === 'undefined') return
+  try {
+    if (flag) {
+      window.localStorage.setItem(INTERNAL_USER_LS_KEY, 'true')
+      posthog.opt_out_capturing()
+    } else {
+      window.localStorage.removeItem(INTERNAL_USER_LS_KEY)
+      posthog.opt_in_capturing()
+    }
+  } catch {
+    // localStorage can be blocked; do nothing rather than break the page
+  }
+}
 
 export function trackEvent(
   event: string,

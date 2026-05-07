@@ -28,6 +28,7 @@ export function getAllPosts(): BlogPostMeta[] {
         imageAlt: data.imageAlt,
         readTime: data.readTime,
         draft: data.draft || false,
+        faq: Array.isArray(data.faq) ? data.faq : undefined,
       } satisfies BlogPostMeta
     })
     .filter((post) => !post.draft && new Date(post.date) <= new Date())
@@ -58,6 +59,7 @@ export function getPostBySlug(slug: string): { meta: BlogPostMeta; content: stri
       imageAlt: data.imageAlt,
       readTime: data.readTime,
       draft: data.draft || false,
+      faq: Array.isArray(data.faq) ? data.faq : undefined,
     },
     content,
   }

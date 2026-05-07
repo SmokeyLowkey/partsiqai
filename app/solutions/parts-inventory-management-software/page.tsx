@@ -23,27 +23,35 @@ import { BreadcrumbJsonLd } from "@/components/seo/breadcrumb-jsonld"
 import { PublicFooter } from "@/components/layout/public-footer"
 import { RelatedSolutions } from "@/components/solutions/related-solutions"
 
+// Metadata tuned for the GSC-confirmed primary query "parts inventory
+// management software" (1041 impressions / pos 63 → the biggest-impression
+// page on the site as of 2026-05). Keyword leads the title to capture the
+// 15-20% CTR uplift from keyword-leading positioning, length stays under
+// the 60-char SERP truncation threshold, and the description sells the AI
+// differentiator competitors don't have. Comparison: most page-1 results
+// for this query are listicles (Limble, Coast, Tractian, Fleetio); we
+// counter-position as the heavy-equipment-specific product page.
 export const metadata: Metadata = {
-  title: "Parts Inventory Management Software",
+  title: "Parts Inventory Management Software for Heavy Equipment",
   description:
-    "All-in-one parts inventory management software with AI search, voice agent, and automated quoting. Source parts in 15 minutes, not 4 hours.",
+    "Parts inventory management software built for heavy & compact equipment fleets. AI parts search, voice agent that calls suppliers, and 7-factor quote scoring — source parts in 15 minutes.",
   keywords: [
     "parts inventory management software",
+    "parts inventory software",
+    "heavy equipment parts software",
     "parts catalog software",
-    "parts management system",
-    "inventory management platform",
     "parts procurement software",
-    "industrial parts management",
-    "AI parts management",
+    "AI parts inventory",
+    "parts management system",
     "parts sourcing automation",
   ],
   alternates: {
     canonical: "/solutions/parts-inventory-management-software",
   },
   openGraph: {
-    title: "Parts Inventory Management Software — AI-Powered Platform",
+    title: "Parts Inventory Management Software for Heavy Equipment | PartsIQ",
     description:
-      "All-in-one parts management with AI search, voice agent, and automated quoting. Source parts in 15 minutes, not 4 hours.",
+      "AI-powered parts inventory + procurement built for heavy & compact equipment fleets. Voice agent, multi-supplier quoting, and brand-aware part references.",
     url: "/solutions/parts-inventory-management-software",
   },
 }
